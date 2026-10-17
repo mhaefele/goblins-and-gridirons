@@ -1,0 +1,67 @@
+HELP.md
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea/*
+!.idea/codeStyles/
+!.idea/codeStyles/**
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Cursor hook runtime state ###
+.cursor/hooks/state/
+.cursor/hooks/__pycache__/
+
+
+### Node / frontend (React + Vite) ###
+node_modules/
+dist/
+.vite/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+### Playwright (frontend e2e) ###
+playwright-report/
+test-results/
+.playwright/
+frontend/e2e/screenshots/
+
+### macOS ###
+.DS_Store
+
+### GW-owned reference material (local only — never publish) ###
+reference/binaries/
+reference/html/
+reference/challenge-cards.md
+reference/drill-cards.md
+reference/random-events-cards.md
+reference/SOURCES.md

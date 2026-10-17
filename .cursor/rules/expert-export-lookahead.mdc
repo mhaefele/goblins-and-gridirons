@@ -1,0 +1,23 @@
+---
+description: Expert export uses real Lookahead; scenario disagreements usually mean fix the scenario
+globs:
+  - backend/**/api/ai/export/**
+  - backend/**/api/ai/training/**
+  - backend/**/game/opponent/lookahead/**
+  - backend/src/test/**/ExpertExportTest.kt
+  - backend/src/test/**/TrainingScenarioApiTest.kt
+  - backend/src/test/**/ChallengeClaimTrainingScenarioTest.kt
+  - ai/**
+alwaysApply: false
+---
+
+# Expert export = Lookahead advice
+
+Expert dumps (`ExpertGameExporter`, `lookahead.jsonl.gz`) label **what Lookahead actually chose** — that is the expert advice for training.
+
+- **Never** add export-only wrappers that pick curriculum oracle moves while labeling output as Lookahead.
+- **Never** branch Lookahead (or heuristic opponent code under `game/opponent/`) on `trainingEpisode` / scenario type — same search on training boards and regular matches.
+- When Lookahead **disagrees** with a scenario’s flagged move, **the scenario is usually wrong** — fix board geometry, grading, or placement validation; do not bypass search to green-light export.
+- Strict PASS export failures are a **reconciliation signal** (scenario ↔ Lookahead), not permission to cheat the label.
+
+Do not claim export is “tested” unless integration coverage matches the failing scenario set (not smoke on TD_RUN alone).

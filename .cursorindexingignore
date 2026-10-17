@@ -1,0 +1,6 @@
+# Indexed for search ≠ attached every request, but large docs still dominate codebase search
+# and get pulled in when the agent greps broadly. Keep them @-mentionable; exclude from index.
+
+# Active + archived checklists — still readable via @BACKLOG.md / @BACKLOG-done.md when wanted
+BACKLOG.md
+BACKLOG-done.md

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 15,
+  "profile": "baseline",
+  "title": "Baseline",
+  "description": "Unshaped PPO control \u2014 score margin and win/loss only.",
+  "checkpointKey": "baseline",
+  "observationVectorLength": 3922,
+  "actionHeadSizes": [
+    374,
+    166,
+    4
+  ],
+  "logitWidth": 544,
+  "inputName": "packed_obs",
+  "outputName": "factor_logits",
+  "onnxFile": "policy.onnx"
+}

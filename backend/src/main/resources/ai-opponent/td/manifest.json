@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 15,
+  "profile": "td",
+  "title": "Touchdown",
+  "description": "Trained to push scoring and ball progress.",
+  "checkpointKey": "td",
+  "observationVectorLength": 3922,
+  "actionHeadSizes": [
+    374,
+    166,
+    4
+  ],
+  "logitWidth": 544,
+  "inputName": "packed_obs",
+  "outputName": "factor_logits",
+  "onnxFile": "policy.onnx"
+}

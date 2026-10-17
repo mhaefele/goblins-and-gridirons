@@ -1,0 +1,43 @@
+---
+description: Kotlin code style — one statement per line; no soft wraps; constructors may be multi-line
+globs: backend/**/*.{kt,kts}
+alwaysApply: false
+---
+
+# Code style
+
+Kotlin / backend only. Frontend: [frontend-style](../../frontend/.cursor/rules/frontend-style.mdc).
+
+## Default
+
+**Preserve the layout you found** ([preserve-layout](../../.cursor/rules/preserve-layout.mdc)). Append to the existing shape; never reformat a touch site just because you touched it.
+
+**One statement per line** when writing *new* code — a call, a `when` arm, a beat. Do not soft-wrap a single statement across lines. Long lines are fine (no 80/100/120 budget). **Constructor/call argument lists may be multi-line** (preferred when there are several args).
+
+## Non-negotiable
+
+1. **Always one line:** `require` / `check` / `*NotNull` (condition + message; never break before `{`); **`?: error(...)`**; soft wraps after `=` / `->` / trailing `&&` `||` `+` (skip if more than three `&&` or three `||`); **single-statement lambdas and `when`-arm braces** on the `{` opener (`.filter { … }`, `is Foo -> { bar() }`). **Not** `if` / `else` / `try` / `catch` / `finally` / `for` / `while`. **Type / fun bodies stay multi-line** (fields and members each on their own line — `data object Foo : Bar { val x = … }`). Hook refuses non-whitespace rewrites: `.cursor/hooks/collapse-require-check.py`.
+
+```kotlin
+check(session.openPlayerActionReadyToComplete()) { "EXECUTE_FREE_FOLLOW_UP requires …" }
+val episode = state.config.trainingEpisode ?: error("${scenario.name}: trainingEpisode required")
+.filter { setup.emptyPlayable(it) && !it.isEndZone(TeamSide.HOME) && !it.isEndZone(TeamSide.AWAY) }
+```
+
+2. **`when` dispatch — single-statement arms on the `->` line**; pad so arrows align (hook does this). Brace block only when the arm is multi-step.
+
+```kotlin
+is DomainEvent.PlayerMoved  -> "  ${event.playerId.value} moved ${event.from.display()} → ${event.to.display()}"
+is DomainEvent.PhaseStarted -> "  phase ${event.phase} started"
+```
+
+3. **`require` = bad caller input; `check` = our invariant broke.** Validation / commands → `require`. Post-validation engine → `check`.
+
+4. **Nullable means absence, not a different code path.** If `null` would change what the method does, split into two methods (`forActingCoach(state)` vs `forCoach(state, coach)`). Params are non-null, or the parameter is not there — never optional/`null` as a behavior switch. Same for domain/API fields: short KDoc for what `null` means, or use a non-null type / separate variant / sealed hierarchy.
+
+## Also prefer
+
+- **Visibility defaults to `private`.** Public / internal only when a real external caller exists (grep). Helpers, seat math, and “might be useful” APIs stay private until a second file needs them.
+- Direct-import nested sealed/timing members (`AfterOwnPlayerAction(…)` not a `BonusPlayTiming.`-qualified tower).
+- Comment only rulebook / edge-case / invariant intent the name cannot carry — weird exceptions get more comment, not less.
+- Rulebook-shaped mutations: one beat per rule step, separate events (`playerMoved` then pickup then bounce) — mirror [BoardMutator](../../backend/src/main/kotlin/com/mhaefele/blitzbowl/game/board/dto/BoardMutator.kt) and neighbors.

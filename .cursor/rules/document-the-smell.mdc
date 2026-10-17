@@ -1,0 +1,27 @@
+---
+description: Glue / reconcile / sync helpers must document the compromise plainly
+alwaysApply: true
+---
+
+# Document the smell
+
+When you add **glue** because two machines disagree — reconcile, sync, “fix up after X”, pre-loop patches, dual null-checks — treat it as a **known smell**, not a clever helper.
+
+## Before writing the body
+
+Sketch the KDoc (or say it in chat): *why the honest owner cannot do this job*. If you cannot name that in one sentence, do not add the glue yet.
+
+## Required on the method
+
+- **Why not the honest place** — e.g. crank `while (!needsPlayerInput)` never enters SELECT/OFFER after takeAction nested a continuation
+- **Real signal** — drive off domain shape (pending nest, stage), not a parallel field’s null (`currentPlayerAction != null`)
+- **One case per branch** — prefer explicit arms over a boolean that returns `false` for three different reasons
+- **Name empty / edge states** — e.g. “no pending on OFFER_* = Skip/Decline already cleared; arm advances next”
+
+## Do not
+
+- Soften the prose (“aligns”, “ensures”, “reconciles state”) — say what lies
+- Hide the compromise in chat-only explanation; the next reader won’t have the thread
+- Add a second glue layer to paper over the first without documenting both
+
+Canonical example: `TurnEngine.reconcilePlayerActionStep`.

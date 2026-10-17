@@ -1,0 +1,28 @@
+package com.mhaefele.gridiron.model.pending
+
+/** Wire / InputRequired label — mirrors the pending sealed hierarchy for clients. */
+enum class PlayerDecisionType {
+    REGULAR_PLAYER_ACTION,
+    INITIAL_PLAYER_PLACEMENT,
+    EMERGENCY_RESERVES,
+    UNDYING_OFFER,
+    RUN_CONTINUE,
+    MARK_CONTINUE,
+    SIDESTEP_CONTINUE,
+    BALL_GUARD_CONTINUE,
+    KNOCK_DOWN_CONTINUE,
+    ARMOUR_CHECK_CONTINUE,
+    GANG_UP_OFFER,
+    HOLD_THE_LINE_OFFER,
+    EXTRA_EFFORT_OFFER,
+    DANCE_STEP_OFFER,
+    CLAIM_CHALLENGE,
+    REPLACE_CHALLENGE,
+    THROW_CONTINUE,
+    THROW_TEAMMATE_CONTINUE,
+    BLOCK_CONTINUE,
+    FOUL_CONTINUE,
+    STAND_UP_CONTINUE,
+    RESERVES_CONTINUE,
+    ;
+}

@@ -1,0 +1,12 @@
+# AI2.2 training harness — pin loosely; install with:
+#   python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+#
+# Stock stack: Gymnasium + Stable-Baselines3 + MaskablePPO (sb3-contrib).
+
+gymnasium>=0.29.1,<1.1
+numpy>=1.26,<3
+stable-baselines3>=2.3.0,<3
+sb3-contrib>=2.3.0,<3
+torch>=2.1.0
+requests>=2.31.0
+tensorboard>=2.14.0

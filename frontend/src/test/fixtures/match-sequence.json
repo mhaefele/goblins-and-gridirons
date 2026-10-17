@@ -1,0 +1,365 @@
+{
+  "createResponse": {
+    "matchId": "935ad1fe-acf7-4290-a2de-4c990566c782",
+    "snapshot": {
+      "lastEventId": 14,
+      "gameState": {
+        "turnNumber": 1,
+        "phase": "PLAYER_ACTION",
+        "activeCoach": "HOME",
+        "actionsRemaining": 3,
+        "homeScore": 0,
+        "awayScore": 0,
+        "homeControlledBy": "HUMAN",
+        "awayControlledBy": "HUMAN",
+        "result": null
+      },
+      "pieces": {
+        "players": [
+          {
+            "id": "a0",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 1,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "a1",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 2,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "a2",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 3,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "a3",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 4,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "a4",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 5,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "a5",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 6,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h0",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 1,
+              "y": 1
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h1",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 2,
+              "y": 1
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h2",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 3,
+              "y": 1
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h3",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 4,
+              "y": 1
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h4",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 5,
+              "y": 1
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h5",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 6,
+              "y": 1
+            },
+            "holdsBall": false
+          }
+        ],
+        "looseBallLocations": [
+          {
+            "x": 6,
+            "y": 8
+          }
+        ]
+      }
+    }
+  },
+  "runActionResponse": {
+    "snapshot": {
+      "lastEventId": 19,
+      "gameState": {
+        "turnNumber": 1,
+        "phase": "PLAYER_ACTION",
+        "activeCoach": "HOME",
+        "actionsRemaining": 2,
+        "homeScore": 0,
+        "awayScore": 0,
+        "homeControlledBy": "HUMAN",
+        "awayControlledBy": "HUMAN",
+        "result": null
+      },
+      "pieces": {
+        "players": [
+          {
+            "id": "a0",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 1,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "a1",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 2,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "a2",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 3,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "a3",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 4,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "a4",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 5,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "a5",
+            "team": "AWAY",
+            "status": "STANDING",
+            "at": {
+              "x": 6,
+              "y": 15
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h0",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 2,
+              "y": 2
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h1",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 2,
+              "y": 1
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h2",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 3,
+              "y": 1
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h3",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 4,
+              "y": 1
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h4",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 5,
+              "y": 1
+            },
+            "holdsBall": false
+          },
+          {
+            "id": "h5",
+            "team": "HOME",
+            "status": "STANDING",
+            "at": {
+              "x": 6,
+              "y": 1
+            },
+            "holdsBall": false
+          }
+        ],
+        "looseBallLocations": [
+          {
+            "x": 6,
+            "y": 8
+          }
+        ]
+      }
+    },
+    "events": [
+      {
+        "id": {
+          "matchId": "935ad1fe-acf7-4290-a2de-4c990566c782",
+          "domainId": 15
+        },
+        "event": {
+          "kind": "actionStarted",
+          "playerId": "h0",
+          "playerAt": {
+            "x": 1,
+            "y": 1
+          },
+          "actionType": "RUN"
+        }
+      },
+      {
+        "id": {
+          "matchId": "935ad1fe-acf7-4290-a2de-4c990566c782",
+          "domainId": 16
+        },
+        "event": {
+          "kind": "playerMoved",
+          "playerId": "h0",
+          "from": {
+            "x": 1,
+            "y": 1
+          },
+          "to": {
+            "x": 2,
+            "y": 2
+          }
+        }
+      },
+      {
+        "id": {
+          "matchId": "935ad1fe-acf7-4290-a2de-4c990566c782",
+          "domainId": 17
+        },
+        "event": {
+          "kind": "actionComplete",
+          "playerId": "h0",
+          "playerAt": {
+            "x": 2,
+            "y": 2
+          },
+          "actionType": "RUN"
+        }
+      },
+      {
+        "id": {
+          "matchId": "935ad1fe-acf7-4290-a2de-4c990566c782",
+          "domainId": 18
+        },
+        "event": {
+          "kind": "teamActionConsumed",
+          "actionsRemaining": 2
+        }
+      },
+      {
+        "id": {
+          "matchId": "935ad1fe-acf7-4290-a2de-4c990566c782",
+          "domainId": 19
+        },
+        "event": {
+          "kind": "playerActionRequired",
+          "team": "HOME"
+        }
+      }
+    ]
+  }
+}

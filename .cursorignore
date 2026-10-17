@@ -1,0 +1,35 @@
+# Keep AI context scoped: exclude binaries, reference media, build output, and AI artifacts.
+# Note: Cursor already skips common binaries (pdf/jpg/png/svg/…) from *indexing*;
+# .cursorignore also blocks Agent Read / @-mention so those files are not pulled into prompts.
+
+# Exhausted source pack (rulebook PDF + component photos). NEVER scan / @ / Read.
+# Tracked text references live beside this folder: reference/rulebook-digest.md, reference/cards.md
+reference/binaries/
+
+# Frontend raster/vector art (keep the TS registry readable)
+frontend/src/assets/**/*.{png,jpg,jpeg,gif,webp,svg}
+!frontend/src/assets/registry.ts
+
+# Backend build output
+backend/target/
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+
+# Generated API types are derived from the backend OpenAPI spec — review the spec/source, not the artifact
+frontend/src/api/generated/
+
+# AI harness — venv + generated runs (gitignored but still searchable otherwise).
+# Name a path under output/ when evaluating results; do not blind-scan.
+ai/.venv/
+ai/output/
+ai/**/__pycache__/
+
+# OS / editor noise
+.DS_Store
+node_modules/

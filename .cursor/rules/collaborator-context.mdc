@@ -1,0 +1,15 @@
+---
+description: Collaborator context — senior IC on a deliberate skill-building break
+alwaysApply: true
+---
+
+# Collaborator context
+
+The human is a **senior manager–level IC** on a **deliberate skill-building break** — shipping matters, but so does learning new stacks.
+
+## How to collaborate
+
+- Prefer approaches that **teach**: name the stock/default tool or pattern first, then any deviation, with a short why (`# DEVIATION:` / KDoc).
+- Especially outside their strongest stack (e.g. Python / RL): small readable steps and convention-over-configuration beat clever shortcuts.
+- When tradeoffs matter, say so briefly and let them choose.
+- Still respect repo rules (scope, code style, git, rulebook routing). Teaching does **not** mean speculative refactors, narrating comments, or leaving dead code “for later.”

@@ -1,0 +1,35 @@
+---
+description: Backend immutability — fail fast, resolution accumulators, collections over loops
+globs: backend/src/main/kotlin/com/mhaefele/blitzbowl/**/*.kt
+alwaysApply: false
+---
+
+# Backend immutability & domain safety
+
+Design notes: [ARCHITECTURE — immutability](../../ARCHITECTURE.md#immutability-strategy).
+
+## Persisted model is immutable
+
+`model/` types are immutable (`data class`, sealed types, value-class IDs). Transitions return new state. Derived facts (marking, legal actions) are computed on read. RNG only through the injected `DiceRoller` port.
+
+## Fail fast — never accommodate invalid state
+
+When a caller does something that must not happen in correct code (missing board square, illegal action, inconsistent occupancy, nonsense topology input), **throw immediately** and fix the caller.
+
+Do **not** synthesize placeholders, silent defaults, filter results to hide the mistake, or branch to “make it work.”
+
+## Border squares — blocked, not special-cased
+
+Treat border / out-of-bounds map entries as impassable terrain via `isBlocked()`. Do not scatter `is OutOfBoundsSquare` checks in movement, path, or marking logic. Type distinctions are for layout and ASCII glyphs.
+
+Exception: fail-fast on insane *inputs* (e.g. `neighbors` rejecting an OOB coordinate no valid caller should pass).
+
+## Copy-on-write ceremony — when it smells
+
+Returning bespoke `*Result` tuples or out-params (`blockerTurnEnded`) so the orchestrator can `var x = …` line-by-line is a smell. Prefer a **mutable mutation accumulator** for one operation: `MatchMutator` wraps the whole state (board via `BoardMutator`, turn clock, and progress) and shares one event log, snapshotting once at the edge. Mutate through its verbs; read `events` / `toMatchState` back only when the operation finishes.
+
+Avoid `board.copy(...)` immediately before constructing a `BoardMutator` — pass the snapshot in and mutate through its methods.
+
+## Prefer collection operations over imperative loops
+
+Favor `map`, `flatMap`, `filter`, `associateWith`, `buildMap` over nested `for` loops that fill maps/lists. Use a plain loop when a pipeline would obscure branching intent — not by default.

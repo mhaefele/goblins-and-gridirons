@@ -1,0 +1,56 @@
+---
+description: Frontend TypeScript/React style — strict typing, discriminated unions, black-box tests, backend owns rules
+globs: frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend style & scope
+
+Shared always-on rules still apply ([scope-discipline](../../../.cursor/rules/scope-discipline.mdc) — including constants / no speculative parameterization). Kotlin formatting does not — this file is the TS/React equivalent (flow-first lines, purposeful comments, four-space indent).
+
+Design blueprint: [frontend/ARCHITECTURE.md](../../ARCHITECTURE.md).
+
+## The client draws state; it does not own rules
+
+The **backend** is the source of truth for legality, dice, turn flow, geometry, and scoring.
+
+- **Never re-implement rules** client-side — consume `legal-actions` and the event stream; read `PitchLayoutDto` for dimensions.
+- **Consume, do not invent, wire shapes.** Types from `src/api/generated/openapi.ts` only — do not hand-write DTO mirrors or edit the generated file.
+- Tempted to encode a rule in the client? Stop — expose it from the backend (or backlog it).
+
+## Strong typing — no escape hatches
+
+- `strict` TypeScript with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`. **`any` is banned**; use `unknown` + narrowing at boundaries only.
+- Mirror backend sealed hierarchies as **discriminated unions on `kind`**. Exhaustive `switch` + `never` fallthrough:
+
+```typescript
+function label(action: LegalAction): string {
+    switch (action.kind) {
+        case "run":      return "Run";
+        case "mark":     return "Mark";
+        // ... every kind ...
+        default: {
+            const _exhaustive: never = action;
+            return _exhaustive;
+        }
+    }
+}
+```
+
+- Prefer generated domain types (`Coordinate`, `PlayerId`, `TeamSide`) over raw `string`/`number` in props and state.
+
+## Flow over wrapping; purposeful comments
+
+- Four-space indent. **No character-count wraps** — one line per readable thought; a block when multi-step.
+- No narrating comments. Comment only non-obvious intent, wire quirks, or constraints the types cannot express.
+- Every `?` field should mirror a documented backend meaning.
+
+## State: pure fold, thin store
+
+Board updates go through pure `applyEvent(view, event)` — no React, no fetch, no side effects. Zustand holds `view` + connection state; logic stays in pure functions.
+
+## Testing — black box
+
+- **Prefer:** pure reducer tests over real `DomainEvent` fixtures; component tests on rendered DOM + dispatched commands; Playwright against the real backend.
+- **Avoid:** spy/verify on internals; mock modules to make a test pass. Stub only the HTTP boundary with recorded responses.
+- A test that breaks on an internal refactor while behavior is unchanged is a smell — rewrite it.

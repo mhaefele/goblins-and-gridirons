@@ -1,0 +1,15 @@
+---
+description: Match surrounding call/statement layout in every edit — any language
+alwaysApply: true
+---
+
+# Preserve layout
+
+When you **change** existing code, match the **neighbors in that file** — not generic style guides or your default habit.
+
+- A run of one-line calls → add a one-line call.
+- A block already using multi-line calls → extend in that same shape.
+- Do **not** be the only multi-line call in a homogeneous one-line block (or the only one-liner in a multi-line block).
+- Same for **lists/argument interiors**: if the existing `th.cat([a, b, c], …)` keeps the list on one line, append to that one-line list — do not explode it to one-item-per-line because it got longer.
+
+Applies to signatures, constructors, statements, and argument lists. Language-specific defaults (e.g. Kotlin `require` one-liners) live in scoped style rules — they do **not** override layout already present in the file you are editing.

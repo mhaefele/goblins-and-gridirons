@@ -1,0 +1,21 @@
+---
+description: REST API design — commands vs views, verb URLs, no conditional nulls
+globs: backend/src/main/kotlin/com/mhaefele/blitzbowl/api/**/*.kt
+alwaysApply: false
+---
+
+# API design guidelines
+
+Full guide: [backend/API-DESIGN.md](../../API-DESIGN.md). Endpoints/transport: [ARCHITECTURE — API design](../../ARCHITECTURE.md#api-design).
+
+## Absolute rules
+
+1. **Commands and views, not CRUD-by-default.** Game actions are verbs (`POST …/run`), not PATCH on a `Match` document.
+2. **Reuse types when shapes align; split when they do not.** Never mangle a shared class with `@JsonIgnore` / nullable slots / API-only fields to paper over mismatch.
+3. **Separate input commands from output views** when shapes differ — no response type reused as create input with nulls stripped.
+4. **Request bodies: only used fields.** No server-generated ids, no read-only computed fields.
+5. **Verb URLs for action POSTs** — one endpoint + one request type per command. **No conditional-null DTOs** (`path?` only for RUN…).
+6. **Strong types on the wire in** — `PlayerId` / `MatchId` in request DTOs and path vars, not raw `String`.
+7. **Jackson on the type** — `@JsonProperty` / `@JsonTypeInfo` co-located; `JacksonConfiguration` only for cross-cutting machinery. No mixins for types we own.
+8. **Bean Validation:** no `@NotNull` on non-null Kotlin props; no cascading `@Valid` on nested domain types for game rules — those stay in domain `require`.
+9. **HTTP boundary:** `require` for bad client input; `check` for internal invariants after validation ([code-style](../../../.cursor/rules/code-style.mdc)).

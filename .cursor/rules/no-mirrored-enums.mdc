@@ -1,0 +1,14 @@
+---
+description: Do not hard-code backend enum/catalog names in Python or frontend without asking
+alwaysApply: true
+---
+
+# No mirrored enum catalogs
+
+If a change would **hard-code Kotlin/backend enum names** (or closed catalog membership) in **Python** or the **frontend** — stop and **ask** whether that is really wanted.
+
+Prefer: the server exposes metadata (e.g. `GET /api/ai/training/scenarios` with family / flags), and clients cache or consume that list.
+
+Exceptions only when the user explicitly accepts a mirror (or the value is a harness *policy* knob, not catalog membership).
+
+See [`ai/OWNERSHIP.md`](../../ai/OWNERSHIP.md).

@@ -1,0 +1,18 @@
+---
+description: When editing agent rules, minimize and tighten — do not grow the guide
+globs:
+  - .cursor/rules/**/*.mdc
+  - ai/.cursor/rules/**/*.mdc
+  - backend/.cursor/rules/**/*.mdc
+  - frontend/.cursor/rules/**/*.mdc
+alwaysApply: false
+---
+
+# Editing agent rules
+
+When the user asks to add, change, or fix guidance in these `.mdc` files:
+
+- **Reword, optimize, and minimize** as part of the same edit — prefer shorter, sharper text that still carries the intent.
+- Prefer **one hard bullet** (or a tiny example) over a section. Cut redundancy and restated examples.
+- **Do not grow** the file unless the new guidance cannot fit without it. If adding something, look for something else to delete or fold in.
+- Match the tone of neighboring rules: actionable, concrete, no essays.

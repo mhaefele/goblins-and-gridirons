@@ -1,0 +1,35 @@
+---
+description: Prefer Spring beans for wiring — do not hang DI on enums/models or weave injection with free functions
+globs: backend/src/main/kotlin/**/*.kt
+alwaysApply: false
+---
+
+# Spring DI — use the framework
+
+This is a Spring Boot app. **Do not invent parallel wiring** to keep “pure” Kotlin next to HTTP/API code.
+
+## Defaults (do not wait to be told)
+
+1. **If a method needs a Spring collaborator, that method lives on a Spring bean** with constructor injection. Do not keep it as a free function and thread the bean in as a parameter — that still weaves DI.
+2. **Lookup / registry / orchestration that spans implementations → `@Component` / `@Service`.** Inject `List<T>` when every subtype should register itself.
+3. **Enums and model config stay data.** No extension properties, companion maps, or `when (enum)` tables that reach implementations. The bean takes the enum: `trainingScenarios.implementation(kind)`.
+4. **One script / strategy per Spring bean** when variants differ by behavior (`@Component class TdRun…`). Prefer that over `object` + a hand-maintained map unless the type is truly Spring-free domain (`game/`, `model/` pure helpers).
+5. **Domain packages stay Spring-free** (`model/`, `game/` — see [kotlin-domain-files](kotlin-domain-files.mdc)). Wiring lives in `api/`, `spring/`, or other Boot-owned packages — not stuffed onto an enum in `model/` to “avoid Spring.”
+
+## Bad → good
+
+```kotlin
+// BAD — DI on the model/enum
+internal val TrainingScenarioEnum.implementation: AbstractTrainingScenario get() = …
+
+// BAD — free function that needs a bean (parameter-passing is still dodging)
+fun toLegalChoices(..., trainingScenarios: TrainingScenarios): List<AiLegalChoiceDto> = …
+
+// GOOD — method on a bean; collaborator injected
+@Component
+class AiLegalChoiceMapper(private val trainingScenarios: TrainingScenarios) {
+    fun toLegalChoices(...): List<AiLegalChoiceDto> = …
+}
+```
+
+If a change “works” only by dodging injection, stop and put the method on a bean.

@@ -1,0 +1,18 @@
+server:
+  port: 8080
+  error:
+    # So default error paths (not only @ExceptionHandler) still expose a useful message to API clients.
+    include-message: always
+
+spring:
+  application:
+    name: gridiron
+
+gridiron:
+  match:
+    delete-grace-seconds: 30
+
+logging:
+  include-application-name: false
+  pattern:
+    console: "%clr(%d{HH:mm:ss}){faint} %clr(%5p) %clr(%logger{0}){cyan} %clr(:){faint} %m%n%wEx"

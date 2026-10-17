@@ -1,0 +1,60 @@
+---
+description: Kotlin domain file organization — colocate IDs/enums; Jakarta validation; type KDoc
+globs: backend/src/main/kotlin/com/mhaefele/blitzbowl/{model,game,shared}/**/*.kt
+alwaysApply: false
+---
+
+# Kotlin domain file organization
+
+Placement inventory: [ARCHITECTURE — source file organization](../../ARCHITECTURE.md#source-file-organization).
+
+## Default: colocate with the owning type
+
+Put value classes, enums, and sealed types in the **same `.kt` file** as the primary data class that owns them.
+
+Examples:
+
+- `PlayerId`, `PlayerStatus` → `PlayerId` in `shared/PlayerId.kt`; `Player` / `PlayerStatus` in `model/board/Player.kt`
+- `BallId`, `Ball` → `model/board/Ball.kt`
+- `TurnState` → `model/TurnState.kt` (`TurnPhase` in `shared/TurnPhase.kt`)
+- `MatchResult`, `Score`, `addTouchdown` → `model/MatchProgress.kt`
+- `ThrowStat`, `ArmourStat` → `model/catalog/StatLine.kt`
+- `BlockDieFace` → `game/dice/dto/BlockDie.kt`
+- `LegalAction` sealed hierarchy → `api/dto/response/LegalAction.kt`
+- `Direction` → `shared/Direction.kt` (never persisted; bounce + adjacency)
+
+## Exception: shared types get their own file
+
+Extract to a dedicated `.kt` file only when the type is referenced by **multiple unrelated** domain types (not just parent/child in the same aggregate).
+
+Do **not** create catch-all `Identifiers.kt` or `Enums.kt` buckets. When unsure: start colocated; extract when a second consumer outside the same aggregate appears.
+
+## Package folders
+
+`model/` (`board/`, `catalog/`), `shared/` (cross-cutting value types — [inventory](../../ARCHITECTURE.md#shared-package-inventory)), `game/` subpackages (`action/`, `turn/`, `legalmoves/`, `board/`, `cards/`, `opponent/`, `dice/`) each with **`dto/`** for data-holding types plus **`action/utils/`** / **`action/ability/`** for pure helpers and ability hooks. Logic (`*Resolver`, `*Engine`, executors) stays in the parent package. Do not add a subfolder per entity.
+
+## Validation annotations
+
+Add Jakarta Bean Validation (`@Min`, `@Max`, `@NotBlank`, …) on domain and API types when invariants are stable from field values alone.
+
+- Use `@field:` on Kotlin `data class` properties.
+- Domain may use `jakarta.validation` only — **no Spring** in domain packages.
+- Context-dependent upper bounds (e.g. `x < pitch.width`) live in validators, not on the shared type.
+- Prefer type-level annotations over one-off `require` when the rule is reusable.
+
+Runtime `require` vs `check`: [code-style](../../../.cursor/rules/code-style.mdc).
+
+## Convention-heavy types: document on the type
+
+Spatial / indexing / orientation types explain values in **KDoc on the type** — follow [Coordinate.kt](../../src/main/kotlin/com/mhaefele/blitzbowl/shared/Coordinate.kt):
+
+1. Indexing base and valid range
+2. What the type validates vs runtime context
+3. Orientation for diagrams/UI
+4. Anchor examples mapping literals to domain meaning
+
+Do not rely on ARCHITECTURE alone for this.
+
+## Related
+
+Immutability, fail-fast, collections: [immutability.mdc](immutability.mdc). Constants / no speculative parameterization: [scope-discipline](../../../.cursor/rules/scope-discipline.mdc).

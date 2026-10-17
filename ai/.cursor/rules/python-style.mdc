@@ -1,0 +1,18 @@
+---
+description: Python / RL — match ai/ neighbors; one statement per beat when writing new code
+globs: ai/**/*.py
+alwaysApply: false
+---
+
+# Python style (ai/)
+
+Global: [preserve-layout](../../../.cursor/rules/preserve-layout.mdc) — **read the block you are editing first.**
+
+## Default for new code
+
+One statement per beat when the surrounding file does the same. Long lines are fine.
+
+## Also
+
+- `# DEVIATION:` when diverging from stock Gymnasium / SB3 / PyTorch patterns (see [collaborator-context](../../../.cursor/rules/collaborator-context.mdc)).
+- Type hints and `from __future__ import annotations` match existing modules in `blitzbowl_ai/`.

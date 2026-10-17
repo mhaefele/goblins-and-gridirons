@@ -1,0 +1,64 @@
+---
+description: Git workflow — never commit unless asked; frontend-only may auto-commit
+alwaysApply: true
+---
+
+# Git workflow
+
+**Default: never commit unless the user explicitly asks.** The only exception is work that touches **only** `frontend/` — that may be auto-committed when the task is done.
+
+Scope is decided by **which paths the change touches**, not by which tab is open.
+
+| Touched paths | When the task is done |
+|---|---|
+| **Only** under `frontend/` | **Auto-commit** (add + commit) unless the user asked to stage / hold first |
+| Anything **outside** `frontend/` (including mixed with frontend) | **`git add` only** — do not commit until asked |
+
+This repo rule is the source of truth for Goblins & Gridirons commits (including when a generic “never commit” preference would otherwise block frontend auto-commits).
+
+## Frontend-only → commit when done
+
+After finishing a cohesive change that only modifies files under `frontend/`:
+
+1. `git add` every file from that work.
+2. Commit with a concise message (same style as recent `git log`).
+3. Do **not** push unless asked.
+
+**Do not auto-commit** frontend work when the user said to stage first, e.g. "stage", "stage it", "don't commit", "leave it staged", "wait to commit".
+
+## Non-frontend / mixed → stage only
+
+If the work touches **any** path outside `frontend/` (e.g. `backend/`, `dev.sh`, `.cursor/`, `BACKLOG.md`, root files) — even alongside frontend files:
+
+1. `git add` every file from that work.
+2. **Stop. Do not commit.**
+3. The user reviews and asks for a commit explicitly.
+
+## Explicit commit requests
+
+When the user clearly asks to commit (e.g. "commit", "create a commit", diff-tab commit action):
+
+1. Run `git status` and `git diff` (and `git log` for message style).
+2. **`git add` every relevant file in the working diff** for that work — do not leave part of it uncommitted because it was unstaged.
+3. Exclude unrelated changes (other tasks, secrets). If scope is ambiguous, prefer one coherent commit over splitting on staged vs unstaged.
+4. Commit with a concise message. Do not push unless asked.
+
+**Exception — "commit staged" / "commit what's staged" / an authoritative staged-file list in the user message:** commit **only** what is already staged. Do not `git add` additional files.
+
+If the diff-tab prompt includes a "commit only staged" block **and** the user's message is the execute-commit action for that staged set, obey the staged list.
+
+## "Go ahead" means implement
+
+Short approvals — "do it", "go", "go ahead", "yes", "proceed", "next", "start", "make it so" — mean **implement**, not "commit only". They do **not** override the table above: auto-commit only for frontend-only work; otherwise stage and wait.
+
+## When the user says "stage X"
+
+Stage **only** X. Do not commit.
+
+## Do not
+
+- Commit any non-`frontend/` (or mixed) change set unless the user asked to commit.
+- Auto-commit frontend work after the user asked to stage / hold / wait to commit.
+- Treat "go" / "do it" / "next" as permission to **skip** staging non-frontend work (still stage; still no commit).
+- Bundle unrelated files into one commit unless the user included both in the request.
+- Push unless explicitly asked.

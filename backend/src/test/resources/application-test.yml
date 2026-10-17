@@ -1,0 +1,9 @@
+# Long-lived SSE requests hold Tomcat graceful shutdown until the emitter times out (hours).
+server:
+  shutdown: immediate
+
+gridiron:
+  dice:
+    fallback-to-default-pattern: false
+  match:
+    delete-grace-seconds: 0

@@ -1,0 +1,53 @@
+---
+description: Scope discipline — push back on blow-ups; finish cleanup; inline constants
+alwaysApply: true
+---
+
+# Scope discipline
+
+When the user asks for something that sounds small, **stop and assess before implementing**. Prefer explaining tradeoffs and asking whether to proceed over blindly doing a large refactor.
+
+## Treat as a question first
+
+If the message is exploratory ("can we…", "what if…", "is there…", "real question") — **answer first**. Do not implement unless they clearly approve after hearing the cost.
+
+## Push back when the ask would likely touch
+
+- **Many types or variants** — e.g. adding a field to every member of a sealed hierarchy
+- **Layer boundaries** — domain/game code needing Spring, repositories, or HTTP concerns (or the reverse)
+- **Wide wiring** — new port threaded through resolver → accumulator → API → tests
+- **Pervasive test churn** — every assertion constructing events/DTOs by hand
+- **Two jobs at once** — e.g. change wire shape *and* persistence model *and* domain shape in one go
+
+Say plainly: *this is bigger than it sounds because…* and offer a smaller alternative.
+
+## "Implement if easy" means assess, not guess
+
+- **Easy** — localized change, one choke point, no layering violation, tests stay cheap
+- **Hard** — stop; explain; offer the boundary-preserving option (wrapper at persist time, optional port only on one path, etc.)
+
+## Default when scope is ambiguous
+
+1. Smallest change that satisfies the **stated** goal
+2. If that still looks large → explain, don't code
+3. Implement only after the user opts in to the larger diff
+
+## Finish the job in the same change
+
+When a change replaces, renames, or supersedes something:
+
+- **Delete the old code, docs, and tests in the same change** — no unreachable branches, no “legacy TODO” stubs, no parallel paths left “for later.”
+- Grep for the old names/symbols before declaring done.
+- Dead code is in scope for the change that made it dead — not a follow-up unless the user explicitly defers it.
+
+## Constants & speculative parameterization
+
+**Default: inline the value.** Extract a named `const val` / companion constant only when reused in multiple places, opaque without a name, or part of a public API callers need.
+
+Do **not** extract single-use literals or names that merely restate the literal (`MIN_INDEX = 0` next to `@Min(0)`). When in doubt, inline.
+
+**Default: encode rulebook-fixed facts directly.** Do not add config fields or extension hooks for a shape the base rules fix as one constant. Parameterize only when multiple variants already exist, or a second caller needs a different value **now**. Wrong early abstraction is harder to delete than a literal.
+
+## Example (this repo)
+
+Putting `DomainEventId` on `DomainEvent` at construction sounds like one field; it blows up because events are built in Spring-free `BoardMutator`, IDs belong at `append()`, and 18 variants + tests would churn. **Keep `StoredDomainEvent` at the persistence boundary** unless the user explicitly accepts the refactor.

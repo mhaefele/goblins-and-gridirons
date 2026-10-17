@@ -1,0 +1,17 @@
+---
+description: Route rules questions to rulebook-digest; never load reference binaries
+alwaysApply: true
+---
+
+# Rules reference routing
+
+Keep this pointer tiny — **do not** inline rulebook content here.
+
+| Need | Read | Do not |
+|------|------|--------|
+| **Rules questions** / rulebook fidelity / action legality / dice / bounce / block / TD / turn sequence | [`reference/rulebook-digest.md`](../../reference/rulebook-digest.md) | Open `reference/binaries/` |
+| **Challenge / bonus / random-event card wording** | [`reference/cards.md`](../../reference/cards.md) (generated from the Kotlin catalogs) | Open card images |
+| **Team playstyle summaries** (ratings / bash-vs-dash / strategy blurbs) | [`reference/team-summaries.md`](../../reference/team-summaries.md) + classpath JSON | Duplicate a second JSON under `reference/` |
+| **Engine design / domain / API / tests** | [`backend/ARCHITECTURE.md`](../../backend/ARCHITECTURE.md) | Re-encode rules in architecture |
+
+`reference/binaries/`, `reference/html/` and the transcribed digests are local-only source material (gitignored) — **never** `@`, Read, or ask to open `binaries/`. If a diagram must be verified, leave it to a human.

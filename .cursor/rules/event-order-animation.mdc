@@ -1,0 +1,30 @@
+---
+description: Wrong event order → fix backend; don't fudge frontend animation
+globs:
+  - frontend/**/*.{ts,tsx}
+  - backend/src/main/kotlin/com/mhaefele/blitzbowl/game/**/*.kt
+alwaysApply: false
+---
+
+# Event order is the animation contract
+
+The client presents domain events in stream order (SSE). If a beat looks wrong — ball jumps ahead then snaps back, die after the hop, knockdown after armour, etc. — **check whether the backend emitted events out of rulebook / player order** before inventing a frontend workaround.
+
+## Prefer
+
+1. Say so explicitly: “this looks like bad event order from the backend” (name the events and the order you’d expect).
+2. Fix emission in the resolver / mutator / turn path so the stream reads as the rules: die then bounce, enter square then pickup, block faces then armour, etc.
+3. Keep frontend presentation as a faithful playback of that order (queue modes, pin-until-motion, coalesce runs) — not a second source of truth that re-sequences events.
+
+## Avoid
+
+- Client-only reordering, buffering, or “wait until X then pretend Y happened first” to hide a wrong append order.
+- Dual-fold from POST + SSE (or similar) that races and then papers over gaps in the UI.
+- Softening a broken sequence with longer delays or presentation overrides when the log itself is wrong.
+
+## Legitimate frontend concerns (not event-order fudge)
+
+- **Deferred fold:** for each SSE frame, run FX then fold into `view` (then the next frame). Gap detection uses an accepted-stream cursor; `view.lastEventId` advances only on fold.
+- `skip` / `block` / `parallel` presentation modes for pacing (`parallel` may fold immediately while a soft flash continues).
+
+If unsure whether order is wrong: compare the event log to the rulebook beat. If the log is wrong, backend. If the log is right and playback still fails, frontend.

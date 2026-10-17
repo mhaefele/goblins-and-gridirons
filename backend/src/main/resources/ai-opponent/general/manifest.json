@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 15,
+  "profile": "general",
+  "title": "General",
+  "description": "Balanced trained policy \u2014 all-round play.",
+  "checkpointKey": "general",
+  "observationVectorLength": 3922,
+  "actionHeadSizes": [
+    374,
+    166,
+    4
+  ],
+  "logitWidth": 544,
+  "inputName": "packed_obs",
+  "outputName": "factor_logits",
+  "onnxFile": "policy.onnx"
+}

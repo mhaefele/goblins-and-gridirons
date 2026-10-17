@@ -1,0 +1,73 @@
+---
+description: Ongoing* multi-input action FSM pattern (Block / Throw / Run / Mark / Sidestep)
+globs: backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/**/*.kt
+alwaysApply: false
+---
+# Ongoing* resolvers (Block / Throw / Run / Mark / Sidestep / …)
+
+Multi-input actions use one `Ongoing*` on one `*Continuation` pending. Canonical shape: [BlockResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/block/BlockResolver.kt) / [RunResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/run/RunResolver.kt) / [MarkResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/mark/MarkResolver.kt) / [SidestepResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/sidestep/SidestepResolver.kt) / [KnockDownResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/knockdown/KnockDownResolver.kt) / [ArmourCheckResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/armourcheck/ArmourCheckResolver.kt) / [BallGuardResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/ballguard/BallGuardResolver.kt).
+
+Pending decision types live under [model.pending](backend/src/main/kotlin/com/mhaefele/blitzbowl/model/pending/) (one file each). Resolvers + `Ongoing*` live in per-action packages under `game/action/pending/<action>/` and extend [PendingDecisionResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/PendingDecisionResolver.kt). **Resolvers never write the pending slot** — they return the next pending; callers `set` / `update` / `copy(delegate = …)`. Board helpers that are not pending owners ([Bounce](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/Bounce.kt), [NewBall](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/NewBall.kt)) are not named `*Resolver`.
+
+## Shape
+
+- `Ongoing*` — immutable snapshot on the pending.
+- `Ongoing*Mutator` — thin writable view (`var stage`, budgets, flags). Prefer a **value constructor** (`OngoingRunMutator(playerId, stage, budget)`) so callers do not double-wrap `Mutator(Ongoing*(…))`.
+- `begin*` — build mutator, do **setup that does not need a stage**, then either enter `mutate` or park once.
+- `mutate` — `while` + `when (stage)`; **every stage transition is visible here**; returns the updated `*Continuation`.
+
+## Stages vs begin*
+
+**Stages are mid-action beats** (offer / handle / apply / await coach input). Do **not** invent a stage for work that always runs at open and never parks mid-stage.
+
+| Put in `begin*` | Put in a stage |
+|---|---|
+| One-shot opening roll (e.g. RandomD6 Move in `beginDeclareRun`) | Beats that park for HTTP then resume |
+| Baking Sprint / flags into the opening budget | Path apply, Cut Off offer/handle, … |
+| Entering the first real stage (`APPLY_PATH`, `INITIALIZE`, …) | Auto-advance chains inside the `while` |
+
+`beginDeclareRun` rolls, then returns `RunContinuation(AWAITING_PATH)` for selecting RPA to park on `delegate` — it does **not** enter `mutate` with a fake `ROLL_MOVE` stage. `beginRun` / `beginBlock` enter the FSM immediately because the opening action is already the first beat.
+
+## Do — FSM method owns the story
+
+- Stage changes live in the **`when (stage)` arms**; `mutate` **returns** the updated *Continuation. Selecting RPA parks with `updatePendingDecision(rpa.copy(delegate = …))`.
+- Keep transitions **inline** in those arms as mutator field writes (`ongoing.stage = …`, `ongoing.respondingCoach = …`). Do **not** hide them behind `enterHandleX()` / `complete()` helpers.
+- **Never** `ongoing.ongoingX = ongoing.ongoingX.copy(…)`. The mutator holds writable fields; `ongoing.ongoingX` is a getter that builds the validated snapshot when parking. Entering HANDLE: set `respondingCoach` then `stage`. Leaving HANDLE: clear `respondingCoach` then `stage = DONE`.
+- Terminal FSM stage is always **`DONE`** (not `COMPLETE`). `PlayerActionStep.COMPLETE` is the turn-engine bookkeeping step that clears a finished continuation — different layer. Block’s `CORE_COMPLETE` is a mid-stage (core board work done; follow-ups next).
+- Throw Team-mate cancel → `DONE` with `cancelled = true`; parent RPA clears `delegate` (not COMPLETE).
+- Do **not** re-check invariants the stage already implies (e.g. “is openPlayerAction a Mark?” inside Mark’s `OFFER_SLIP_AWAY`). Gate offers on the **rule** (hand card + eligible target geometry), not defensive open-PA peeks.
+- Helpers apply board / dice / cards only — they do **not** set the next stage or invent a new `Ongoing*`.
+- **This FSM owns its outcomes.** Effects that are part of the action (e.g. Cut Off → free Mark grant) belong in the `HANDLE_*` arm (or a helper that only mutates board/cards as directed by that arm). Do **not** bounce them through a shared effect applier / side offers “because other bonuses do that.”
+- When folding a bonus into an Ongoing* FSM, **delete** the old `Offer*` pending, `BonusOffers` offer site, legal-move arm, and resolver branch in the same change — do not leave “legacy TODO” stubs.
+
+## Pending / open-action invariants
+
+Canonical list lives on [PendingDecision](backend/src/main/kotlin/com/mhaefele/blitzbowl/model/PendingDecision.kt) KDoc (also MatchMutator / TurnEngine / PlayerActionExecutor). Uphold when editing resolvers:
+
+1. One slot — null ⇒ set; same class ⇒ update. Root must be [PendingDecisionSlot.TopLevel]; `ActionContinuation` is NestedOnly under RPA/Extra Effort→RPA.
+2. Stage owns the pending — no shared funnels across unrelated phases.
+3. Clear takeAction owner per **root** pending type — `RegularPlayerActionResolver` / `OfferExtraEffortResolver` follow `delegate`; Ongoing* may nest further inside Ongoing*.
+4. One `[phase]` (ideally one step) per pending type — declared on the type; MatchMutator checks on park.
+5. `currentPlayerAction` only in `PLAYER_ACTION`.
+6. Finish = `isFinished` — avoid side predicates / phase peeks.
+7. Ongoing* stage decides the next beat — do not type-peek pending to invent workflow.
+
+## Pending slot / while
+
+- **One** `TurnState.pendingDecision` (nullable). No stacking.
+- `begin*` / `mutate` **return** a pending; callers park. Executor: `updatePendingDecision(resolver.mutate(…))`. TurnEngine / BonusOffers eligibility + `setPendingDecision(resolver.begin(…))`.
+- Prefer **`!session.hasPendingDecision()`** (or `pendingDecision == null`) as the `while` guard when this FSM is the only writer — after a park the slot is non-null and the loop stops.
+- One-shot open actions (Foul / Stand Up / Reserves) are *Continuations that park at **DONE** (Back on Your Feet / Reserves bonus may park at HANDLE_* first). TurnEngine COMPLETE clears finished open-action roots (RPA / Extra Effort + delegate).
+
+## Do not
+
+- Peek emptiness to choose set vs update for the continuation — **stage** / caller knows whether a pending is already parked.
+- Branch on “is there already a *Continuation?” to decide the next beat — the **stage** decides.
+- Call a shared bonus-effect helper from an Ongoing* path when the FSM arm should own the grant.
+- Thread wire `cardId` through play when `playBonusCard(team, BonusPlay)` can pick a matching hand card (coaches choose a type). Leave a TODO on wire DTOs if `cardId` is still exposed.
+- Over-abstract: if Block’s `when` keeps stage changes in the arms, Run’s `when` should too.
+- Write the pending slot from inside a resolver.
+
+## Wire resume
+
+One stable resume action type for the continuation (e.g. `RUN_CONTINUE`). Legal moves and the client branch on **`Ongoing*.stage`**, not on alternate wire types per park.
