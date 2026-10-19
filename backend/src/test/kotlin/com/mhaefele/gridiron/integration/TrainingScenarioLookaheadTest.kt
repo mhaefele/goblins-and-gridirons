@@ -90,8 +90,9 @@ class TrainingScenarioLookaheadTest : BaseApiTest() {
             val beforeCards = current.progress.homeChallengeCards
             val beforePoints = LookaheadScorer.points(current, TeamSide.HOME)
             val legals = api.legalActions(created.matchId)
-            val pick = lookahead.chooseAction(current, legals)
-            noteDecisiveSearch(highNotes, pick)
+            val chosen = lookahead.chooseActionForTest(current, legals)
+            val pick = chosen.action
+            noteDecisiveSearch(highNotes, chosen.search, pick)
             api.play(created.matchId, pick)
             current = loadMatch(created.matchId)
             submits++
@@ -128,8 +129,7 @@ class TrainingScenarioLookaheadTest : BaseApiTest() {
         }
     }
 
-    private fun noteDecisiveSearch(highNotes: MutableList<String>, pick: LegalAction) {
-        val search = lookahead.lastSearch
+    private fun noteDecisiveSearch(highNotes: MutableList<String>, search: LookaheadOpponentStrategy.SearchScores, pick: LegalAction) {
         if (!search.decisive) return
         highNotes +=
             "LA leaf baseline=${"%.1f".format(search.baseline)} best=${"%.1f".format(search.bestScore)} " + "(+${"%.1f".format(search.bestScore - search.baseline)}) pick=${describePick(pick)}"

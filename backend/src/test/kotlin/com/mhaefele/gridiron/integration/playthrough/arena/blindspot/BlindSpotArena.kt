@@ -282,14 +282,16 @@ class BlindSpotArena(
         )
     }
 
-    private fun fatLookahead(thinkBudgetNanos: Long): LookaheadOpponentStrategy =
-        LookaheadOpponentStrategy(
+    private fun fatLookahead(thinkBudgetNanos: Long): LookaheadOpponentStrategy {
+        // TODO: don't manually construct the Spring bean.
+        return LookaheadOpponentStrategy(
             heuristic = scriptedOpponentStrategy,
             search = lookaheadSearch,
             submitTiming = submitTiming,
             telemetry = LookaheadOpponentStrategy.SearchTelemetry(),
             thinkBudgetNanos = thinkBudgetNanos,
         )
+    }
 
     companion object {
         const val ADVISOR_THINK_NANOS = 1_000_000_000L

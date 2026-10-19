@@ -33,39 +33,36 @@ class LookaheadOpponentStrategy(
     private val heuristic: ScriptedOpponentStrategy,
     private val search: LookaheadSearch,
     private val submitTiming: AiSubmitTiming,
-    //  TODO:  This feels like state, but on a singleton class.  should maybe rework it, especially if we have multiple games going at once..
+    /**
+     * Caller-owned counter. Null on the Spring bean — [com.mhaefele.gridiron.game.opponent.ComputerCoachRegistry]
+     * shares this strategy across matches, and the arena builds its own instance with its own counter.
+     */
+    // TODO: find a different way to do this.
     val telemetry: SearchTelemetry? = null,
     /** Override derived budget (tests / arena). Null = derive from [MatchState] coach seats. */
     private val thinkBudgetNanos: Long? = null,
 ) : OpponentStrategy {
 
-    /** Last [search.evaluate] scores for the most recent searchable choose (tests / diagnostics). */
-    class LastSearch {
-        var baseline: Double = Double.NaN
-            private set
-        var bestScore: Double = Double.NaN
-            private set
-        var usedSearch: Boolean = false
-            private set
+    /** Pick plus the search scores from that same call. */
+    internal data class ChosenAction(
+        val action: LegalAction,
+        val search: SearchScores = SearchScores.NONE,
+    )
 
-        fun clear() {
-            baseline = Double.NaN
-            bestScore = Double.NaN
-            usedSearch = false
-        }
-
-        fun record(baseline: Double, bestScore: Double) {
-            this.baseline = baseline
-            this.bestScore = bestScore
-            usedSearch = true
-        }
-
+    /** [search.evaluate] baseline and best score. [NONE] when this call did not search. */
+    internal data class SearchScores(
+        val baseline: Double,
+        val bestScore: Double,
+        val usedSearch: Boolean,
+    ) {
         /** Leaf EV cleared [LookaheadScorer.DECISIVE_MARGIN] above the pre-action baseline. */
         val decisive: Boolean
             get() = usedSearch && bestScore >= baseline + LookaheadScorer.DECISIVE_MARGIN
-    }
 
-    val lastSearch = LastSearch()
+        companion object {
+            val NONE = SearchScores(Double.NaN, Double.NaN, usedSearch = false)
+        }
+    }
 
     class SearchTelemetry {
         var searchMoves: Int = 0
@@ -87,10 +84,37 @@ class LookaheadOpponentStrategy(
             get() = if (searchMoves == 0) 0.0 else searchNanos / 1_000_000.0 / searchMoves
     }
 
-    override fun chooseAction(state: MatchState, legal: List<LegalAction>): LegalAction {
-        require(legal.isNotEmpty()) { "No legal actions to choose from" }
-        lastSearch.clear()
+    override fun chooseAction(state: MatchState, legal: List<LegalAction>): LegalAction = choose(state, legal).action
 
+    /** This call's pick and search scores. Production callers use [chooseAction]. */
+    internal fun chooseActionForTest(state: MatchState, legal: List<LegalAction>): ChosenAction = choose(state, legal)
+
+    private fun choose(state: MatchState, legal: List<LegalAction>): ChosenAction {
+        require(legal.isNotEmpty()) { "No legal actions to choose from" }
+        promptAnswer(state, legal)?.let { return ChosenAction(it) }
+
+        val searchable = legal.filter { it.isSearchableCandidate() }
+        if (searchable.isEmpty() || searchable.all { it is LegalAction.Reserves }) {
+            return ChosenAction(heuristic.choose(state, legal))
+        }
+        obviousPlay(state, searchable)?.let { return ChosenAction(it) }
+        val heurPick = heuristic.choose(state, searchable)
+        if (heurPick.potentialChallengeClaims.isNotEmpty()) return ChosenAction(heurPick)
+        val ranked = searchPick(state, searchable)
+        if (ranked.isEmpty()) return ChosenAction(correctSearchMiss(state, heurPick, heurPick, searchable))
+        val baseline = LookaheadScorer.score(state, state.currentTurnState.activeCoach)
+        val chosen = rankedChoice(searchable, heurPick, ranked, baseline)
+        val action = correctSearchMiss(state, chosen, heurPick, searchable)
+        return ChosenAction(action, SearchScores(baseline, ranked.maxOf { it.score }, usedSearch = true))
+    }
+
+    /**
+     * Prompts search must not answer.
+     * Bonus, claim, and the held-check reroll are the same picks [ScriptedOpponentStrategy] makes;
+     * they are repeated here so this method never searches them.
+     * ReplaceChallenge is not here: the heuristic dumps the lowest slot, and search has to see the slots.
+     */
+    private fun promptAnswer(state: MatchState, legal: List<LegalAction>): LegalAction? {
         if (legal.any { it is LegalAction.PlayBonusCard || it is LegalAction.AdjustThrowByDoOver || it is LegalAction.AdjustBlockByDoOver || it is LegalAction.AdjustArmourByDoOver }
         ) {
             ChallengePursuit.pickDoOverAdjust(legal)?.let { return it }
@@ -98,96 +122,76 @@ class LookaheadOpponentStrategy(
             legal.filterIsInstance<LegalAction.DeclineBonus>().firstOrNull()?.let { return it }
         }
         ChallengePursuit.pickClaimChallenge(legal)?.let { return it }
-        // Mid-run after a Get-the-Ball pickup: end the action so the claim can bank (Skip is not searchable).
         endRunToBankGrabIt(state, legal)?.let { return it }
-        // ReplaceChallenge: search the (≤3) slot picks — do not short-circuit to dump-lowest
-        // (same-point ties discard by slot and wipe claimable lesson cards).
-        ChallengePursuit.pickHeldCheckReroll(state, legal)?.let { return it }
+        return ChallengePursuit.pickHeldCheckReroll(state, legal)
+    }
 
-        val searchable = legal.filter { it.isSearchableCandidate() }
-        if (searchable.isEmpty()) return heuristic.choose(state, legal)
-        if (searchable.all { it is LegalAction.Reserves }) return heuristic.choose(state, legal)
+    /** One legal action is already the play, so the think budget is not spent. */
+    private fun obviousPlay(state: MatchState, legal: List<LegalAction>): LegalAction? =
+        obviousBallCarrierPassingThrow(state, legal)
+            ?: obviousTouchdown(state, legal)
+            ?: obviousMarkedCarrierSidestep(state, legal)
+            ?: obviousRiskyLongThrow(state, legal)
+            ?: obviousLooseBallPickup(state, legal)
+            ?: obviousLooseBallGuardBlock(state, legal)
+            ?: obviousBlockOnOpponentCarrier(state, legal)
+            ?: obviousAssistedBlock(state, legal)
 
-        obviousBallCarrierPassingThrow(state, searchable)?.let { return it }
-        obviousTouchdown(state, searchable)?.let { return it }
-        obviousMarkedCarrierSidestep(state, searchable)?.let { return it }
-        obviousRiskyLongThrow(state, searchable)?.let { return it }
-        obviousLooseBallPickup(state, searchable)?.let { return it }
-        obviousLooseBallGuardBlock(state, searchable)?.let { return it }
-        obviousBlockOnOpponentCarrier(state, searchable)?.let { return it }
-        obviousAssistedBlock(state, searchable)?.let { return it }
-
-        val team = state.currentTurnState.activeCoach
-        val baseline = LookaheadScorer.score(state, team)
+    private fun searchPick(state: MatchState, searchable: List<LegalAction>): List<LookaheadSearch.Evaluation> {
+        val started = System.nanoTime()
+        val budget = thinkBudgetNanos ?: thinkBudgetNanosFor(state)
         val pathish = searchable.filter { it.isMostlyDeterministic() }
         // Dicey Block/Foul stay out of pathish — but claim-annotated ones must still be searched
         // (otherwise Foul boards never evaluate the focus card and fall through to Reserves).
         val claimAnnotated = searchable.filter { it.potentialChallengeClaims.isNotEmpty() }
-        val heurPick = heuristic.choose(state, searchable)
-        if (heurPick.potentialChallengeClaims.isNotEmpty()) return heurPick
+        val pool = (pathish + claimAnnotated).distinctBy { it.id }.ifEmpty { searchable }
+        val ranked = search.evaluate(
+            state = state,
+            candidates = pool,
+            deadlineNanos = started + budget,
+        )
+        val searchNs = System.nanoTime() - started
+        telemetry?.record(searchNs)
+        submitTiming.recordLookaheadSearch(state.id, searchNs)
+        return ranked
+    }
 
-        val started = System.nanoTime()
-        val budget = thinkBudgetNanos ?: thinkBudgetNanosFor(state)
-        return try {
-            val pool = (pathish + claimAnnotated).distinctBy { it.id }.ifEmpty { searchable }
-            val ranked = search.evaluate(
-                state = state,
-                candidates = pool,
-                deadlineNanos = started + budget,
-            )
-            if (ranked.isNotEmpty()) {
-                lastSearch.record(baseline, ranked.maxOf { it.score })
-            }
-            val chosen = if (ranked.isEmpty()) {
-                heurPick
-            } else {
-                val best = ranked.maxBy { it.score }
-                val heurScore = ranked.firstOrNull { it.action.id == heurPick.id }?.score
-                val claimOnBest = best.action.potentialChallengeClaims.maxOfOrNull { it.points } ?: 0
-                when {
-                    // Forced replace: trust search among ≤3 slots (heuristic dump-lowest is often wrong).
-                    searchable.all { it is LegalAction.ReplaceChallenge }    -> best.action
-                    best.score >= baseline + LookaheadScorer.DECISIVE_MARGIN -> best.action
-                    best.score >= 40_000.0                                   -> best.action
-                    // Annotated claim beats a no-claim heuristic pick (includes 1-pt cards).
-                    claimOnBest >= 1 && (heurScore == null || best.score >= heurScore) -> best.action
-                    // Only override the heuristic when search beat it by a clear margin on a shared candidate.
-                    heurScore != null && best.action.isMostlyDeterministic() && best.score >= heurScore + 40.0 -> best.action
-                    else                                                                                       -> heurPick
-                }
-            }
-            val searchNs = System.nanoTime() - started
-            telemetry?.record(searchNs)
-            submitTiming.recordLookaheadSearch(state.id, searchNs)
-            preferClaimAnnotated(
-                preferBlockOnOpponentCarrier(
-                    preferAssistedBlock(
-                        preferScoringThrow(
-                            preferOpenThrow(
-                                preferClearThrow(chosen, heurPick, searchable),
-                                heurPick,
-                                searchable,
-                                state,
-                            ),
-                            heurPick,
-                            searchable,
-                            state,
-                        ),
-                        heurPick,
-                        searchable,
-                        state.board,
-                    ),
-                    heurPick,
-                    searchable,
-                    state,
-                    team,
-                ),
-                heurPick,
-                searchable,
-            )
-        } catch (e: Exception) {
-            throw e
+    private fun rankedChoice(
+        searchable: List<LegalAction>,
+        heurPick: LegalAction,
+        ranked: List<LookaheadSearch.Evaluation>,
+        baseline: Double,
+    ): LegalAction {
+        val best = ranked.maxBy { it.score }
+        val heurScore = ranked.firstOrNull { it.action.id == heurPick.id }?.score
+        val claimOnBest = best.action.potentialChallengeClaims.maxOfOrNull { it.points } ?: 0
+        return when {
+            // Forced replace: trust search among ≤3 slots (heuristic dump-lowest is often wrong).
+            searchable.all { it is LegalAction.ReplaceChallenge }    -> best.action
+            best.score >= baseline + LookaheadScorer.DECISIVE_MARGIN -> best.action
+            best.score >= 40_000.0                                   -> best.action
+            // Annotated claim beats a no-claim heuristic pick (includes 1-pt cards).
+            claimOnBest >= 1 && (heurScore == null || best.score >= heurScore) -> best.action
+            // Only override the heuristic when search beat it by a clear margin on a shared candidate.
+            heurScore != null && best.action.isMostlyDeterministic() && best.score >= heurScore + 40.0 -> best.action
+            else                                                                                       -> heurPick
         }
+    }
+
+    /** Search dry-runs favor bombs, obstructed throws, and solo blocks. Put the obvious play back. */
+    private fun correctSearchMiss(
+        state: MatchState,
+        chosen: LegalAction,
+        heurPick: LegalAction,
+        searchable: List<LegalAction>,
+    ): LegalAction {
+        val team = state.currentTurnState.activeCoach
+        val cleared = preferClearThrow(chosen, heurPick, searchable)
+        val opened = preferOpenThrow(cleared, heurPick, searchable, state)
+        val scored = preferScoringThrow(opened, searchable, state)
+        val assisted = preferAssistedBlock(scored, heurPick, searchable, state.board)
+        val onCarrier = preferBlockOnOpponentCarrier(assisted, heurPick, searchable, state, team)
+        return preferClaimAnnotated(onCarrier, heurPick, searchable)
     }
 
     /**
@@ -366,7 +370,7 @@ class LookaheadOpponentStrategy(
     }
 
     /** Prefer hand-off/short scoring throws over long bombs when both reach the end zone. */
-    private fun preferScoringThrow(chosen: LegalAction, heurPick: LegalAction, legal: List<LegalAction>, state: MatchState): LegalAction {
+    private fun preferScoringThrow(chosen: LegalAction, legal: List<LegalAction>, state: MatchState): LegalAction {
         if (chosen !is LegalAction.Throw) return chosen
         val ez = state.currentTurnState.activeCoach.opposite()
         val board = state.board

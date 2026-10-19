@@ -44,6 +44,7 @@ class SingleGameArenaRunner(
 
     fun getDefaultTestLookaheadStrategy(): LookaheadOpponentStrategy {
         val telemetry = LookaheadOpponentStrategy.SearchTelemetry()
+        // TODO: don't manually construct the Spring bean.
         val lookahead = LookaheadOpponentStrategy(
             heuristic = scriptedOpponentStrategy,
             search = lookaheadSearch,

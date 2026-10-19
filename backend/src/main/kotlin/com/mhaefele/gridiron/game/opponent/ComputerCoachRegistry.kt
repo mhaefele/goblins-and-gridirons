@@ -61,7 +61,6 @@ class ComputerCoachRegistry(
     /**
      * Shared Spring `@Component` strategies — not constructed per match. Search dice is a
      * [com.mhaefele.gridiron.game.dice.DiceRollerContext] overlay per evaluate, not MatchGame's roller.
-     * Optional [LookaheadOpponentStrategy.telemetry] is the only instance mutable state and is null here.
      * ONNX strategies are per-profile instances from [OnnxOpponentFactory].
      */
     fun strategyFor(
