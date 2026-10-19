@@ -451,6 +451,7 @@ class BlockResolver(
         when (action) {
             is LegalAction.DeclineBonus -> Unit
             is LegalAction.PlayBrace    -> {
+                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(ongoing.targetTeam, action.bonusPlay)
                 ongoing.braceNoAssist = true
                 ongoing.braceShoveIsMiss = true
@@ -463,6 +464,7 @@ class BlockResolver(
         when (action) {
             is LegalAction.DeclineBonus -> Unit
             is LegalAction.PlayUnderdog -> {
+                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(session.activeCoach, action.bonusPlay)
                 ongoing.underdog = true
             }
@@ -479,6 +481,7 @@ class BlockResolver(
                 return blocker.hasAbility(PlayerAbility.`Second Swing`) && !ongoing.secondSwingUsed
             }
             is LegalAction.AdjustBlockByDoOver -> {
+                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(session.activeCoach, BonusPlay.`Do-Over`)
                 val newFaces = dice.blockDice(ongoing.faces!!.size)
                 val blocker = session.board.getPlayer(ongoing.blockerId)

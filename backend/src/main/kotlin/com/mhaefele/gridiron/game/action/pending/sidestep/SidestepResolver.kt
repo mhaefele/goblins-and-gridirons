@@ -62,6 +62,7 @@ class SidestepResolver(
                     is LegalAction.DeclineBonus  -> Unit
                     is LegalAction.PlayBonusCard -> {
                         check(action.bonusPlay == BonusPlay.`Stick Close`) { "HANDLE_STICK_CLOSE expects STICK_CLOSE, was ${action.bonusPlay}" }
+                        // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                         session.playBonusCard(opposition, action.bonusPlay)
                         val landing = session.board.square(ongoing.vacatedSquare)
                         if (landing.playerId == null && !landing.isBlocked()) {

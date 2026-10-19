@@ -36,7 +36,7 @@ import com.mhaefele.gridiron.game.action.pending.run.RunResolver
  * Beat order (bonus pauses stay in this class):
  * 1. Hand-off (no check) or throw target chosen
  * 2. Dead Eye / Hail Mary ([ThrowTargetChosen])
- * 3. Roll throw check → [ThrowDiceReroll] for Do-Over and/or Pinpoint Passer
+ * 3. Roll throw check → one reroll window (Do-Over or Pinpoint Passer, not both)
  * 4. Resolve catch / bounce
  * 5. Ability follow-ups (Catch and Go free Run; Rally free Stand Up)
  */
@@ -63,10 +63,10 @@ class ThrowResolver(
         when (action.requiredBonusCard?.bonusPlay) {
             BonusPlay.`Hail Mary Pass` -> {
                 // Card already consumed via requiredBonusCard auto-play; effect is process-scoped here.
+                // throwTargets already stamped this row long and clear. Reject a throw that claims the card
+                // but was not generated that way — this is not a second geometry pass.
                 ongoingThrow.hailMary = true
-                val reResolveTarget = reResolveThrowTarget(session, ongoingThrow)
-                //  TODO:  Checking this, but why would we need to re-resolve the target if we already computed it for the legal action using the hail mary??
-                check(ongoingThrow.target == reResolveTarget) { "Unexpected re-resolve target: ${ongoingThrow.target}, expected: ${reResolveTarget}" }
+                check(action.target.range == ThrowRange.LONG && !action.target.obstructed) { "Hail Mary throw was not generated as long and unobstructed: ${action.target}" }
             }
             else                       -> Unit
         }
@@ -219,27 +219,20 @@ class ThrowResolver(
         when (command) {
             is LegalAction.DeclineBonus -> Unit
             is LegalAction.PlayDeadEye  -> {
-                //  TODO:  Can we handle this as a required card on the legal action?
+                // The throw target is already chosen. Playing Dead Eye spends the card and makes the
+                // following check 2+, before the dice are rolled.
+                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(session.activeCoach, command.bonusPlay)
                 ongoingThrow.deadEye = true
             }
             is LegalAction.PlayHailMary -> {
+                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(session.activeCoach, command.bonusPlay)
                 ongoingThrow.hailMary = true
-                ongoingThrow.target = reResolveThrowTarget(session, ongoingThrow)
+                // Declared target used ruler geometry. The card ignores range and obstruction.
+                ongoingThrow.target = ThrowTarget(ongoingThrow.target.destination, ThrowRange.LONG, obstructed = false)
             }
             else                        -> error("ThrowTargetChosen expects PlayDeadEye, PlayHailMary, or DeclineBonus, was ${command::class.simpleName}")
-        }
-    }
-
-    private fun reResolveThrowTarget(session: MatchMutator, ongoingThrow: OngoingThrowMutator): ThrowTarget {
-        val player = session.board.getPlayer(ongoingThrow.throwerId)
-        val catcher = session.board.getPlayerAt(ongoingThrow.target.destination)
-        return if (ongoingThrow.hailMary) {
-            ThrowTarget(ongoingThrow.target.destination, ThrowRange.LONG, obstructed = false)
-        } else {
-            //  Can we just use the throw target from the ongoing throw/legal action here instead of re-calculating it?
-            throwTarget(player, catcher, session.board.board)
         }
     }
 
@@ -251,15 +244,15 @@ class ThrowResolver(
                 ongoingThrow.doOverThrowDeclined = true
                 return false
             }
-            //  Adjust by do-over, maybe then offer pinpoint passer
+            // One reroll per check (reference/rulebook-digest.md#checks: cannot re-roll a re-roll). Take this result.
             is LegalAction.AdjustThrowByDoOver -> {
+                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(session.activeCoach, BonusPlay.`Do-Over`)
                 rollAndRecordOutcome(session, ongoingThrow, BonusPlay.`Do-Over`)
-                return true
+                return false
             }
-            //  Adjust by pinpoint passer, mark do-over as not used.
-            //  TODO:  Why don't we do pinpoint passer first since it's free then do-over if chosen?
-            //  TODO:  Why don't we use pinpoint passer automatically?  wouldn't we always use it on a failed throw?
+            // Optional ("may"), offered beside Do-Over. Not automatic: a reroll can turn a miss into a
+            // fumble, and using it is the one reroll — the card is the other choice, not a follow-up.
             is LegalAction.ChooseThrowReroll -> {
                 ongoingThrow.doOverThrowDeclined = true
                 if (command.reroll) {

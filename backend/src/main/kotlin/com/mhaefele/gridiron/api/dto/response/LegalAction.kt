@@ -385,8 +385,11 @@ sealed interface LegalAction {
      * Play a bonus card from the coach's hand during a bonus offer pending
      * (phase / interrupt / before-throw / mid-block — not Do-Over held-dice).
      * Each bonus that opens a pause has its own subtype; the server picks a matching hand card.
+     *
+     * [requiredBonusCard] means this action spends a card.
+     * Dead Eye, Slip Away, and Gang Up stay a second ask: the throw, mark, or block is already
+     * listed, and this pause is the choice to spend the card or decline.
      */
-    // TODO: It's weird that these don't have a required card action even though we do consume a card. can we streamline that?
     sealed interface PlayBonusCard : BonusCardChoice
 
     /** Coach spends a bonus card from hand ([PlayBonusCard] or a Do-Over adjust) — carries the card text for the prompt. */

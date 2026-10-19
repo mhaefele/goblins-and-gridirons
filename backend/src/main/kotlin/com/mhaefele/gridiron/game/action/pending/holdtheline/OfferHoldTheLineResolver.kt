@@ -23,6 +23,7 @@ class OfferHoldTheLineResolver : PendingDecisionResolver<OfferHoldTheLine>() {
             is LegalAction.DeclineBonus  -> Unit
             is LegalAction.PlayBonusCard -> {
                 check(command.bonusPlay == BonusPlay.`Hold the Line`) { "OfferHoldTheLine expects Hold the Line, was ${command.bonusPlay}" }
+                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(coach, command.bonusPlay)
                 session.updateBonusModifiers { it.copy(holdTheLine = true) }
             }

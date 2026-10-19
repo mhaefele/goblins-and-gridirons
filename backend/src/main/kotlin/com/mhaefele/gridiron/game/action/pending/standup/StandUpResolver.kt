@@ -37,6 +37,7 @@ class StandUpResolver(
         when (command) {
             is LegalAction.DeclineBonus       -> session.consumeRegularActionSlot()
             is LegalAction.PlayBackOnYourFeet -> {
+                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(session.activeCoach, command.bonusPlay)
                 session.markCurrentPlayerActionFree()
             }

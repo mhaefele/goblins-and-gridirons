@@ -116,31 +116,28 @@ class MovementApiTest : BaseApiTest() {
         assertPiece(match.pieces(), reserve.player.id, PlayerStatus.STANDING, deploy.placement)
     }
 
-//    @Test
-    // TODO:  This is a hard test to configure since by default you can't place a reserves player on the ball unless there are no other optinos.
-    // Disabling for now.
+    @Test
     fun `reserves onto ball square bounces the ball`() {
         lateinit var reserve: PlacedPlayer
-
-        lateinit var placement: Coordinate
-
+        val ball = Coordinate(1, 1)
         val match = match {
-            placement = board.board.allSquares().filter { it.isEndZone(TeamSide.HOME) }
-                .filter { !board.board.squareAt(it.coordinate.neighbor(Direction.E)).isBlocked() }
-                .random().coordinate
+            tinyBoard(width = 3, height = 3)
+            // Own end zone is y=1. Occupy one square; the other vacant square is adjacent to
+            // standing opposition, so nothing is "preferred" and the ball square is legal.
+            addPlayer(3, 1)
+            addPlayer(2, 2, team = TeamSide.AWAY)
+            addLooseBall(ball)
             reserve = addReservesPlayer()
-            addLooseBall(placement)
         }
 
-        val deploy = match.singleLegalAction<LegalAction.Reserves>()
-            { it.placement == placement }
+        val deploy = match.legalActions<LegalAction.Reserves>().single { it.placement == ball }
 
-        dice.queueBounce(Direction.E) // bounce direction
+        dice.queueBounce(Direction.E)
         match.play(deploy)
 
         val pieces = match.pieces()
-        assertPiece(pieces, reserve.player.id, placement)
-        assertThat(pieces.looseBallLocations).containsExactly(placement.neighbor(Direction.E))
+        assertPiece(pieces, reserve.player.id, ball)
+        assertThat(pieces.looseBallLocations).containsExactly(ball.neighbor(Direction.E))
     }
 
     @Test

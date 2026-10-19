@@ -194,6 +194,30 @@ class BonusPlayEffectsApiTest : BaseApiTest() {
     }
 
     @Test
+    fun `Do-Over on a Pinpoint Passer does not open a second reroll`() {
+        val match = match {
+            homeBonus(BonusPlay.`Do-Over`)
+            actionsRemaining(2)
+            val thrower = addPlayer(4, 6, profile = TeamCatalog.team("silverleaf").roster.first { it.name == "Thrower" })
+            addPlayer(6, 6, profile = TestProfiles.lineman())
+            holdingBall(thrower)
+        }
+
+        dice.queueD6(1)
+        match.play(match.legalActions<LegalAction.Throw>().first { it.target.range != ThrowRange.HAND_OFF })
+
+        assertThat(match.legalActions<LegalAction.AdjustThrowByDoOver>()).hasSize(1)
+        assertThat(match.legalActions<LegalAction.ChooseThrowReroll>().map { it.reroll }).containsExactlyInAnyOrder(true, false)
+
+        dice.queueD6(1)
+        dice.queueD8(1)
+        match.play(match.legalActions<LegalAction.AdjustThrowByDoOver>().single())
+
+        match.legalActions().assertNone(ActionType.CHOOSE_THROW_REROLL)
+        match.legalActions().assertNone(ActionType.ADJUST_THROW_BY_DO_OVER)
+    }
+
+    @Test
     fun `Do-Over after armour hold Skip keeps target prone`() {
         val talent = card(BonusPlay.`Do-Over`)
         lateinit var target: PlacedPlayer
@@ -565,7 +589,6 @@ class BonusPlayEffectsApiTest : BaseApiTest() {
     }
 
     @Test
-    //  TODO:  Change this to not leave the card discarded and fix the behavior
     fun `Skipping Slip Away free Sidestep leaves card not discarded`() {
         val slipAway = card(BonusPlay.`Slip Away`)
         lateinit var marked: PlacedPlayer
