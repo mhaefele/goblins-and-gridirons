@@ -48,7 +48,7 @@ goblins-and-gridirons/
 
 - **Run the engine:** `cd backend && mvn test` (or `mvn spring-boot:run`).
 - **Run the client:** `cd frontend && npm run dev`, or `./dev.sh` from the repo root to start backend + frontend together.
-- **Full-stack e2e:** one script boots backend + frontend + Playwright ([Phase 15](BACKLOG-done.md#phase-15-full-system-e2e)).
+- **Full-stack e2e:** one script boots backend + frontend + Playwright ([Phase 15](archive/BACKLOG-done.md#phase-15-full-system-e2e)).
 
 ---
 
@@ -110,17 +110,17 @@ Detailed DTO and stream design: [backend API design](backend/ARCHITECTURE.md#api
 4. Act: POSTs (`run`, `mark`, `throw`, …); stream (and/or inline `events`) patches the board
 5. When `InputRequired` arrives → `GET .../legal-actions` → POST a command
 
-**Auth / multiplayer seats / deployment topology** — not designed yet; call out in this file when they land. This is a **hobby project — no deployment, no cloud CI** today. The backend is **single-node with in-memory persistence**. The computer opponent runs **server-side** (`game/opponent/` — scripted, lookahead search, or ONNX policy; [AI1](BACKLOG-done.md#ai1--basic-computer-opponent)). "Opponent's turn" means a second human client or the server's computer coach acting; the client's event loop handles both.
+**Auth / multiplayer seats / deployment topology** — not designed yet; call out in this file when they land. This is a **hobby project — no deployment, no cloud CI** today. The backend is **single-node with in-memory persistence**. The computer opponent runs **server-side** (`game/opponent/` — scripted, lookahead search, or ONNX policy; [AI1](archive/BACKLOG-done.md#ai1--basic-computer-opponent)). "Opponent's turn" means a second human client or the server's computer coach acting; the client's event loop handles both.
 
 ### Shared contract — keep the two modules in lockstep
 
-The frontend never hand-copies backend DTOs. The backend emits an **OpenAPI 3 spec**; the frontend generates **types-only** TypeScript from it (`openapi-typescript`) into `frontend/src/api/generated/`, with a local `gen:api:check` drift guard (no cloud CI) that fails on any regeneration diff. Polymorphic types (`DomainEvent`, `LegalAction`) carry a `kind` discriminator and must appear as `oneOf` + `discriminator` in the spec so they become TS discriminated unions. See [frontend § API & DTO synchronization](frontend/ARCHITECTURE.md#api--dto-synchronization) and [BACKLOG Phase 10b](BACKLOG-done.md#phase-10b-api-type-sync-tooling).
+The frontend never hand-copies backend DTOs. The backend emits an **OpenAPI 3 spec**; the frontend generates **types-only** TypeScript from it (`openapi-typescript`) into `frontend/src/api/generated/`, with a local `gen:api:check` drift guard (no cloud CI) that fails on any regeneration diff. Polymorphic types (`DomainEvent`, `LegalAction`) carry a `kind` discriminator and must appear as `oneOf` + `discriminator` in the spec so they become TS discriminated unions. See [frontend § API & DTO synchronization](frontend/ARCHITECTURE.md#api--dto-synchronization) and [BACKLOG Phase 10b](archive/BACKLOG-done.md#phase-10b-api-type-sync-tooling).
 
 ### Full-stack testing
 
 - **Backend:** whole-stack API/system tests (Spring boots once) + pure domain tests — see [backend § Testing](backend/ARCHITECTURE.md#testing-strategy).
 - **Frontend:** pure event-fold reducer tests + component black-box tests — see [frontend § Testing](frontend/ARCHITECTURE.md#testing).
-- **System:** one Playwright script boots the real backend (seedable-RNG test profile), the real frontend, and drives a live match end-to-end — black box, no mocks ([Phase 15](BACKLOG-done.md#phase-15-full-system-e2e)).
+- **System:** one Playwright script boots the real backend (seedable-RNG test profile), the real frontend, and drives a live match end-to-end — black box, no mocks ([Phase 15](archive/BACKLOG-done.md#phase-15-full-system-e2e)).
 
 ---
 

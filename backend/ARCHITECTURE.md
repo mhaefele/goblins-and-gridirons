@@ -56,7 +56,7 @@ flowchart LR
 
 | Goal | Description | Architectural requirement |
 |------|-------------|---------------------------|
-| **1. GUI** | Human plays via a client | REST commands + read APIs ([Phase 8](../BACKLOG-done.md#phase-8-client-api--event-protocol)); optional **SSE** push for live updates ([Phase 9](../BACKLOG-done.md#phase-9-async-client-protocol)). GUI is out of scope for base implementation — see [frontend architecture](../frontend/ARCHITECTURE.md). |
+| **1. GUI** | Human plays via a client | REST commands + read APIs ([Phase 8](../archive/BACKLOG-done.md#phase-8-client-api--event-protocol)); optional **SSE** push for live updates ([Phase 9](../archive/BACKLOG-done.md#phase-9-async-client-protocol)). GUI is out of scope for base implementation — see [frontend architecture](../frontend/ARCHITECTURE.md). |
 | **2. Basic computer opponent** | Heuristic bot selects from legal actions | `LegalActionGenerator` produces closed action set; `OpponentStrategy` port (Phase AI1) |
 | **3. Trainable AI model** | RL-trained agent replaces heuristic bot | Serializable `MatchState`; stable action encoding (legal-action ids or features); optional `MatchEvent` log for state-action-reward traces (Phase AI2) |
 
@@ -154,7 +154,7 @@ data class MatchState(
 - Players whose turn ended early (Tackle/Miss on block)
 - First-turn Pre-Turn skip is derived in `TurnEngine` from `turnNumber` + `coachA` (each coach’s first activation), not a persisted flag
 
-**`CardState`** — challenge cards (D1.A–H shipped, incl. [D1.F.4](../BACKLOG-done.md#d1f4--annotate-legal-actions-that-could-claim-a-challenge-2026-07)):
+**`CardState`** — challenge cards (D1.A–H shipped, incl. [D1.F.4](../archive/BACKLOG-done.md#d1f4--annotate-legal-actions-that-could-claim-a-challenge-2026-07)):
 
 - Three active tableau slots, ordered deck (top visible), discard, per-coach bonus hands, claims-this-turn
 - Seeded at match create (`MatchGame` shuffles via `DiceRoller`, `MatchSetup` receives dealt `CardState`)
@@ -345,8 +345,8 @@ flowchart TB
 
 **Deferred contexts** (documented in backlog; no placeholder package — interfaces land when each phase starts):
 
-- `CardSystem` — challenge refresh/claim turn wiring → [BACKLOG Phase D1](../BACKLOG.md#phase-d1-challenge-cards) (D1.A–H shipped, incl. [D1.F.4](../BACKLOG-done.md#d1f4--annotate-legal-actions-that-could-claim-a-challenge-2026-07) + [FF.10](../BACKLOG-done.md#ff10--challenge-earn-cue-on-legal-actions-gui-2026-07))
-- `AbilitySystem` — player special rules → [D2 closed](../BACKLOG-done.md#d2--player-abilities-phase-closed-2026-07) (PA.* / D1.G shipped)
+- `CardSystem` — challenge refresh/claim turn wiring → [BACKLOG Phase D1](../BACKLOG.md#phase-d1-challenge-cards) (D1.A–H shipped, incl. [D1.F.4](../archive/BACKLOG-done.md#d1f4--annotate-legal-actions-that-could-claim-a-challenge-2026-07) + [FF.10](../archive/BACKLOG-done.md#ff10--challenge-earn-cue-on-legal-actions-gui-2026-07))
+- `AbilitySystem` — player special rules → [D2 closed](../archive/BACKLOG-done.md#d2--player-abilities-phase-closed-2026-07) (PA.* / D1.G shipped)
 - `OpponentStrategy` — bot / ML → [BACKLOG Phase AI1–AI2](../BACKLOG.md#deferred--phase-ai1-basic-computer-opponent)
 
 ---
@@ -681,7 +681,7 @@ Clients do **not** post a free-form command DTO. Flow:
 2. `POST .../actions` with that id → `MatchGame.submitActionOutcome` → `PlayerActionExecutor` / resolvers mutate via `MatchMutator`
 3. Response / SSE carry ordered `DomainEvent`s; persist envelope is `ActionOutcome(newState, events)` on `MatchGame`
 
-Block targets a **square** (opponent on that square implied). Shove follow-up is shipped ([F.3](../BACKLOG-done.md#f3--block-shove-follow-up)).
+Block targets a **square** (opponent on that square implied). Shove follow-up is shipped ([F.3](../archive/BACKLOG-done.md#f3--block-shove-follow-up)).
 
 Action effects (Run / Mark / Throw / Bounce / Block / Touchdown): [digest](../reference/rulebook-digest.md). Resolvers and mutators implement that text; do not restate it here.
 
@@ -727,7 +727,7 @@ After both coaches finish initial End Zone placement, a kickoff ball is placed o
 
 **Smell to avoid:** returning copies from helpers so the caller can `var x = f(x)` line-by-line, or out-params like the old `blockerTurnEnded`. Use the mutator instead.
 
-**Agent rules** (fail-fast, border squares, accumulators, collections): [`.cursor/rules/immutability.mdc`](.cursor/rules/immutability.mdc). Shipped resolution shape: [TD.4](../BACKLOG-done.md#td4--standardize-mutationresolver-return-values-2026-07-triage) / [TD.7](../BACKLOG-done.md#td7--stateresolution-for-board--turn-side-effects-2026-07-triage); true event-fold [won't do](../BACKLOG-done.md#td9--event-driven-turn-and-progress-updates-wont-do).
+**Agent rules** (fail-fast, border squares, accumulators, collections): [`.cursor/rules/immutability.mdc`](.cursor/rules/immutability.mdc). Shipped resolution shape: [TD.4](../archive/BACKLOG-done.md#td4--standardize-mutationresolver-return-values-2026-07-triage) / [TD.7](../archive/BACKLOG-done.md#td7--stateresolution-for-board--turn-side-effects-2026-07-triage); true event-fold [won't do](../archive/BACKLOG-done.md#td9--event-driven-turn-and-progress-updates-wont-do).
 
 ---
 
@@ -954,7 +954,7 @@ Per [TESTING.md](TESTING.md) / [testing rules](.cursor/rules/testing-strategy.md
 
 **Harness location:** `src/test/.../support/GameScenario.kt` / `BoardScenario.kt` — preferred entry for most tests. Living visual script: `scenario/LivingGamePlaythrough.kt` + excluded `LivingGamePlaythroughTest`.
 
-Boundary double: `ScriptedDiceRoller` (class-level, queue via method calls); never `@MockBean` per test. Task breakdown: [BACKLOG Phase 7](../BACKLOG-done.md#phase-7-testing).
+Boundary double: `ScriptedDiceRoller` (class-level, queue via method calls); never `@MockBean` per test. Task breakdown: [BACKLOG Phase 7](../archive/BACKLOG-done.md#phase-7-testing).
 
 ---
 

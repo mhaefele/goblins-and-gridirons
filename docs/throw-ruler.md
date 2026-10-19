@@ -1,6 +1,6 @@
 # Throw Ruler geometry (BG.1)
 
-Rules digest § Throw — range and obstruction follow the cardboard **Throw Ruler**, not abstract Within alone. **Shipped / closed** — see [BACKLOG-done BG.1](../BACKLOG-done.md#bg1--physical-throw-ruler-geometry-2026-07).
+Rules digest § Throw — range and obstruction follow the cardboard **Throw Ruler**, not abstract Within alone. **Shipped / closed** — see [BACKLOG-done BG.1](../archive/BACKLOG-done.md#bg1--physical-throw-ruler-geometry-2026-07).
 
 ## Engine mapping
 

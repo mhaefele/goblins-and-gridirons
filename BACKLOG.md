@@ -1,6 +1,6 @@
 # Goblins & Gridirons Engine — Implementation Backlog
 
-Open work only. Completed phases, polish, and closed items live in [BACKLOG-done.md](BACKLOG-done.md) (Phases 0–15, UX/GFX, RF.1–RF.6, BG.1, PA.* / PA.C / PA.F / D2, PM.0–PM.6, D1.A–H / D1.C-fix, D3, AI1 incl. AI1.6, FF.*, Task 7.12, TD.1–8 / TD.10, 2026-08 pending-queue / bonus / shake-loose). [FF.8](BACKLOG-done.md#ff8--pitch--join-chrome-punch-up-wont-do) / [F.5](BACKLOG-done.md#f5--openmarked-on-piece-snapshot-and-events-wont-do) / [F.8](BACKLOG-done.md#f8--gui-openmarked-rings-wont-do) / [TD.9](BACKLOG-done.md#td9--event-driven-turn-and-progress-updates-wont-do) won't do.
+Open work only. Completed phases, polish, and closed items live in [archive/BACKLOG-done.md](archive/BACKLOG-done.md) (Phases 0–15, UX/GFX, RF.1–RF.6, BG.1, PA.* / PA.C / PA.F / D2, PM.0–PM.6, D1.A–H / D1.C-fix, D3, AI1 incl. AI1.6, FF.*, Task 7.12, TD.1–8 / TD.10, 2026-08 pending-queue / bonus / shake-loose). [FF.8](archive/BACKLOG-done.md#ff8--pitch--join-chrome-punch-up-wont-do) / [F.5](archive/BACKLOG-done.md#f5--openmarked-on-piece-snapshot-and-events-wont-do) / [F.8](archive/BACKLOG-done.md#f8--gui-openmarked-rings-wont-do) / [TD.9](archive/BACKLOG-done.md#td9--event-driven-turn-and-progress-updates-wont-do) won't do.
 
 **Architecture:** [System](ARCHITECTURE.md) · [Backend](backend/ARCHITECTURE.md) · [Frontend](frontend/ARCHITECTURE.md)
 
@@ -12,7 +12,7 @@ Open work only. Completed phases, polish, and closed items live in [BACKLOG-done
 
 ## How to use this backlog
 
-- Check off tasks as completed: `- [x]` — then move them to [BACKLOG-done.md](BACKLOG-done.md).
+- Check off tasks as completed: `- [x]` — then move them to [archive/BACKLOG-done.md](archive/BACKLOG-done.md).
 - **Status:** Open work below: [Quick TODO](#quick-todo), [SP — single nullable pending](#sp--single-nullable-pending-decision-fsm), remnant [Task 7.0](#task-70--test-fixture-builders) / [7.13](#task-713--better-api--domain-test-style), [Future items](#future-items-base-game-later) (F.6 / F.9), [parking lot](#parking-lot-unlikely-soon), deferred [D4](#deferred--phase-d4-optional-rules) / [AI2](#deferred--phase-ai2-trainable-model) ([`ai/BACKLOG.md`](ai/BACKLOG.md)).
 - **Frontend** consumes the done backend contract; never re-implements rules. See [frontend architecture](frontend/ARCHITECTURE.md).
 - Tasks marked **DEFERRED** are out of scope for the base playable game.
@@ -35,6 +35,13 @@ Open work only. Completed phases, polish, and closed items live in [BACKLOG-done
 ## Quick TODO
 
 Scratch list — not phased work. Prefer these when picking up engine cleanup.
+
+- [ ] **README: say this is an education project about working with AI.** Reword the "What I built" / lessons sections so that is the point of the repo, not an apology. Keep the experiment: the three modules were different review policies on purpose. Backend was reviewed and refactored closely. Frontend was left unreviewed on purpose, to see what happens when the engine is the source of truth and the client only draws and submits. AI training is the stack being learned (RL), so it is still the part changing most. The lessons stay. What has to change is the wording that sounds like the frontend was neglected or the project is unfinished ("Cursor wrote the code", "no human has reviewed the frontend code").
+- [ ] **ThrowResolver questions — decide, then delete the doubt.** [`ThrowResolver.kt`](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/pending/throwball/ThrowResolver.kt): Hail Mary re-resolves a target the legal action already computed; Dead Eye is played inline instead of as a required card; throw target is recalculated instead of reused; Pinpoint Passer is offered after Do-Over and is not automatic on a failed throw. Each comment is a question. Answer it in the code (change the behavior, or replace the comment with why the current order is right).
+- [ ] **Play-bonus cards consume a card without a required-card action.** [`LegalAction.kt`](backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) `PlayBonusCard`: "it's weird that these don't have a required card action even though we do consume a card." Streamline onto the required-card path, or document why play-from-hand is a different shape.
+- [ ] **Lookahead telemetry on a Spring singleton.** [`LookaheadOpponentStrategy.kt`](backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/lookahead/LookaheadOpponentStrategy.kt): `telemetry` is mutable state on a shared bean. Fine for one match at a time; wrong if two games search at once. Move it to the search call, or note the single-match assumption and drop the doubt.
+- [ ] **Slip Away skip still discards the card.** [`BonusPlayEffectsApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/BonusPlayEffectsApiTest.kt) "Skipping Slip Away free Sidestep leaves card not discarded" — the test name and the TODO disagree. Make skip keep the card, or rename the test to the behavior that actually shipped.
+- [ ] **Reserves-onto-ball test is disabled.** [`MovementApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/MovementApiTest.kt) `reserves onto ball square bounces the ball` is commented out because the setup can't place a reserve on the ball while other options exist. Either build that board or delete the test. Fix the "optinos" typo if the comment stays.
 
 - [ ] **CoachControl seat semantics (human vs harness vs spawned computer)** — see [AI2.15](ai/BACKLOG.md#ai215--coachcontrol-seat-semantics). Expert dumps should not fake `HUMAN`; only `COMPUTER` starts an in-process opponent.
 - [ ] **Investigate folding AI action vocabulary into the main engine (some/all).** Schema 9’s learning contract is intentionally an **AI mapping layer** ([`AiLegalChoiceMapping`](backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/mapping/AiLegalChoiceMapping.kt) / [`AiLegalKind`](backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiLegalKind.kt)): domain [`LegalAction`](backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) + GUI wire kinds / `LegalActionId`s stay as-is. Inventory: [`ai/ACTION_SAMPLING.md`](ai/ACTION_SAMPLING.md) (Yes-do). **Candidates to pull into engine (or shared wire):** coarse `declineOffer` (Skip / DeclineBonus / ContinueBlock / keep-reroll); single `reroll` vs keep instead of `Choose*Reroll(reroll: Boolean)`; one Do-Over adjust kind (pending already scopes throw/block/armour); free-vs-sugar factor story if GUI ever stops needing sugar on the id; hide/omit cancel-TT after select (force landing). **Keep AI-only unless product wants:** MultiDiscrete pads, `sugarFactors` sidecar, AI legal-set filters (e.g. drop DeclineBonus when OS/EP keep is already offered). **Write-up should decide** per item: engine `LegalAction` reshape vs keep dual vocabulary; GUI impact; id / submit-by-id; whether `ActionType` collapses stay. Do not blindly unify — mapping is tidy for a reason.
@@ -110,20 +117,20 @@ Scratch list — not phased work. Prefer these when picking up engine cleanup.
 
 ### Intentionally out of engine scope (presentation / physical)
 
-- Printed score-track coins at +10/+20/+30 — optional UI; integer score is enough ([D1.C.2](BACKLOG-done.md#d1c--scoring--points-victory-2026-07)).
+- Printed score-track coins at +10/+20/+30 — optional UI; integer score is enough ([D1.C.2](archive/BACKLOG-done.md#d1c--scoring--points-victory-2026-07)).
 - Component construction / dugout cardboard placement — n/a.
 - Exact Bounce Chart art — D8 + clockwise skip is implemented; chart face is pitch art.
 - Devoted coach choice / opponent hand-count UI — parked in [`docs/D1-open-questions.md`](docs/D1-open-questions.md) only.
 
 ### Already covered
 
-Core play, challenge cards, player abilities, Foul, Throw Team-mate, vs-computer (incl. lookahead), frontend polish/graphics — see [archive](BACKLOG-done.md) and the [coverage matrix](#base-game-rulebook-coverage-matrix) below.
+Core play, challenge cards, player abilities, Foul, Throw Team-mate, vs-computer (incl. lookahead), frontend polish/graphics — see [archive](archive/BACKLOG-done.md) and the [coverage matrix](#base-game-rulebook-coverage-matrix) below.
 
 ---
 
 ## Open remnant — Phase 7
 
-> Most of [Phase 7](BACKLOG-done.md#phase-7-testing) is done (including [7.12](BACKLOG-done.md#task-712--action-unit-test-coverage-gaps)). Remnants: fixture-builder fluency ([7.0](#task-70--test-fixture-builders)) and better API/domain test style ([7.13](#task-713--better-api--domain-test-style)).
+> Most of [Phase 7](archive/BACKLOG-done.md#phase-7-testing) is done (including [7.12](archive/BACKLOG-done.md#task-712--action-unit-test-coverage-gaps)). Remnants: fixture-builder fluency ([7.0](#task-70--test-fixture-builders)) and better API/domain test style ([7.13](#task-713--better-api--domain-test-style)).
 
 ### Task 7.0 — Test fixture builders
 
@@ -136,7 +143,7 @@ Core play, challenge cards, player abilities, Foul, Throw Team-mate, vs-computer
 
 ### Task 7.13 — Better API / domain test style
 
-> Incremental quality bar — helpers, negative controls, tiny pitches, and the first migrated suites are [archived](BACKLOG-done.md#task-713--better-api--domain-test-style-partial-ship-2026-08). Remnants only:
+> Incremental quality bar — helpers, negative controls, tiny pitches, and the first migrated suites are [archived](archive/BACKLOG-done.md#task-713--better-api--domain-test-style-partial-ship-2026-08). Remnants only:
 
 - [ ] **Lookup profile by ability / capability:** [TeamCatalogTestHelper](backend/src/test/kotlin/com/mhaefele/gridiron/support/TeamCatalogTestHelper.kt) (`profileWith`, `throwTeammateProfile`, `throwableTeammateOf`) — migrate all tests that hardcode roster names when next touched. See TODO on [TestProfiles](backend/src/test/kotlin/com/mhaefele/gridiron/support/TestProfiles.kt).
 - [ ] **Avoid prestaging pending + inferring FSM step:** [MatchBuilder](backend/src/test/kotlin/com/mhaefele/gridiron/support/MatchBuilder.kt) still guesses `step` from seeded `pendingDecision`. Prefer playing into that beat (or an explicit step setter).
@@ -146,7 +153,7 @@ Core play, challenge cards, player abilities, Foul, Throw Team-mate, vs-computer
 
 ## Future items (base game, later)
 
-> Split-action prompts, ability provenance, Open/Marked rings, and related future items that shipped or won't do are in the [archive](BACKLOG-done.md#completed-future-items-archived).
+> Split-action prompts, ability provenance, Open/Marked rings, and related future items that shipped or won't do are in the [archive](archive/BACKLOG-done.md#completed-future-items-archived).
 >
 > **GUI that needs new wire** ([F.9](#f9--gui-dim-inactive-players-with-reasons)) stays here with its backend enabler ([F.6](#f6--per-player-action-constraints-on-the-wire-open)).
 
@@ -162,7 +169,7 @@ Core play, challenge cards, player abilities, Foul, Throw Team-mate, vs-computer
 
 - [ ] **Module:** frontend (blocked on backend wire / decision in F.6)
 - [ ] **Goal:** Soft-dim or badge players who cannot usefully act this turn and show a **one-line reason on hover** (already used that action type, turn ended after tackle/miss, not active coach, etc.) so absence from `legal-actions` feels fair instead of mysterious.
-- [ ] **Depends on:** [F.6](#f6--per-player-action-constraints-on-the-wire-open) (chosen wire shape); pairs with [UX.1](BACKLOG-done.md#ux1--selection-first-action-targeting) eligible-token highlighting.
+- [ ] **Depends on:** [F.6](#f6--per-player-action-constraints-on-the-wire-open) (chosen wire shape); pairs with [UX.1](archive/BACKLOG-done.md#ux1--selection-first-action-targeting) eligible-token highlighting.
 - [ ] **Files:** `frontend/src/render/Token.tsx`, Play / card hover; store fields folded from snapshot or events per F.6
 - [ ] **Acceptance:** During the active coach’s turn, players with no remaining legal actions are visually distinct; hover (or card) explains why when the server exposes a reason; no client-side rule re-implementation beyond displaying server fields / events.
 - [ ] **Rulebook:** n/a (affordance for turn restrictions already enforced server-side)
@@ -171,7 +178,7 @@ Core play, challenge cards, player abilities, Foul, Throw Team-mate, vs-computer
 
 ## Parking lot (unlikely soon)
 
-> Not on the current path. Revisit only if a real need appears. Engine leftovers from the 2026-08 pending-queue / bonus / shake-loose pass: [archive](BACKLOG-done.md#quick-todo--pending-queue--bonus--shake-loose-2026-08).
+> Not on the current path. Revisit only if a real need appears. Engine leftovers from the 2026-08 pending-queue / bonus / shake-loose pass: [archive](archive/BACKLOG-done.md#quick-todo--pending-queue--bonus--shake-loose-2026-08).
 
 ### Engine (parked)
 
@@ -185,7 +192,7 @@ Core play, challenge cards, player abilities, Foul, Throw Team-mate, vs-computer
 - [ ] **Depends on:** a topology that serves the frontend from a different origin than the API (not the local Vite proxy setup).
 - [ ] **Files:** `spring/` `WebMvcConfigurer` (or `@CrossOrigin`) with a configurable allowed-origins property (not `*`)
 - [ ] **Acceptance:** Preflight returns the expected headers; an API test asserts them; SSE still works with `Last-Event-ID`.
-- [ ] **Note:** Skipped for this hobby project — [10.7](BACKLOG-done.md#task-107--vite-dev-proxy) keeps the browser same-origin via the Vite proxy.
+- [ ] **Note:** Skipped for this hobby project — [10.7](archive/BACKLOG-done.md#task-107--vite-dev-proxy) keeps the browser same-origin via the Vite proxy.
 - [ ] **Rulebook:** n/a
 
 ### P.2 — Sound cues
@@ -194,7 +201,7 @@ Core play, challenge cards, player abilities, Foul, Throw Team-mate, vs-computer
 - [ ] **Goal:** Optional short SFX for big beats — e.g. block/tackle thud, whistle or sting on touchdown, light dice tick — muted by default or behind a simple toggle; respect system / reduced-motion preferences where appropriate.
 - [ ] **Depends on:** playable UX clarity; not needed for vs-computer.
 - [ ] **Acceptance:** Sounds never gate input; toggle persists locally; no sound required to understand the rules or outcomes.
-- [ ] **Note:** Parking lot until click-to-click play feels clear — visual feedback already shipped ([UX.6](BACKLOG-done.md#ux6--dice-theatre-overlay), [UX.8](BACKLOG-done.md#ux8--outcome-flash), [UX.10](BACKLOG-done.md#ux10--touchdown-and-match-end-beat)).
+- [ ] **Note:** Parking lot until click-to-click play feels clear — visual feedback already shipped ([UX.6](archive/BACKLOG-done.md#ux6--dice-theatre-overlay), [UX.8](archive/BACKLOG-done.md#ux8--outcome-flash), [UX.10](archive/BACKLOG-done.md#ux10--touchdown-and-match-end-beat)).
 - [ ] **Rulebook:** n/a
 
 ---
@@ -221,11 +228,11 @@ Full phased backlog (HTTP trainer API, SB3 harness, eval vs computer, ONNX): **[
 
 | Mechanic | Backlog phase | Rulebook | Status |
 |----------|---------------|----------|--------|
-| Core pitch / actions / turn / TD / Sudden Death / API / SSE / frontend | 0–15 | digest | Done — [archive](BACKLOG-done.md) |
+| Core pitch / actions / turn / TD / Sudden Death / API / SSE / frontend | 0–15 | digest | Done — [archive](archive/BACKLOG-done.md) |
 | Challenge cards / bonus / Points Victory | D1 | [`cards.md`](reference/cards.md) | Done |
 | Player abilities (enforcement + catalog) | PA.* / D2 | team cards | Done |
 | Foul / Throw teammate | D3 | digest § Foul / Throw Team-mate | Done |
-| Vs computer (heuristic + lookahead) | AI1 / [AI1.6](BACKLOG-done.md#ai16--lookahead-over-the-legal-move-graph-2026-08) | n/a | Done |
+| Vs computer (heuristic + lookahead) | AI1 / [AI1.6](archive/BACKLOG-done.md#ai16--lookahead-over-the-legal-move-graph-2026-08) | n/a | Done |
 | Dim inactive with reasons (GUI; wire first) | F.6→F.9 | n/a | Future |
 | Domain + API test fluency | 7.0 / 7.13 | n/a | Partial |
 | Random events / optional rules | D4 | not yet in digest | Deferred |
@@ -241,7 +248,7 @@ Full phased backlog (HTTP trainer API, SB3 harness, eval vs computer, ONNX): **[
 | Testing / fixtures / test style | [§ Testing strategy](backend/ARCHITECTURE.md#testing-strategy) | [7.0](#task-70--test-fixture-builders), [7.13](#task-713--better-api--domain-test-style) |
 | Inactive reasons (wire → GUI) | [Future items](#future-items-base-game-later) | F.6, F.9 |
 | Optional rules | [§ Extension points](backend/ARCHITECTURE.md#extension-points-deferred) | [D4](#deferred--phase-d4-optional-rules) |
-| Vs computer / lookahead | [§ Long-term product goals](backend/ARCHITECTURE.md#long-term-product-goals) | [AI1 archive](BACKLOG-done.md#ai1--basic-computer-opponent), [AI1.6](BACKLOG-done.md#ai16--lookahead-over-the-legal-move-graph-2026-08) |
+| Vs computer / lookahead | [§ Long-term product goals](backend/ARCHITECTURE.md#long-term-product-goals) | [AI1 archive](archive/BACKLOG-done.md#ai1--basic-computer-opponent), [AI1.6](archive/BACKLOG-done.md#ai16--lookahead-over-the-legal-move-graph-2026-08) |
 | Trainable model | [§ Long-term product goals](backend/ARCHITECTURE.md#long-term-product-goals) | [AI2](#deferred--phase-ai2-trainable-model) → [`ai/BACKLOG.md`](ai/BACKLOG.md) |
 | Sound / CORS | — | [Parking lot](#parking-lot-unlikely-soon) |
-| Challenge cards / abilities / polish / tech debt | see [BACKLOG-done.md](BACKLOG-done.md) | archived |
+| Challenge cards / abilities / polish / tech debt | see [archive/BACKLOG-done.md](archive/BACKLOG-done.md) | archived |

@@ -12,13 +12,13 @@ Responsive GUI client for the Goblins & Gridirons engine API. The client **draws
 
 | Area | Phase | Status |
 |------|-------|--------|
-| App scaffold (Vite, React, TS strict, lint) | [10](../BACKLOG-done.md#phase-10-frontend-foundation) | Done |
-| API type-sync (OpenAPI → TS) + thin client | [10b](../BACKLOG-done.md#phase-10b-api-type-sync-tooling) | Done |
-| Pitch / piece rendering + roster + HUD | [11](../BACKLOG-done.md#phase-11-pitch--hud-rendering) | Done |
-| Legal-action UX + command POSTs | [12](../BACKLOG-done.md#phase-12-interactive-actions) | Done |
-| SSE subscribe + event-fold + reconnect | [13](../BACKLOG-done.md#phase-13-event-driven-live-updates) | Done |
-| Assets / `AssetRegistry` / theming | [14](../BACKLOG-done.md#phase-14-assets--theming) | Done |
-| Full-system Playwright e2e | [15](../BACKLOG-done.md#phase-15-full-system-e2e) | Done |
+| App scaffold (Vite, React, TS strict, lint) | [10](../archive/BACKLOG-done.md#phase-10-frontend-foundation) | Done |
+| API type-sync (OpenAPI → TS) + thin client | [10b](../archive/BACKLOG-done.md#phase-10b-api-type-sync-tooling) | Done |
+| Pitch / piece rendering + roster + HUD | [11](../archive/BACKLOG-done.md#phase-11-pitch--hud-rendering) | Done |
+| Legal-action UX + command POSTs | [12](../archive/BACKLOG-done.md#phase-12-interactive-actions) | Done |
+| SSE subscribe + event-fold + reconnect | [13](../archive/BACKLOG-done.md#phase-13-event-driven-live-updates) | Done |
+| Assets / `AssetRegistry` / theming | [14](../archive/BACKLOG-done.md#phase-14-assets--theming) | Done |
+| Full-system Playwright e2e | [15](../archive/BACKLOG-done.md#phase-15-full-system-e2e) | Done |
 
 ---
 
@@ -137,9 +137,9 @@ export function applyEvent(view: BoardView, event: DomainEvent): BoardView {
 
 ### Known gap — HUD is not on the event stream
 
-**Backend done ([13.6](../BACKLOG-done.md#task-136--turnprogress-events-on-the-stream-backend)):** the stream now also carries turn/progress beats — `teamActionConsumed`, `phaseStarted`, `matchEnded` — alongside board patches, `touchdownScored`, and `InputRequired`. A spectator can fold HUD from events alone.
+**Backend done ([13.6](../archive/BACKLOG-done.md#task-136--turnprogress-events-on-the-stream-backend)):** the stream now also carries turn/progress beats — `teamActionConsumed`, `phaseStarted`, `matchEnded` — alongside board patches, `touchdownScored`, and `InputRequired`. A spectator can fold HUD from events alone.
 
-**Frontend done:** `applyEvent` folds the turn/progress kinds; the [13.5](../BACKLOG-done.md#task-135--reconcile-hud-via-snapshot-refresh-frontend-v1-fallback) snapshot-refresh fallback is not used.
+**Frontend done:** `applyEvent` folds the turn/progress kinds; the [13.5](../archive/BACKLOG-done.md#task-135--reconcile-hud-via-snapshot-refresh-frontend-v1-fallback) snapshot-refresh fallback is not used.
 
 ## The event-driven loop (responsiveness during the opponent's turn)
 
@@ -200,13 +200,13 @@ The client **must not invent wire shapes** or endpoints; it consumes only the DT
 3. A **local drift guard** (`npm run gen:api:check`, optionally a git pre-commit hook — no cloud CI in this hobby project) regenerates and fails on any diff — the alarm that backend and frontend moved out of lockstep.
 4. A thin, hand-written `src/api/client.ts` (fetch) and `src/api/stream.ts` (`EventSource`) are the only runtime code; both are typed by the generated shapes.
 
-**Sealed-hierarchy caveat:** `DomainEvent` and `LegalAction` are Jackson polymorphic types with a `kind` discriminator ([DomainEvent.kt](../backend/src/main/kotlin/com/mhaefele/gridiron/game/action/dto/DomainEvent.kt), [LegalAction.kt](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt)). The OpenAPI schema must emit these as `oneOf` + `discriminator: kind` so codegen yields TS **discriminated unions** (enabling the exhaustive `switch` in `applyEvent`). Verifying this is an explicit backend task in [Phase 10b](../BACKLOG-done.md#phase-10b-api-type-sync-tooling).
+**Sealed-hierarchy caveat:** `DomainEvent` and `LegalAction` are Jackson polymorphic types with a `kind` discriminator ([DomainEvent.kt](../backend/src/main/kotlin/com/mhaefele/gridiron/game/action/dto/DomainEvent.kt), [LegalAction.kt](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt)). The OpenAPI schema must emit these as `oneOf` + `discriminator: kind` so codegen yields TS **discriminated unions** (enabling the exhaustive `switch` in `applyEvent`). Verifying this is an explicit backend task in [Phase 10b](../archive/BACKLOG-done.md#phase-10b-api-type-sync-tooling).
 
 **Why not alternatives:** full client generators (openapi-generator → axios classes) add runtime ceremony that fights the thin-client goal; contract-tests-only detect drift late (at test run) instead of at compile time. Types-only codegen + a hand-written client is the minimum that still guarantees lockstep.
 
 ### Dev connectivity (CORS / proxy)
 
-In dev the Vite server (`:5173`) and backend (`:8080`) are different origins. Use a **Vite dev proxy** (`server.proxy` for `/api`) so `fetch` and `EventSource` stay same-origin locally — this is the only piece needed for a local hobby setup ([Task 10.7](../BACKLOG-done.md#task-107--vite-dev-proxy)). A configurable **backend CORS** policy is optional/forward-looking for deployed cross-origin topologies and lives in the parking lot as [P.1](../BACKLOG.md#p1--backend-cors-if-ui-and-api-are-different-origins).
+In dev the Vite server (`:5173`) and backend (`:8080`) are different origins. Use a **Vite dev proxy** (`server.proxy` for `/api`) so `fetch` and `EventSource` stay same-origin locally — this is the only piece needed for a local hobby setup ([Task 10.7](../archive/BACKLOG-done.md#task-107--vite-dev-proxy)). A configurable **backend CORS** policy is optional/forward-looking for deployed cross-origin topologies and lives in the parking lot as [P.1](../BACKLOG.md#p1--backend-cors-if-ui-and-api-are-different-origins).
 
 ### Auth-forward note
 
@@ -297,7 +297,7 @@ flowchart LR
 ```
 
 - **Orchestration:** Playwright `webServer` entries boot both servers (backend jar/`spring-boot:run`, then Vite `preview`), wait for health, run specs, tear down. One `npm run e2e`.
-- **Determinism enabler (backend done — [15.1](../BACKLOG-done.md#task-151--seedable-rng-backend-test-profile-enabler)):** boot with `--spring.profiles.active=scripted-dice`. Uses shared `ScriptedDiceRoller` (default pattern when queues empty); e2e can `POST /api/test/dice/d6|d8|block` with `{ "values": [...] }` to force the next rolls. Unit/API tests activate profile `test` with fallback off (throw if unqueued). Production stays on `RandomDiceRoller`. Where scripts leave randomness, assert **invariants** (occupancy consistent, score non-decreasing except touchdowns, "match reaches GAME_OVER"), not exact squares.
+- **Determinism enabler (backend done — [15.1](../archive/BACKLOG-done.md#task-151--seedable-rng-backend-test-profile-enabler)):** boot with `--spring.profiles.active=scripted-dice`. Uses shared `ScriptedDiceRoller` (default pattern when queues empty); e2e can `POST /api/test/dice/d6|d8|block` with `{ "values": [...] }` to force the next rolls. Unit/API tests activate profile `test` with fallback off (throw if unqueued). Production stays on `RandomDiceRoller`. Where scripts leave randomness, assert **invariants** (occupancy consistent, score non-decreasing except touchdowns, "match reaches GAME_OVER"), not exact squares.
 - **Black-box only:** specs interact via the real UI (clicks, visible text) and assert visible outcomes — no injected app state, no mocked network. This is the frontend analogue of the backend's whole-stack API tests.
 
 ---

@@ -2,7 +2,7 @@
 
 Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) defers here.
 
-**Status:** Open — AI2.0–AI2.4 + AI2.7 done; [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) **obs landed** (schema 11; scenarios still open); [AI2.13](#ai213--scenario-catalog-metadata-api) catalog metadata done; [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) blind-spot taxonomy open. Then [AI2.5](#ai25--multi-team-curriculum). Sampling follow-ups: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) ([AI2.11](#ai211--action-sampling--factor-space-inventory)). Harness hygiene: [AI2.14](#ai214--split-train_self_play), [AI2.15](#ai215--coachcontrol-seat-semantics). Ship AI1 done; see [BACKLOG-done.md](../BACKLOG-done.md).
+**Status:** Open — AI2.0–AI2.4 + AI2.7 done; [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) **obs landed** (schema 11; scenarios still open); [AI2.13](#ai213--scenario-catalog-metadata-api) catalog metadata done; [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) blind-spot taxonomy open. Then [AI2.5](#ai25--multi-team-curriculum). Sampling follow-ups: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) ([AI2.11](#ai211--action-sampling--factor-space-inventory)). Harness hygiene: [AI2.14](#ai214--split-train_self_play), [AI2.15](#ai215--coachcontrol-seat-semantics). Ship AI1 done; see [archive/BACKLOG-done.md](../archive/BACKLOG-done.md).
 
 **Design:** [`DESIGN.md`](DESIGN.md) · **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md) · **Architecture:** [Backend § Long-term product goals](../backend/ARCHITECTURE.md#long-term-product-goals).
 
@@ -459,6 +459,6 @@ AI2.0 Kotlin DTOs (contract = source)
 | Split train entrypoint | [AI2.14](#ai214--split-train_self_play) |
 | Remove `/choose` + scenario lookahead test | [AI2.16](#ai216--remove-ai-choose--in-process-scenario-lookahead-test) |
 | Root backlog pointer | [`BACKLOG.md` AI2](../BACKLOG.md#deferred--phase-ai2-trainable-model) |
-| Heuristic / lookahead bots | [BACKLOG-done.md AI1](../BACKLOG-done.md#ai1--basic-computer-opponent) |
+| Heuristic / lookahead bots | [BACKLOG-done.md AI1](../archive/BACKLOG-done.md#ai1--basic-computer-opponent) |
 | Legal actions (GUI) | `GET /api/matches/{id}/legal-actions` — **not** the AI contract |
 | Lookahead leaf scorer (do not clone as RL reward) | `backend/.../opponent/lookahead/LookaheadScorer.kt` |

@@ -33,7 +33,7 @@ If `./dev.sh` is already running, you can browse live docs instead:
 | **Integration routes only** | `http://localhost:18080/v3/api-docs/integration` |
 | Swagger UI | `http://localhost:18080/swagger-ui.html` |
 
-Field descriptions are on the DTOs (`@Schema`) and operations in [`IntegrationMatchController`](backend/src/main/kotlin/com/mhaefele/gridiron/api/integration/IntegrationMatchController.kt).
+Field descriptions are on the DTOs (`@Schema`) and operations in [`IntegrationMatchController`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/integration/IntegrationMatchController.kt).
 
 ---
 
@@ -54,7 +54,7 @@ Repeat `play` until `snapshot.gameState.result` is set.
 
 ### `state` vs `play`
 
-Both return the same type: [`IntegrationMatchStateDto`](backend/src/main/kotlin/com/mhaefele/gridiron/api/integration/dto/IntegrationMatchStateDto.kt). The `snapshot` is an [`IntegrationMatchSnapshotDto`](backend/src/main/kotlin/com/mhaefele/gridiron/api/integration/dto/IntegrationMatchSnapshotDto.kt) — board state plus your hidden `bonusHand` (for `agentSeat`).
+Both return the same type: [`IntegrationMatchStateDto`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/integration/dto/IntegrationMatchStateDto.kt). The `snapshot` is an [`IntegrationMatchSnapshotDto`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/integration/dto/IntegrationMatchSnapshotDto.kt) — board state plus your hidden `bonusHand` (for `agentSeat`).
 
 | | **`GET …/state`** | **`POST …/play`** |
 |---|---------------------|-------------------|

@@ -1,16 +1,16 @@
 # Goblins & Gridirons — Completed backlog (archive)
 
-Shipped phases and finished polish/graphics checklist items. **Active open work lives in [BACKLOG.md](BACKLOG.md).** Includes completed rulebook fidelity **RF.1–RF.6**, throw ruler **[BG.1](#bg1--physical-throw-ruler-geometry-2026-07)**, **PA.F** / **[PA.C](#pac--align-ability-behavior-with-official-card-text-2026-07)**, **[D2](#d2--player-abilities-phase-closed-2026-07)**, **PM.0–PM.6**, **D1.A–H** (incl. [D1.F.4](#d1f4--annotate-legal-actions-that-could-claim-a-challenge-2026-07), [D1.C-fix](#d1c-fix--challenge-claim--bonus-behavior-vs-official-site-2026-07)), **D3** (Foul + Throw Team-mate), **[AI1.6](#ai16--lookahead-over-the-legal-move-graph-2026-08)** lookahead, 2026-08 Quick TODO (pending-queue / bonus / shake-loose), frontend follow-ups **FF.1–FF.7 / FF.9–FF.10**, Task **7.12**, and tech debt **TD.1–8 / TD.10**; [TD.9](#td9--event-driven-turn-and-progress-updates-wont-do) / [FF.8](#ff8--pitch--join-chrome-punch-up-wont-do) / [F.5](#f5--openmarked-on-piece-snapshot-and-events-wont-do) / [F.8](#f8--gui-openmarked-rings-wont-do) won't do.
+Shipped phases and finished polish/graphics checklist items. **Active open work lives in [BACKLOG.md](../BACKLOG.md).** Includes completed rulebook fidelity **RF.1–RF.6**, throw ruler **[BG.1](#bg1--physical-throw-ruler-geometry-2026-07)**, **PA.F** / **[PA.C](#pac--align-ability-behavior-with-official-card-text-2026-07)**, **[D2](#d2--player-abilities-phase-closed-2026-07)**, **PM.0–PM.6**, **D1.A–H** (incl. [D1.F.4](#d1f4--annotate-legal-actions-that-could-claim-a-challenge-2026-07), [D1.C-fix](#d1c-fix--challenge-claim--bonus-behavior-vs-official-site-2026-07)), **D3** (Foul + Throw Team-mate), **[AI1.6](#ai16--lookahead-over-the-legal-move-graph-2026-08)** lookahead, 2026-08 Quick TODO (pending-queue / bonus / shake-loose), frontend follow-ups **FF.1–FF.7 / FF.9–FF.10**, Task **7.12**, and tech debt **TD.1–8 / TD.10**; [TD.9](#td9--event-driven-turn-and-progress-updates-wont-do) / [FF.8](#ff8--pitch--join-chrome-punch-up-wont-do) / [F.5](#f5--openmarked-on-piece-snapshot-and-events-wont-do) / [F.8](#f8--gui-openmarked-rings-wont-do) won't do.
 
 Historical context only — do not treat unchecked boxes here as current work (Task 7.0’s remaining work is tracked in the active backlog).
 
-**Architecture:** [System](ARCHITECTURE.md) · [Backend](backend/ARCHITECTURE.md) · [Frontend](frontend/ARCHITECTURE.md)
+**Architecture:** [System](../ARCHITECTURE.md) · [Backend](../backend/ARCHITECTURE.md) · [Frontend](../frontend/ARCHITECTURE.md)
 
 ---
 
 ## Phase 0: Project Foundation
 
-> **Architecture:** [Package layout](backend/ARCHITECTURE.md#package-layout), [Source file organization](backend/ARCHITECTURE.md#source-file-organization), [Layering](backend/ARCHITECTURE.md#layering-overview)
+> **Architecture:** [Package layout](../backend/ARCHITECTURE.md#package-layout), [Source file organization](../backend/ARCHITECTURE.md#source-file-organization), [Layering](../backend/ARCHITECTURE.md#layering-overview)
 
 ### Task 0.1 — Domain package skeleton
 
@@ -22,19 +22,19 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ### Task 0.2 — Core value types and identifiers
 
-- [x] **Goal:** Implement shared types in dedicated files; colocate entity-specific IDs/enums with their owning type per [ARCHITECTURE.md source file organization](backend/ARCHITECTURE.md#source-file-organization).
+- [x] **Goal:** Implement shared types in dedicated files; colocate entity-specific IDs/enums with their owning type per [ARCHITECTURE.md source file organization](../backend/ARCHITECTURE.md#source-file-organization).
 - [x] **Depends on:** 0.1
 - [x] **Files:** `domain/model/Coordinate.kt`, `TeamSide.kt`, `Direction.kt`, `ActionType.kt` (shared); `PlayerId` in `Player.kt`, `BallId` in `Ball.kt`, `MatchId` in `MatchState.kt` (colocated — create stub files if types not yet implemented)
 - [x] **Acceptance:** No catch-all `Identifiers.kt` or `Enums.kt`; IDs are type-safe; `Coordinate` supports equality; `Direction` has 8 compass values matching bounce chart.
 - [x] **Rulebook:** p. 38 — Glossary (Adjacent, Square)
 
-> **Phase 0 done.** Tasks 0.3 (dice) and 0.4 (validation) landed in Phase 4 (tasks 4.5–4.6). **Phases 0–9 done** (7.0 partial). Next: GUI, [Future items](BACKLOG.md#future-items-base-game-later), or [tech debt](BACKLOG.md#tech-debt-cleanup).
+> **Phase 0 done.** Tasks 0.3 (dice) and 0.4 (validation) landed in Phase 4 (tasks 4.5–4.6). **Phases 0–9 done** (7.0 partial). Next: GUI, [Future items](../BACKLOG.md#future-items-base-game-later), or [tech debt](../BACKLOG.md#tech-debt-cleanup).
 
 ---
 
 ## Phase 1: Board Layout
 
-> **Architecture:** [Core domain models](backend/ARCHITECTURE.md#core-domain-models), [Board vs turn/progress](backend/ARCHITECTURE.md#2-physical-board-vs-turnphase-flow)
+> **Architecture:** [Core domain models](../backend/ARCHITECTURE.md#core-domain-models), [Board vs turn/progress](../backend/ARCHITECTURE.md#2-physical-board-vs-turnphase-flow)
 >
 > Goal: model the table snapshot — pitch topology, players (as tokens), balls, and `Board`. *Where* things are, not what actions are legal. No marking, pathfinding, turn engine, or scoring yet. Ends with an ASCII board renderer for debugging and tests.
 
@@ -90,7 +90,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ## Phase 2: Spatial Queries
 
-> **Architecture:** [Legal moves](backend/ARCHITECTURE.md#legal-moves)
+> **Architecture:** [Legal moves](../backend/ARCHITECTURE.md#legal-moves)
 >
 > Goal: pure functions over `Board` for action geometry — adjacency, distance, Open/Marked status, and movement paths (run/mark). No turn flow, legal-move enumeration, or action resolution yet.
 
@@ -144,7 +144,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ## Phase 3: Legal Moves
 
-> **Architecture:** [Legal moves](backend/ARCHITECTURE.md#legal-moves)
+> **Architecture:** [Legal moves](../backend/ARCHITECTURE.md#legal-moves)
 >
 > Goal: pure functions to enumerate legal actions — **one player**, then **one team**, then the **active coach** — from a `Board` snapshot plus a **minimal turn-context slice** when turn rules apply. No full `MatchState` or scores yet for the core overloads; turn slice is `TurnActionContext`.
 
@@ -232,7 +232,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ## Phase 4: Action Resolution
 
-> **Architecture:** [Movement summary](backend/ARCHITECTURE.md#movement-summary), [Throw and bounce](backend/ARCHITECTURE.md#throw-summary-rulebook-pp-1718), [Block dice](backend/ARCHITECTURE.md#block-dice-rulebook-pp-1819)
+> **Architecture:** [Movement summary](../backend/ARCHITECTURE.md#movement-summary), [Throw and bounce](../backend/ARCHITECTURE.md#throw-summary-rulebook-pp-1718), [Block dice](../backend/ARCHITECTURE.md#block-dice-rulebook-pp-1819)
 >
 > Goal: apply one action at a time — `(MatchState, ActionCommand) → ActionOutcome`. Turn orchestration deferred to Phase 5.
 >
@@ -258,7 +258,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ### Task 4.3 — PlaceholderTeamCatalog
 
-- [x] **Goal:** Hard-code **Dwarves** and **Orcs** rosters per [ARCHITECTURE.md](backend/ARCHITECTURE.md#starter-teams-dwarves-and-orcs-base-game) (ids `"dwarves"`, `"orcs"`).
+- [x] **Goal:** Hard-code **Dwarves** and **Orcs** rosters per [ARCHITECTURE.md](../backend/ARCHITECTURE.md#starter-teams-dwarves-and-orcs-base-game) (ids `"dwarves"`, `"orcs"`).
 - [x] **Depends on:** 4.2
 - [x] **Files:** `infrastructure/PlaceholderTeamCatalog.kt`
 - [x] **Acceptance:** Both teams ER=4; Orc Bruiser Block=2; Orc Linemen/Blocker have `-` throw; Dwarf roster matches rulebook stats.
@@ -362,7 +362,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ### Task 4.15 — Run action resolver
 
-- [x] **Goal:** Move player along path; pick up ball if ending on ball square (Run only); update occupancy. Wire legal-move pathfinding to `player.profile.stats.move` (`MoveValue.Fixed` only — see [Future items](BACKLOG.md#future-items-base-game-later)).
+- [x] **Goal:** Move player along path; pick up ball if ending on ball square (Run only); update occupancy. Wire legal-move pathfinding to `player.profile.stats.move` (`MoveValue.Fixed` only — see [Future items](../BACKLOG.md#future-items-base-game-later)).
 - [x] **Depends on:** 4.7, 4.8, 2.5, 4.9
 - [x] **Files:** `domain/rules/ActionResolver.kt`, `domain/legalmoves/LegalMoves.kt`
 - [x] **Acceptance:** Paths ≤ fixed move from profile; player ends on last path square with ball on base if square had loose ball; occupancy updated atomically. `MoveValue.RandomD6` roster entries rejected or ignored until Future F.2.
@@ -505,7 +505,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ### Task 4.33 — Block result: Shove
 
-- [x] **Goal:** Push target 1 square directly away; blocked push → Knock Down. (Optional blocker follow-up → [Future F.3](BACKLOG.md#future-items-base-game-later).)
+- [x] **Goal:** Push target 1 square directly away; blocked push → Knock Down. (Optional blocker follow-up → [Future F.3](../BACKLOG.md#future-items-base-game-later).)
 - [x] **Depends on:** 4.32, 2.1
 - [x] **Files:** `domain/rules/BlockResolver.kt`
 - [x] **Acceptance:** Push into occupied/blocked/off-board causes knockdown instead; follow-up prompt deferred.
@@ -549,7 +549,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ## Phase 5: Match Flow
 
-> **Architecture:** [Turn sequence](backend/ARCHITECTURE.md#turn-sequence-state-machine)
+> **Architecture:** [Turn sequence](../backend/ARCHITECTURE.md#turn-sequence-state-machine)
 >
 > Goal: persisted match aggregate (`MatchState` = board + config + progress + turn) and multi-turn orchestration — setup, pre-turn steps, coach alternation, win conditions. Builds on Phase 4 action resolution.
 
@@ -576,7 +576,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 - [x] **Depends on:** 1.4, 5.2, 3.10
 - [x] **Files:** `domain/model/MatchState.kt`, `domain/legalmoves/LegalMoves.kt` (overload)
 - [x] **Acceptance:** Immutable data class; no legal-action fields on MatchState; overload matches `(board, TurnActionContext)` results.
-- [x] **Rulebook:** n/a — see [ARCHITECTURE.md persisted vs ephemeral](backend/ARCHITECTURE.md#1-persisted-state-vs-ephemeral-computation)
+- [x] **Rulebook:** n/a — see [ARCHITECTURE.md persisted vs ephemeral](../backend/ARCHITECTURE.md#1-persisted-state-vs-ephemeral-computation)
 
 ### Task 5.4 — MatchSetup
 
@@ -609,7 +609,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 - [x] **Files:** `domain/rules/TurnEngine.kt`
 - [x] **Acceptance:** 4+ injured Dwarfs (ER=4) triggers free reserves placement once per pre-turn. **Does not decrement `actionsRemaining`** — pre-turn step, not one of the three player actions. Implement via dedicated path, not `recordActionConsumed`.
 - [x] **Rulebook:** p. 19 — Emergency Reserves
-- [x] **Note (v1):** Placement is **auto** — first dugout player onto the first legal end-zone square. Coach choice of square (and which reserve, if ever needed) is [F.7](BACKLOG.md#f7--emergency-reserves-coach-placement-choice).
+- [x] **Note (v1):** Placement is **auto** — first dugout player onto the first legal end-zone square. Coach choice of square (and which reserve, if ever needed) is [F.7](../BACKLOG.md#f7--emergency-reserves-coach-placement-choice).
 
 ### Task 5.8 — TurnEngine orchestration
 
@@ -633,13 +633,13 @@ Historical context only — do not treat unchecked boxes here as current work (T
 - [x] **Depends on:** 5.8, 5.1
 - [x] **Files:** `domain/rules/TurnEngine.kt`
 - [x] **Acceptance:** Turn 20 complete ends game; equal scores → `MatchResult.TurnLimit(winner=null)`.
-- [x] **Rulebook:** n/a — base-game substitute; see [ARCHITECTURE.md win conditions](backend/ARCHITECTURE.md#base-game-win-conditions)
+- [x] **Rulebook:** n/a — base-game substitute; see [ARCHITECTURE.md win conditions](../backend/ARCHITECTURE.md#base-game-win-conditions)
 
 ---
 
 ## Phase 6: Application and API
 
-> **Architecture:** [Application layer](backend/ARCHITECTURE.md#application-layer), [API design](backend/ARCHITECTURE.md#api-design)
+> **Architecture:** [Application layer](../backend/ARCHITECTURE.md#application-layer), [API design](../backend/ARCHITECTURE.md#api-design)
 
 **Build order (thin slices, bottom-up):**
 
@@ -647,8 +647,8 @@ Historical context only — do not treat unchecked boxes here as current work (T
 |-------|------------|-------|
 | `infrastructure/` | Production adapters (dice, in-memory repo) | 6.1, 6.3 |
 | Spring beans | Wire adapters, catalogs, domain rule components | 6.2, 6.4 |
-| `application/` | [MatchGame](backend/src/main/kotlin/com/mhaefele/gridiron/application/MatchGame.kt) — load → mutate → save | 6.3 |
-| `api/` | **Entry point** — thin `@RestController` delegates to [MatchGame](backend/src/main/kotlin/com/mhaefele/gridiron/application/MatchGame.kt) | 6.4 |
+| `application/` | [MatchGame](../backend/src/main/kotlin/com/mhaefele/gridiron/application/MatchGame.kt) — load → mutate → save | 6.3 |
+| `api/` | **Entry point** — thin `@RestController` delegates to [MatchGame](../backend/src/main/kotlin/com/mhaefele/gridiron/application/MatchGame.kt) | 6.4 |
 
 **No pass-through service layer.** Annotated controller methods *are* the application actions: load state, call `MatchSetup` / legal-move queries / `ActionResolver` / `TurnEngine`, persist, return `MatchState`. Shared logic between verb endpoints may be `private` helpers or package-internal functions in `api/` — **not** a `MatchService` bean with one method per HTTP route (that duplicates the API for no gain). **Acceptance is API/system tests** driving `POST/GET /api/matches` and verb actions.
 
@@ -670,7 +670,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ### Task 6.3 — Match persistence (repository + MatchGame)
 
-- [x] **Goal:** Save/load `MatchState` by `MatchId`; [MatchGame](backend/src/main/kotlin/com/mhaefele/gridiron/application/MatchGame.kt) owns load → mutate → save.
+- [x] **Goal:** Save/load `MatchState` by `MatchId`; [MatchGame](../backend/src/main/kotlin/com/mhaefele/gridiron/application/MatchGame.kt) owns load → mutate → save.
 - [x] **Depends on:** 5.3
 - [x] **Files:** `infrastructure/InMemoryMatchRepository.kt`, `application/MatchGame.kt`, `application/MatchNotFoundException.kt`
 - [x] **Acceptance:** Save then find returns equal state; missing id throws `MatchNotFoundException`; `MatchGame` round-trips persisted state.
@@ -678,7 +678,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ### Task 6.4 — Match API (controller entry points)
 
-- [x] **Goal:** `POST/GET /api/matches`, `GET .../legal-actions`, separate `POST .../run|mark|throw|block|sidestep|stand-up|reserves` — **not** a single `/actions` endpoint with type discriminator. Request DTOs where input differs from domain; return `MatchState` (and `List<LegalAction>` for legal-actions) when shapes align. **[MatchGame](backend/src/main/kotlin/com/mhaefele/gridiron/application/MatchGame.kt) owns load → mutate → save**; controllers and test bootstrap delegate — no ad-hoc `repository.save` in tests or controllers.
+- [x] **Goal:** `POST/GET /api/matches`, `GET .../legal-actions`, separate `POST .../run|mark|throw|block|sidestep|stand-up|reserves` — **not** a single `/actions` endpoint with type discriminator. Request DTOs where input differs from domain; return `MatchState` (and `List<LegalAction>` for legal-actions) when shapes align. **[MatchGame](../backend/src/main/kotlin/com/mhaefele/gridiron/application/MatchGame.kt) owns load → mutate → save**; controllers and test bootstrap delegate — no ad-hoc `repository.save` in tests or controllers.
 - [x] **Depends on:** 6.2, 6.3, 3.10, 4.8, 5.8, 5.4
 - [x] **Files:** `api/MatchController.kt`, `api/dto/request/*.kt`, `api/dto/response/*.kt`, `api/mapping/MatchCommandMapping.kt`, `application/MatchGame.kt`, `api/ApiExceptionHandler.kt`
 - [x] **Acceptance:** HTTP test creates match and submits one run successfully; invalid action returns error response not 500. **`POST /api/matches` uses `setupMatchWithCoinToss` + injected dice.** **Action POSTs run `ActionResolver` only during `PLAYER_ACTION`; when `actionsRemaining` hits 0, `TurnEngine` advances before response** — no client `advance-turn` endpoint. **`GET .../legal-actions` empty when not in `PLAYER_ACTION` or game over.** `/health` and `/api/matches` both respond.
@@ -688,20 +688,20 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ## Phase 7: Testing
 
-> **Architecture:** [Testing strategy](backend/ARCHITECTURE.md#testing-strategy) — **TDD when practical**; **fluent, English-readable tests**; **parameterized tests** where inputs repeat; **broad invariant tests** over many moves/states; **pure domain tests** (no Spring); **API tests** for whole-system flows; Spring **boots once** per suite; never mock-heavy tests. **HTTP for setup when the product allows it** (including inside fixture builders); **direct fixtures** for mid-game state the API should not expose. **Convention over configuration** — override only what each test cares about.
+> **Architecture:** [Testing strategy](../backend/ARCHITECTURE.md#testing-strategy) — **TDD when practical**; **fluent, English-readable tests**; **parameterized tests** where inputs repeat; **broad invariant tests** over many moves/states; **pure domain tests** (no Spring); **API tests** for whole-system flows; Spring **boots once** per suite; never mock-heavy tests. **HTTP for setup when the product allows it** (including inside fixture builders); **direct fixtures** for mid-game state the API should not expose. **Convention over configuration** — override only what each test cares about.
 
 ### Task 7.0 — Test fixture builders
 
-- [ ] **Goal:** Extend **[GameScenario](backend/src/test/kotlin/com/mhaefele/gridiron/support/GameScenario.kt)** (seed in place) with fluent convention-over-configuration builders — e.g. `.withHomePlayer()`, `.withActionsRemaining(n)`, `.homeRunsToMark()`, optional API-backed `matchViaApi()`. Every test eventually starts from the harness, requesting only as much game as it needs. Builders may call real HTTP when setup is naturally API-reachable. Sensible hardcoded defaults for coordinates and ids when tests do not depend on them.
+- [ ] **Goal:** Extend **[GameScenario](../backend/src/test/kotlin/com/mhaefele/gridiron/support/GameScenario.kt)** (seed in place) with fluent convention-over-configuration builders — e.g. `.withHomePlayer()`, `.withActionsRemaining(n)`, `.homeRunsToMark()`, optional API-backed `matchViaApi()`. Every test eventually starts from the harness, requesting only as much game as it needs. Builders may call real HTTP when setup is naturally API-reachable. Sensible hardcoded defaults for coordinates and ids when tests do not depend on them.
 - [ ] **Depends on:** 5.3
 - [ ] **Files:** `backend/src/test/kotlin/.../support/GameScenario.kt` (extend), `MatchFixtures.kt`, `MatchScenario.kt` (API-backed fluent wrapper)
 - [ ] **Acceptance:** Domain test can build a marked-player scenario in ≤3 meaningful overrides; API test can read like English via fluent scenario helper; mid-game state via repository or API as appropriate; no production setup endpoints added.
 - [ ] **Rulebook:** n/a
-- [ ] **Note:** **Partial** — `GameScenario`, `BoardScenario`, `TurnContextScenario`, and `matchState()` / [MatchFixtures.kt](backend/src/test/kotlin/com/mhaefele/gridiron/support/MatchFixtures.kt) are in place; fluent mid-game chains and `matchViaApi()` still open.
+- [ ] **Note:** **Partial** — `GameScenario`, `BoardScenario`, `TurnContextScenario`, and `matchState()` / [MatchFixtures.kt](../backend/src/test/kotlin/com/mhaefele/gridiron/support/MatchFixtures.kt) are in place; fluent mid-game chains and `matchViaApi()` still open.
 
 ### Task 7.1 — Shared API test base (Spring boots once)
 
-- [x] **Goal:** [BaseApiTest](backend/src/test/kotlin/com/mhaefele/gridiron/integration/support/BaseApiTest.kt) shared by all API tests; [GridironApiClient](backend/src/test/kotlin/com/mhaefele/gridiron/integration/support/GridironApiClient.kt) for typed HTTP (success → Kotlin object, error → `HttpStatusCodeException`); `@Import(DeterministicDiceRoller::class)`; dice `reset()`/`queue()` in `@BeforeEach` on the **same bean** (no per-test `@MockBean`, no `@DirtiesContext`). **Delete [GridironApplicationTests](backend/src/test/kotlin/com/mhaefele/gridiron/GridironApplicationTests.kt)** once the first real API test extends this base.
+- [x] **Goal:** [BaseApiTest](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/support/BaseApiTest.kt) shared by all API tests; [GridironApiClient](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/support/GridironApiClient.kt) for typed HTTP (success → Kotlin object, error → `HttpStatusCodeException`); `@Import(DeterministicDiceRoller::class)`; dice `reset()`/`queue()` in `@BeforeEach` on the **same bean** (no per-test `@MockBean`, no `@DirtiesContext`). **Delete [GridironApplicationTests](../backend/src/test/kotlin/com/mhaefele/gridiron/GridironApplicationTests.kt)** once the first real API test extends this base.
 - [x] **Depends on:** 6.4, 7.0
 - [x] **Files:** `backend/src/test/kotlin/.../integration/support/BaseApiTest.kt`, `ApiTestConfiguration.kt`, `application-test.yml`
 - [x] **Acceptance:** All API test classes extend base; Spring context cache hit (one startup per suite run); zero `@MockBean` on application code; sample HTTP create + GET works.
@@ -727,7 +727,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 - [x] **Goal:** Representative API scenario proving HTTP wiring for run/mark — reach state via `POST /api/matches` and HTTP actions where possible; use 7.0 fixtures + repository only if mid-game setup would require invented API. Not every path edge case (see 7.2–7.3).
 - [x] **Depends on:** 7.0, 7.1, 4.15, 4.16
-- [x] **Files:** `backend/src/test/kotlin/.../integration/MovementDrillApiTest.kt`, [MatchApiTest.kt](backend/src/test/kotlin/com/mhaefele/gridiron/integration/MatchApiTest.kt), [MovementApiTest.kt](backend/src/test/kotlin/com/mhaefele/gridiron/integration/MovementApiTest.kt)
+- [x] **Files:** `backend/src/test/kotlin/.../integration/MovementDrillApiTest.kt`, [MatchApiTest.kt](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/MatchApiTest.kt), [MovementApiTest.kt](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/MovementApiTest.kt)
 - [x] **Acceptance:** Illegal run returns error; valid mark updates GET response; extends `BaseApiTest`.
 - [x] **Rulebook:** pp. 5, 16
 
@@ -783,7 +783,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 - [x] **Goal:** Broad-coverage test(s): from a fully deployed default board, enumerate legal moves played via HTTP asserting **invariants** — occupancy consistent, at most one ball per square, action budget valid, etc. **Use `@ParameterizedTest` with `@MethodSource` per case** so failures identify the offending action.
 - [x] **Depends on:** 3.10, 4.9, 7.0
-- [x] **Files:** `backend/src/test/kotlin/.../integration/LegalMovesInvariantApiTest.kt`, [BoardAssertions.kt](backend/src/test/kotlin/com/mhaefele/gridiron/integration/support/BoardAssertions.kt)
+- [x] **Files:** `backend/src/test/kotlin/.../integration/LegalMovesInvariantApiTest.kt`, [BoardAssertions.kt](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/support/BoardAssertions.kt)
 - [x] **Acceptance:** Each legal move is a parameter row; single clear invariant per test method; readable fluent setup; extends `BaseApiTest`.
 - [x] **Rulebook:** n/a
 
@@ -801,7 +801,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ## Phase 8: Client API & event protocol *(done)*
 
-> **Architecture:** [API design](backend/ARCHITECTURE.md#api-design) (commands, events, response DTOs)
+> **Architecture:** [API design](../backend/ARCHITECTURE.md#api-design) (commands, events, response DTOs)
 > **Done:** Synchronous client wire shapes — self-describing events, response DTOs, slim create/action envelopes, Jackson peeled off internal domain types ([TD.8](#td8--slim-match-state-json-for-clients)). Async push / hydrate / `InputRequired` follow in [Phase 9](#phase-9-async-client-protocol) *(also done)*.
 
 **Historical order:** Client read DTOs first ([8.1](#task-81--piece-snapshot-read-api)–[8.4](#task-84--match-game-state-read-api)), then slim action/create envelopes ([8.5](#task-85--slim-action-response-events--snapshot-no-board), [8.9](#task-89--slim-create-match-response)).
@@ -810,9 +810,9 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 **Wire shape — no `ballId` on the client:** expose **`holdsBall`** on each player and **`looseBallLocations`** (coordinates only) on [PieceSnapshotDto](#task-81--piece-snapshot-read-api). Balls out of play (e.g. touchdown) are absent from both.
 
-**Jackson cleanup:** Once a domain or persisted type is **no longer serialized on the HTTP boundary**, remove `@Json*` / dedicated serializers that existed only for that exposure. Wire annotations belong on **`api/dto/response/`** (or request DTOs). Keep `JacksonConfiguration` for cross-cutting needs DTOs still require. See [TD.10](BACKLOG.md#td10--extract-shared-package-after-dto-work) for further `shared/` consolidation.
+**Jackson cleanup:** Once a domain or persisted type is **no longer serialized on the HTTP boundary**, remove `@Json*` / dedicated serializers that existed only for that exposure. Wire annotations belong on **`api/dto/response/`** (or request DTOs). Keep `JacksonConfiguration` for cross-cutting needs DTOs still require. See [TD.10](../BACKLOG.md#td10--extract-shared-package-after-dto-work) for further `shared/` consolidation.
 
-**Legal actions:** `GET .../legal-actions` returns [LegalAction](backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) from `api/dto/response/` — ephemeral query output; no parallel duplicate type.
+**Legal actions:** `GET .../legal-actions` returns [LegalAction](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) from `api/dto/response/` — ephemeral query output; no parallel duplicate type.
 
 ### Task 8.1 — Piece snapshot DTO
 
@@ -884,7 +884,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ### Task 8.10 — Legal actions API (same shape, response DTO)
 
-- [x] **Goal:** **`GET .../legal-actions` unchanged for clients** — same logical payload. Move [LegalAction](backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) to `api/dto/response/`; Jackson polymorphism stays on that type.
+- [x] **Goal:** **`GET .../legal-actions` unchanged for clients** — same logical payload. Move [LegalAction](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) to `api/dto/response/`; Jackson polymorphism stays on that type.
 - [x] **Depends on:** 8.5
 - [x] **Files:** `api/dto/response/LegalAction.kt`, `api/MatchController.kt`, `game/legalmoves/LegalMoves.kt`
 - [x] **Acceptance:** Controller returns `List<LegalAction>` from `api/dto/response/`; legal-actions JSON shape unchanged; legal-move generators construct the response type directly.
@@ -906,7 +906,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 >
 > **Prerequisite:** board-patchable [DomainEvent](#task-87--every-event-reconstructs-board-deltas) ([8.6](#task-86--dice-events-threshold-and-outcome), [8.7](#task-87--every-event-reconstructs-board-deltas)).
 >
-> **Architecture:** [ARCHITECTURE.md § Event stream](backend/ARCHITECTURE.md#event-stream-phase-9).
+> **Architecture:** [ARCHITECTURE.md § Event stream](../backend/ARCHITECTURE.md#event-stream-phase-9).
 
 ### Phase 9 tech choices (locked)
 
@@ -934,7 +934,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
   - [x] `MatchGame` appends to `InMemoryDomainEventRepository`, publishes `StoredDomainEvent` to hub (same ids as inline action POST `events`).
   - [x] Reconnect: controller queries `findByMatchIdAfter` and publishes onto the new sink; hub is live fan-out only.
   - [x] Integration test (via [9.2](#task-92--stream-test-client)): subscribe → POST run → stream receives matching ordered events within timeout.
-  - [x] Reconnect/catch-up strategy documented in [ARCHITECTURE.md](backend/ARCHITECTURE.md#event-stream-phase-9) (controller repo replay).
+  - [x] Reconnect/catch-up strategy documented in [ARCHITECTURE.md](../backend/ARCHITECTURE.md#event-stream-phase-9) (controller repo replay).
 - [x] **Rulebook:** n/a
 
 ### Task 9.2 — Stream test client
@@ -946,20 +946,20 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ### Task 9.5 — Mutable sync snapshot (hydrate for SSE)
 
-- [x] **Goal:** One GET that returns **all mutable match state needed to hydrate a live client**, including `lastEventId`, so init is: snapshot → `GET .../events` with `Last-Event-ID`. Consolidated Phase 8 split mutable reads (`pieces` + `game-state` DTOs) into [MatchSnapshotDto](backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/MatchSnapshotDto.kt); TD.8 had already retired fat `GET /api/matches/{id}`.
+- [x] **Goal:** One GET that returns **all mutable match state needed to hydrate a live client**, including `lastEventId`, so init is: snapshot → `GET .../events` with `Last-Event-ID`. Consolidated Phase 8 split mutable reads (`pieces` + `game-state` DTOs) into [MatchSnapshotDto](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/MatchSnapshotDto.kt); TD.8 had already retired fat `GET /api/matches/{id}`.
 - [x] **Depends on:** 8.1, 8.4, 9.1 (`lastEventId` on `MatchState` / `MatchSnapshotDto`)
 - [x] **Out of scope:** static pitch layout ([8.2](#task-82--pitch-layout-read-api)) and roster cards ([8.3](#task-83--match-roster-read-api)) — load separately at join; do not re-bundle into this snapshot.
 - [x] **Files:** `MatchSnapshotDto`, `GET .../snapshot`, create/action responses use `snapshot`; retired standalone `pieces` / `game-state` GETs
 - [x] **Acceptance:**
   - [x] One endpoint returns piece positions + HUD fields + `lastEventId` in one response (atomic relative to the event log cursor).
   - [x] Integration: create/play → hydrate → subscribe with returned `lastEventId` → no duplicate/missed patches for subsequent actions.
-  - [x] Documented client init in [ARCHITECTURE.md](backend/ARCHITECTURE.md#event-stream-phase-9): join (pitch + roster) → hydrate → SSE; reconnect = hydrate → re-subscribe.
+  - [x] Documented client init in [ARCHITECTURE.md](../backend/ARCHITECTURE.md#event-stream-phase-9): join (pitch + roster) → hydrate → SSE; reconnect = hydrate → re-subscribe.
   - [x] Phase 8 split mutable GETs consolidated into this endpoint.
 - [x] **Rulebook:** n/a
 
 ### Task 9.4 — Input-required events (pull legal moves on demand)
 
-- [x] **Goal:** Stream emits **`InputRequired`** when the server needs coach input (active player's turn, [F.1](BACKLOG.md#f1--pending-action--coach-prompt-flow) prompt, etc.). Client calls `GET .../legal-actions`, presents choices, POSTs command. Legal moves are **not** embedded in the event. Replaces a separate HTTP `nextStep` field — stream + hydrate are enough for “what to do next.”
+- [x] **Goal:** Stream emits **`InputRequired`** when the server needs coach input (active player's turn, [F.1](../BACKLOG.md#f1--pending-action--coach-prompt-flow) prompt, etc.). Client calls `GET .../legal-actions`, presents choices, POSTs command. Legal moves are **not** embedded in the event. Replaces a separate HTTP `nextStep` field — stream + hydrate are enough for “what to do next.”
 - [x] **Depends on:** 9.1, 9.5, 8.10; F.1 for prompt variants
 - [x] **Files:** `DomainEvent.InputRequired` (+ `PlayerAction`); `MatchGame` appends after create/action; stream via hub
 - [x] **Acceptance:** Action / create append `playerActionRequired` for the active coach when still in `PLAYER_ACTION`; SSE carries it with resolution events; piece replay treats `InputRequired` as no-op. Prompt subclasses later via F.1.
@@ -969,7 +969,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ## Frontend (React GUI) — Phases 10–15
 
-> **Architecture:** [Frontend](frontend/ARCHITECTURE.md) · [System topology](ARCHITECTURE.md#module-boundaries)
+> **Architecture:** [Frontend](../frontend/ARCHITECTURE.md) · [System topology](../ARCHITECTURE.md#module-boundaries)
 >
 > The client **draws state and submits commands** — it never re-implements rules. Backend Phases 0–9 (the whole client surface: REST verbs, `legal-actions`, `snapshot`, `pitch`, `roster`, SSE `events`, `InputRequired`) are done and are the contract these phases consume. Geometry is data-driven from `PitchLayoutDto`; nothing hardcodes the pitch size or re-derives rules from the PDF.
 >
@@ -977,7 +977,7 @@ Historical context only — do not treat unchecked boxes here as current work (T
 
 ### Module convention for these phases
 
-Tasks that touch the Kotlin server are tagged **Module: backend** (under `backend/`, follow [backend/.cursor/rules](backend/.cursor/rules/)). **Every other task is frontend** (TypeScript under `frontend/`, follows [frontend/.cursor/rules](frontend/.cursor/rules/)). A "lesser" agent should read the task's **Architecture** link and the linked DTO/source files before starting, and obey the rules for that module.
+Tasks that touch the Kotlin server are tagged **Module: backend** (under `backend/`, follow [backend/.cursor/rules](../backend/.cursor/rules/)). **Every other task is frontend** (TypeScript under `frontend/`, follows [frontend/.cursor/rules](../frontend/.cursor/rules/)). A "lesser" agent should read the task's **Architecture** link and the linked DTO/source files before starting, and obey the rules for that module.
 
 ### Backend enablers (do these first — gathered as Phase A)
 
@@ -1017,7 +1017,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## Phase A: Backend enablers (do first — tight review)
 
-> **Architecture:** [Frontend § API & DTO synchronization](frontend/ARCHITECTURE.md#api--dto-synchronization), [System § shared contract](ARCHITECTURE.md#shared-contract--keep-the-two-modules-in-lockstep)
+> **Architecture:** [Frontend § API & DTO synchronization](../frontend/ARCHITECTURE.md#api--dto-synchronization), [System § shared contract](../ARCHITECTURE.md#shared-contract--keep-the-two-modules-in-lockstep)
 >
 > Every **backend-module** task the GUI needs, gathered up front. Do these **first**, reviewed commit-by-commit like Phases 0–9 — they change the Kotlin server (`pom.xml`, `DomainEvent`, `TurnEngine`, Spring config), so finishing them before the frontend blast keeps the two review styles from mixing. **Task IDs are retained from their original phases** (`10b.1`, `10b.2`, `13.6`, `15.1`) so every cross-reference elsewhere stays valid. Suggested order: `10b.1 → 10b.2 → 13.6 → 15.1`.
 
@@ -1035,7 +1035,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 - [x] **Module:** backend
 - [x] **Goal:** Ensure `DomainEvent` and `LegalAction` appear in the spec as `oneOf` + `discriminator: kind` so codegen yields TS discriminated unions (enables the exhaustive `applyEvent` switch).
 - [x] **Depends on:** 10b.1
-- [x] **Files:** [OpenApiSealedTypesConfiguration.kt](backend/src/main/kotlin/com/mhaefele/gridiron/spring/OpenApiSealedTypesConfiguration.kt) — springdoc only inferred `discriminator.propertyName`; it did not emit `oneOf`/`mapping`, and `@Schema(oneOf)` conflicts with `@JsonSubTypes`. Customizer rewrites both parents from Jackson annotations and flattens leaf schemas (breaks parent↔child `allOf` cycles).
+- [x] **Files:** [OpenApiSealedTypesConfiguration.kt](../backend/src/main/kotlin/com/mhaefele/gridiron/spring/OpenApiSealedTypesConfiguration.kt) — springdoc only inferred `discriminator.propertyName`; it did not emit `oneOf`/`mapping`, and `@Schema(oneOf)` conflicts with `@JsonSubTypes`. Customizer rewrites both parents from Jackson annotations and flattens leaf schemas (breaks parent↔child `allOf` cycles).
 - [x] **Acceptance:** Spec `components.schemas` for both types use `oneOf` with a `kind` discriminator mapping every subtype; a smoke test asserts each subtype name is present.
 - [x] **Rulebook:** n/a
 
@@ -1043,10 +1043,10 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 - [x] **Module:** backend
 - [x] **Goal:** Close the HUD-on-stream gap at the source. Today the SSE stream carries board patches + `InputRequired` only; HUD fields (`turnNumber`, `phase`, `activeCoach`, `actionsRemaining`, and non-touchdown score changes) are **not** individual events, so a pure spectator cannot keep the HUD live from the stream alone. Emit turn/progress changes as `DomainEvent`s (e.g. granular `TurnAdvanced(activeCoach, turnNumber, phase)` and an action-budget delta, plus confirm score is fully derivable — `TouchdownScored` already covers touchdown points) so the client folds HUD state from the stream like any other patch.
-- [x] **Depends on:** 8.6, 8.7, 9.1 (all done); related to [F.6](BACKLOG.md#f6--per-player-action-constraints-on-the-wire-open). Domain turn fold ([TD.9](#td9--event-driven-turn-and-progress-updates-wont-do)) won't do — mutator dual-write + stream events suffice.
-- [x] **Files:** [DomainEvent.kt](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/dto/DomainEvent.kt) (new variants + `@JsonSubTypes` registration), [MatchMutator.kt](backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/MatchMutator.kt) (record each HUD beat in the same verb that mutates turn/progress), integration + turn-engine tests with a HUD fold oracle
-- [x] **Acceptance:** After each action and each turn advance, the stream carries the HUD deltas; a spectator folding **only** events keeps `turnNumber` / `phase` / `activeCoach` / `actionsRemaining` / scores consistent with `GET .../snapshot`; inline action-POST `events` and existing patch clients are unaffected (new kinds are additive); frontend `applyEvent` gains arms for the new kinds and drops the 13.5 refresh. Update the [frontend HUD-gap note](frontend/ARCHITECTURE.md#known-gap--hud-is-not-on-the-event-stream) once shipped.
-- [x] **Note (shipped):** Lean on [MatchMutator](backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/MatchMutator.kt) — named beats (`teamActionConsumed`, `turnEnded`, `turnBegan`, `playerActionPhaseOpened`, `matchEnded`), not a generic "value changed" dump. Coach handoff lives inside `startTurn` (no separate swap event). [TD.9](#td9--event-driven-turn-and-progress-updates-wont-do) (fold turn state *from* events) won't do.
+- [x] **Depends on:** 8.6, 8.7, 9.1 (all done); related to [F.6](../BACKLOG.md#f6--per-player-action-constraints-on-the-wire-open). Domain turn fold ([TD.9](#td9--event-driven-turn-and-progress-updates-wont-do)) won't do — mutator dual-write + stream events suffice.
+- [x] **Files:** [DomainEvent.kt](../backend/src/main/kotlin/com/mhaefele/gridiron/game/action/dto/DomainEvent.kt) (new variants + `@JsonSubTypes` registration), [MatchMutator.kt](../backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/MatchMutator.kt) (record each HUD beat in the same verb that mutates turn/progress), integration + turn-engine tests with a HUD fold oracle
+- [x] **Acceptance:** After each action and each turn advance, the stream carries the HUD deltas; a spectator folding **only** events keeps `turnNumber` / `phase` / `activeCoach` / `actionsRemaining` / scores consistent with `GET .../snapshot`; inline action-POST `events` and existing patch clients are unaffected (new kinds are additive); frontend `applyEvent` gains arms for the new kinds and drops the 13.5 refresh. Update the [frontend HUD-gap note](../frontend/ARCHITECTURE.md#known-gap--hud-is-not-on-the-event-stream) once shipped.
+- [x] **Note (shipped):** Lean on [MatchMutator](../backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/MatchMutator.kt) — named beats (`teamActionConsumed`, `turnEnded`, `turnBegan`, `playerActionPhaseOpened`, `matchEnded`), not a generic "value changed" dump. Coach handoff lives inside `startTurn` (no separate swap event). [TD.9](#td9--event-driven-turn-and-progress-updates-wont-do) (fold turn state *from* events) won't do.
 - [x] **Rulebook:** n/a
 
 ### Task 15.1 — Seedable RNG backend test profile (enabler)
@@ -1062,7 +1062,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## Phase 10: Frontend Foundation
 
-> **Architecture:** [Frontend § Tech stack](frontend/ARCHITECTURE.md#tech-stack), [§ Directory layout](frontend/ARCHITECTURE.md#directory-layout)
+> **Architecture:** [Frontend § Tech stack](../frontend/ARCHITECTURE.md#tech-stack), [§ Directory layout](../frontend/ARCHITECTURE.md#directory-layout)
 >
 > Goal: a running Vite/React/TypeScript app shell with strict typing, lint, agent rules, and context hygiene — no game logic yet.
 
@@ -1079,12 +1079,12 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 - [x] **Depends on:** 10.1, 6.4 (done)
 - [x] **Files:** `frontend/vite.config.ts` (`server.proxy` for `/api`)
 - [x] **Acceptance:** With the backend running, the dev client can `POST /api/matches`, `GET .../snapshot`, and open `GET .../events` through the proxy without CORS errors, and SSE frames flush (no proxy buffering).
-- [x] **Note:** Backend CORS for true cross-origin hosting is parked under [P.1](BACKLOG.md#p1--backend-cors-if-ui-and-api-are-different-origins) (unlikely soon — this proxy is enough for local hobby use). Also proxies `/v3/api-docs` for type generation.
+- [x] **Note:** Backend CORS for true cross-origin hosting is parked under [P.1](../BACKLOG.md#p1--backend-cors-if-ui-and-api-are-different-origins) (unlikely soon — this proxy is enough for local hobby use). Also proxies `/v3/api-docs` for type generation.
 - [x] **Rulebook:** n/a
 
 ### Task 10.2 — Strict TypeScript + lint/format
 
-- [x] **Goal:** Enable `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`; ESLint (ban `any`) + Prettier aligned with [code-style](.cursor/rules/code-style.mdc) (four-space indent, flow over wrapping).
+- [x] **Goal:** Enable `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`; ESLint (ban `any`) + Prettier aligned with [code-style](../.cursor/rules/code-style.mdc) (four-space indent, flow over wrapping).
 - [x] **Depends on:** 10.1
 - [x] **Files:** `tsconfig.json`, `.eslintrc.*`, `.prettierrc`
 - [x] **Acceptance:** `npm run lint` and `tsc --noEmit` pass on the scaffold; `any` triggers a lint error.
@@ -1099,7 +1099,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ### Task 10.4 — App shell and screen routing
 
-- [x] **Goal:** Screen scaffolding for create/join, play, and game-over ([Frontend § Screen map](frontend/ARCHITECTURE.md#screen-map)); no data wiring yet.
+- [x] **Goal:** Screen scaffolding for create/join, play, and game-over ([Frontend § Screen map](../frontend/ARCHITECTURE.md#screen-map)); no data wiring yet.
 - [x] **Depends on:** 10.1
 - [x] **Files:** `src/app/`, `src/main.tsx`
 - [x] **Acceptance:** Navigable empty screens; play view lays out placeholders for pitch, HUD, legal-action panel, event log.
@@ -1122,7 +1122,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## Phase 10b: API type-sync tooling
 
-> **Architecture:** [Frontend § API & DTO synchronization](frontend/ARCHITECTURE.md#api--dto-synchronization), [System § shared contract](ARCHITECTURE.md#shared-contract--keep-the-two-modules-in-lockstep)
+> **Architecture:** [Frontend § API & DTO synchronization](../frontend/ARCHITECTURE.md#api--dto-synchronization), [System § shared contract](../ARCHITECTURE.md#shared-contract--keep-the-two-modules-in-lockstep)
 >
 > Goal: turn the backend OpenAPI spec (produced in [Phase A](#phase-a-backend-enablers-do-first--tight-review)) into typed TypeScript and a thin runtime client. **Frontend-only** — OpenAPI + discriminators are Phase A ([10b.1](#task-10b1--backend-openapi-spec), [10b.2](#task-10b2--sealed-types-as-discriminated-schemas)); the Vite proxy is [10.7](#task-107--vite-dev-proxy). Frontend generates **types only**; a **local** drift check catches staleness (no cloud CI — see [playbook](#auto-run-playbook-hobby-project)). No hand-written DTO mirrors.
 
@@ -1153,7 +1153,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## Phase 11: Pitch & HUD rendering
 
-> **Architecture:** [Frontend § Rendering](frontend/ARCHITECTURE.md#rendering--responsiveness), [§ State model](frontend/ARCHITECTURE.md#state-model)
+> **Architecture:** [Frontend § Rendering](../frontend/ARCHITECTURE.md#rendering--responsiveness), [§ State model](../frontend/ARCHITECTURE.md#state-model)
 >
 > Goal: draw a match from the read APIs — read-only, no interaction yet.
 
@@ -1196,7 +1196,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## Phase 12: Interactive actions
 
-> **Architecture:** [Frontend § Rendering (affordances)](frontend/ARCHITECTURE.md#rendering--responsiveness), backend [§ API endpoints](backend/ARCHITECTURE.md#api-endpoints-base-game)
+> **Architecture:** [Frontend § Rendering (affordances)](../frontend/ARCHITECTURE.md#rendering--responsiveness), backend [§ API endpoints](../backend/ARCHITECTURE.md#api-endpoints-base-game)
 >
 > Goal: the active coach picks and submits actions; the client maps choices to request DTOs and reconciles from the response.
 
@@ -1232,7 +1232,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## Phase 13: Event-driven live updates
 
-> **Architecture:** [Frontend § The event-driven loop](frontend/ARCHITECTURE.md#the-event-driven-loop-responsiveness-during-the-opponents-turn), [§ event-fold reducer](frontend/ARCHITECTURE.md#the-event-fold-reducer)
+> **Architecture:** [Frontend § The event-driven loop](../frontend/ARCHITECTURE.md#the-event-driven-loop-responsiveness-during-the-opponents-turn), [§ event-fold reducer](../frontend/ARCHITECTURE.md#the-event-fold-reducer)
 >
 > Goal: the UI stays live during any coach's turn via SSE, folding `DomainEvent` patches and becoming interactive only on `InputRequired`.
 
@@ -1263,7 +1263,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 - [x] **Depends on:** 13.2, 12.1
 - [x] **Files:** `src/state/store.ts`, `src/app/Play.tsx`
 - [x] **Acceptance:** Legal-action UI appears only when it is this coach's turn; opponent turns render live but non-interactive.
-- [x] **Note (seat identity):** v1 is **hotseat** — one browser, and "the local coach" is simply the active coach (`snapshot.gameState.activeCoach`), so gating reduces to "are we in `PLAYER_ACTION`." A true two-client seat model (this browser controls HOME only) needs the backend to tell a client which seat it holds — deferred until multiplayer/auth lands (see [system § auth/seats](ARCHITECTURE.md#client--engine-contract-summary)). Design the gate around a `localCoach` value so swapping "active coach" for a real seat later is a one-line change.
+- [x] **Note (seat identity):** v1 is **hotseat** — one browser, and "the local coach" is simply the active coach (`snapshot.gameState.activeCoach`), so gating reduces to "are we in `PLAYER_ACTION`." A true two-client seat model (this browser controls HOME only) needs the backend to tell a client which seat it holds — deferred until multiplayer/auth lands (see [system § auth/seats](../ARCHITECTURE.md#client--engine-contract-summary)). Design the gate around a `localCoach` value so swapping "active coach" for a real seat later is a one-line change.
 
 ### Task 13.5 — Spectator HUD via snapshot refresh (frontend, v1 fallback)
 
@@ -1279,7 +1279,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## Phase 14: Assets & theming
 
-> **Architecture:** [Frontend § Assets](frontend/ARCHITECTURE.md#assets)
+> **Architecture:** [Frontend § Assets](../frontend/ARCHITECTURE.md#assets)
 >
 > Goal: swappable AI-generated art behind an `AssetRegistry`; responsive, accessible, themed.
 
@@ -1292,7 +1292,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ### Task 14.2 — Generate MVP token & icon art
 
-- [x] **Goal:** Produce the image files for Dwarves (lineman, runner, blitzer, doom seeker) and Orcs (lineman, thrower, blitzer, bruiser) plus ball and dice-face icons. **This is the image-generation step** — the source of truth for what to generate is the prompt set in [Frontend § MVP generation prompts](frontend/ARCHITECTURE.md#mvp-generation-prompts).
+- [x] **Goal:** Produce the image files for Dwarves (lineman, runner, blitzer, doom seeker) and Orcs (lineman, thrower, blitzer, bruiser) plus ball and dice-face icons. **This is the image-generation step** — the source of truth for what to generate is the prompt set in [Frontend § MVP generation prompts](../frontend/ARCHITECTURE.md#mvp-generation-prompts).
 - [x] **Depends on:** 14.1
 - [x] **Files:** `src/assets/tokens/**`, `src/assets/ui/**`
 - [x] **How to generate (pick one):**
@@ -1312,7 +1312,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## Phase 15: Full-system e2e
 
-> **Architecture:** [Frontend § Full-system integration testing](frontend/ARCHITECTURE.md#full-system-integration-testing-playwright), [System § Full-stack testing](ARCHITECTURE.md#full-stack-testing)
+> **Architecture:** [Frontend § Full-system integration testing](../frontend/ARCHITECTURE.md#full-system-integration-testing-playwright), [System § Full-stack testing](../ARCHITECTURE.md#full-stack-testing)
 >
 > Goal: one script boots real backend + real frontend + Playwright and drives a live match — black box, no mocks. Runs as a regular development step.
 >
@@ -1347,14 +1347,14 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 >
 > **Atmospheric / intricate graphics** live in a dedicated push: [Atmospheric graphics](#atmospheric-graphics-push). Prefer that after UX.1–2 so legal targets stay readable on richer art; enlarging squares and tokens is explicitly in scope.
 >
-> GUI ideas that need **new wire / domain data** (Open/Marked rings, “why can’t this player act”) live under [Future items](BACKLOG.md#future-items-base-game-later) with the backend enablers — not here. Sound cues are in the [parking lot](BACKLOG.md#parking-lot-unlikely-soon).
+> GUI ideas that need **new wire / domain data** (Open/Marked rings, “why can’t this player act”) live under [Future items](../BACKLOG.md#future-items-base-game-later) with the backend enablers — not here. Sound cues are in the [parking lot](../BACKLOG.md#parking-lot-unlikely-soon).
 >
-> **When the user asks what's next:** offer one of these, an [atmospheric graphics](#atmospheric-graphics-push) item, *or* a [Future item](BACKLOG.md#future-items-base-game-later) / [tech-debt](BACKLOG.md#tech-debt-cleanup) item.
+> **When the user asks what's next:** offer one of these, an [atmospheric graphics](#atmospheric-graphics-push) item, *or* a [Future item](../BACKLOG.md#future-items-base-game-later) / [tech-debt](../BACKLOG.md#tech-debt-cleanup) item.
 
 ### UX.1 — Selection-first action targeting
 
 - [x] **Goal:** Replace “highlight every legal square for every player at once” with a clearer two-step flow: (1) while it is the active coach’s turn, **highlight that coach’s eligible players** (tokens that have at least one legal action); (2) **click a player** to select them, then show **only that player’s** legal targets on the pitch. Color target squares **by `actionType`** (run / mark / sidestep / throw / block / stand-up / reserves); on **hover** over a highlighted square, show the action type (and throw range when relevant).
-- [x] **Pain today:** [12.1](#task-121--fetch-and-highlight-legal-actions) paints all `targetCoordinate`s together; the sidebar lists every player’s actions; selecting a token can also auto-fire a same-square action ([`Play.tsx`](frontend/src/app/Play.tsx)) — hard to see who can act and what a square means.
+- [x] **Pain today:** [12.1](#task-121--fetch-and-highlight-legal-actions) paints all `targetCoordinate`s together; the sidebar lists every player’s actions; selecting a token can also auto-fire a same-square action ([`Play.tsx`](../frontend/src/app/Play.tsx)) — hard to see who can act and what a square means.
 - [x] **Depends on:** 12.1, 12.2
 - [x] **Files:** `src/app/Play.tsx`, `src/render/Pitch.tsx`, `src/render/LegalActionPanel.tsx` (slim or retarget as a legend / selected-player list), token highlight styles
 - [x] **Acceptance:** No selected player → only eligible active-coach tokens are visually marked, pitch squares are not flooded with mixed targets; after selecting a player → squares for that player only, color-coded by action type; hover announces the action; click still POSTs the matching verb via existing dispatch.
@@ -1372,7 +1372,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### UX.3 — Exciting create-match pickers
 
 - [x] **Goal:** Replace plain `<select>` team/pitch pickers with **scrollable team cards** that surface team information (name, roster summary / positions, flavor) and a **pitch preview** (mini SVG or thumbnail of the layout) before `POST /api/matches`. This is the **interaction shell** — hero art itself is the [Atmospheric graphics](#atmospheric-graphics-push) card track ([GFX.9](#gfx9--team-selection-hero-cards), [GFX.12](#gfx12--selection-roster-lineup-strip), [GFX.13](#gfx13--home-vs-away-matchup-splash)).
-- [x] **Pain today:** [11.1](#task-111--create--join-screen-from-catalog) — catalog is `id` + `name` only; create screen is functional but bland ([`CreateMatch.tsx`](frontend/src/app/CreateMatch.tsx)).
+- [x] **Pain today:** [11.1](#task-111--create--join-screen-from-catalog) — catalog is `id` + `name` only; create screen is functional but bland ([`CreateMatch.tsx`](../frontend/src/app/CreateMatch.tsx)).
 - [x] **Depends on:** 11.1, 11.2 (pitch SVG reuse for preview); pair with [GFX.9](#gfx9--team-selection-hero-cards)+ for art (UI can land with placeholders, then swap via registry)
 - [x] **Files:** `src/app/CreateMatch.tsx`, new card/preview components; possibly richer `GET /api/catalog/teams` (roster summary / art keys) and/or a lightweight pitch-preview fetch — expand the catalog DTO only if cards need data the client cannot get from existing endpoints
 - [x] **Acceptance:** Coach browses team cards (not opaque dropdowns), sees a pitch preview for the selected layout, creates a match; still works with only Dwarves/Orcs + default/barricade until more catalog entries exist; card slots are sized for full trading-card art, not tiny thumbnails.
@@ -1390,7 +1390,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### UX.5 — Coach-facing turn banner + action pips
 
 - [x] **Goal:** Surface “who may act” in coach language, not engine phase names — e.g. “Your turn — 2 actions left” / “Waiting for Away” — and show `actionsRemaining` as **pips** (or an equally glanceable meter) instead of a meta footnote.
-- [x] **Pain today:** [Hud](frontend/src/render/Hud.tsx) prints raw phases (`PRE_TURN`, `PLAYER_ACTION`, …) and a small “Actions left: N”; spectating is only a line in the legal-actions panel.
+- [x] **Pain today:** [Hud](../frontend/src/render/Hud.tsx) prints raw phases (`PRE_TURN`, `PLAYER_ACTION`, …) and a small “Actions left: N”; spectating is only a line in the legal-actions panel.
 - [x] **Depends on:** 11.4, 13.2 (`gameState` on the stream)
 - [x] **Files:** `src/render/Hud.tsx`, play-screen CSS; optional seat prop if “Your turn” needs which coach this browser is
 - [x] **Acceptance:** Active coach and remaining actions are obvious without reading the event log; phase enum may stay available for debug but is not the primary label; spectating turn is visually distinct from interactive turn.
@@ -1399,7 +1399,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### UX.6 — Dice theatre overlay
 
 - [x] **Goal:** When `DiceRolled` arrives (action response or stream), show a short **on-pitch or HUD overlay** — block faces, D6 (armour / throw / etc.), D8 — that lingers ~1–2s (dismissible), instead of only appending log text.
-- [x] **Pain today:** [formatEvent](frontend/src/state/formatEvent.ts) writes dice into the event log only; outcomes feel sudden with no tabletop beat.
+- [x] **Pain today:** [formatEvent](../frontend/src/state/formatEvent.ts) writes dice into the event log only; outcomes feel sudden with no tabletop beat.
 - [x] **Depends on:** 13.1 (`diceRolled` already folded / logged)
 - [x] **Files:** new overlay component; wire from store / Play when `DiceRolled` is applied; CSS; respect `prefers-reduced-motion` (instant label ok)
 - [x] **Acceptance:** Block and key D6/D8 rolls are visible without scanning the log; final board state unchanged; overlay does not block submitting the next legal action after it settles (or while interactive).
@@ -1409,7 +1409,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### UX.7 — Action legend, hover intent, and square disambiguation
 
 - [x] **Goal:** Complete selection-first targeting: sticky **action-type color legend**; on hover of a highlighted square, announce **intent** (run / mark / throw + range / block **naming the target player** when the action is a block); when **more than one** legal action shares a square for the selected player, show a small chooser instead of first-match-wins.
-- [x] **Pain today:** [Play](frontend/src/app/Play.tsx) `findActionAtCoordinate` takes the first match; block and move can share a square; UX.1 colors help but newcomers still need a legend and unambiguous clicks.
+- [x] **Pain today:** [Play](../frontend/src/app/Play.tsx) `findActionAtCoordinate` takes the first match; block and move can share a square; UX.1 colors help but newcomers still need a legend and unambiguous clicks.
 - [x] **Depends on:** [UX.1](#ux1--selection-first-action-targeting)
 - [x] **Files:** `src/app/Play.tsx`, `src/render/Pitch.tsx`, legend component (or retargeted `LegalActionPanel`), hover tooltip
 - [x] **Acceptance:** Legend visible while targets are shown; hover copy matches the action that would POST; multi-action squares require an explicit choice; single-action squares still one-click.
@@ -1434,7 +1434,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ### UX.10 — Touchdown and match-end beat
 
-- [x] **Goal:** One emotional beat per score and at game over — end-zone wash or score pop on `TouchdownScored`, richer [GameOver](frontend/src/app/GameOver.tsx) summary (final score, winner) beyond a flat result string.
+- [x] **Goal:** One emotional beat per score and at game over — end-zone wash or score pop on `TouchdownScored`, richer [GameOver](../frontend/src/app/GameOver.tsx) summary (final score, winner) beyond a flat result string.
 - [x] **Depends on:** [UX.8](#ux8--outcome-flash) helpful but not required; 13.1 for events
 - [x] **Files:** Hud / Pitch flash hooks; `GameOver.tsx`
 - [x] **Acceptance:** Touchdown is unmistakable in the UI; match-end screen states winner/draw and scores clearly.
@@ -1491,14 +1491,14 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 >
 > **Scale is in scope:** enlarge square size, token radius, **and card surfaces** (selection carousel / player panel) even if that means scrolling or zoom on small viewports. Detail wins over packing everything into one phone screenful.
 >
-> **Art pipeline:** keep [AssetRegistry](frontend/ARCHITECTURE.md#assets) as the only path from render → files; regenerate / replace assets without component rewrites. Extend generation prompts in [frontend architecture](frontend/ARCHITECTURE.md#mvp-generation-prompts) as part of these tasks (document style bible from [`reference/`](reference/) scans). Empty `src/assets/cards/` is the intended home for team fronts, portraits, and (later) challenge faces.
+> **Art pipeline:** keep [AssetRegistry](../frontend/ARCHITECTURE.md#assets) as the only path from render → files; regenerate / replace assets without component rewrites. Extend generation prompts in [frontend architecture](../frontend/ARCHITECTURE.md#mvp-generation-prompts) as part of these tasks (document style bible from [`reference/`](../reference/) scans). Empty `src/assets/cards/` is the intended home for team fronts, portraits, and (later) challenge faces.
 >
 > Suggested order: **card track early** (GFX.9 → GFX.12 → GFX.13 → GFX.6, with [UX.3](#ux3--exciting-create-match-pickers) for the shell) ∥ **board track** (GFX.1 → GFX.2–3 → GFX.4–5) → chrome (GFX.7–8) → motion / explore (GFX.10–11). Challenge faces (GFX.14) whenever convenient for assets; on-screen use shipped with D1 tableau.
 
 ### GFX.1 — Enlarge pitch and token scale
 
 - [x] **Goal:** Give art room to breathe — raise effective square size / pitch max width, increase token footprint on the SVG grid, and relax layout so the pitch can dominate the viewport (sidebar may scroll or collapse).
-- [x] **Pain today:** `--pitch-max-width: min(100%, 56rem)` and token radius ~0.38 grid units keep MVP icons tiny; intricate art will mush at current scale ([`index.css`](frontend/src/index.css), [`Token.tsx`](frontend/src/render/Token.tsx)).
+- [x] **Pain today:** `--pitch-max-width: min(100%, 56rem)` and token radius ~0.38 grid units keep MVP icons tiny; intricate art will mush at current scale ([`index.css`](../frontend/src/index.css), [`Token.tsx`](../frontend/src/render/Token.tsx)).
 - [x] **Depends on:** 11.2, 14.3
 - [x] **Files:** `src/index.css` (pitch max width, play layout), `Token.tsx` / `Pitch.tsx` radius and stroke weights, optional mobile scroll-into-pitch
 - [x] **Acceptance:** At desktop, individual token details (face, kit, base ring) are readable without zoom; legal highlights and hit targets remain easy to click; phone may scroll/pan rather than shrink art into illegibility.
@@ -1524,7 +1524,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 - [x] **Goal:** Regenerate the full Dwarves/Orcs token set (standing + prone) at **intricate tabletop miniature** fidelity — kit, face, weapons, team palette — readable at the enlarged scale from [GFX.1](#gfx1--enlarge-pitch-and-token-scale), calibrated to the local reference photos (gitignored).
 - [x] **Depends on:** [GFX.1](#gfx1--enlarge-pitch-and-token-scale), 14.1–14.2; update architecture generation prompts away from “flat readable at 48px” toward “detailed circular base token, still distinct silhouette per position”
-- [x] **Files:** `src/assets/tokens/**`, prompt docs in [frontend/ART.md](frontend/ART.md); optional 2× PNG/WebP if SVG detail is insufficient
+- [x] **Files:** `src/assets/tokens/**`, prompt docs in [frontend/ART.md](../frontend/ART.md); optional 2× PNG/WebP if SVG detail is insufficient
 - [x] **Acceptance:** Every position has a unique silhouette and kit; prone is an obvious knockdown pose (not only desaturated); home/away (or team palette) still separable at pitch scale; registry swap only.
 - [x] **Note:** Complements [UX.9](#ux9--token-identity-polish) (frames/numbers); this task is the art regeneration, UX.9 is chrome on top.
 - [x] **Rulebook:** n/a
@@ -1540,7 +1540,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### GFX.6 — In-match player trading cards
 
 - [x] **Goal:** Turn the player-card panel into a **full trading-card surface** — large portrait, ornate border, team colors, position title, and stats overlaid on art — not a text `<dl>` with a tiny image. Art fills `src/assets/cards/` (per team + position, or per roster id) via registry.
-- [x] **Pain today:** [`PlayerCard.tsx`](frontend/src/render/PlayerCard.tsx) is stats text; `src/assets/cards/` is empty (`.gitkeep` only); Phase 14 MVP only generated tokens/icons.
+- [x] **Pain today:** [`PlayerCard.tsx`](../frontend/src/render/PlayerCard.tsx) is stats text; `src/assets/cards/` is empty (`.gitkeep` only); Phase 14 MVP only generated tokens/icons.
 - [x] **Depends on:** 11.5 `PlayerCard`; registry `cardArt(teamId, position)` (and fallbacks); style consistency with [GFX.4](#gfx4--high-detail-player-tokens-art-regen) / [GFX.9](#gfx9--team-selection-hero-cards); calibrate to the local reference photos (gitignored)
 - [x] **Files:** `src/assets/cards/{team}/{position}.png` (or WebP), `registry.ts`, `PlayerCard.tsx` + CSS (card aspect ~3:4, readable type)
 - [x] **Acceptance:** Hover/select a token shows a **hero card** matching that position’s kit; every Dwarves/Orcs position has distinct art; missing art falls back to a branded blank; card is large enough to appreciate detail (raise panel width if needed — same “enlarge” mandate as GFX.1).
@@ -1625,7 +1625,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 - [x] **Depends on:** [9.4](#task-94--input-required-events-pull-legal-moves-on-demand) (`InputRequired` / `pendingDecisionType` on wire).
 - [x] **Files:** `model/PendingDecision.kt`, `game/turn/TurnEngine.kt`, `game/legalmoves/LegalMoves.kt`, `DomainEvent.InputRequired.PlayerAction`
 - [x] **Acceptance:** Shove follow-up, Emergency Reserves, and regular player-action windows all use the same queue; client fetches legal actions per `pendingDecisionType`; turn does not advance until prompt resolved or skipped.
-- [x] **Note:** Shipped 2026-07 — unblocks abilities, [F.2](BACKLOG.md#f2--random-d6-move-run), and coach-choice grants (Safe Hands, re-rolls).
+- [x] **Note:** Shipped 2026-07 — unblocks abilities, [F.2](../BACKLOG.md#f2--random-d6-move-run), and coach-choice grants (Safe Hands, re-rolls).
 
 ### F.3 — Block Shove follow-up
 
@@ -1647,7 +1647,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## D2.4 — Full team card catalog
 
-- [x] **Goal:** All 23 Goblins & Gridirons team cards in [GridironTeamCatalog.kt](backend/src/main/kotlin/com/mhaefele/gridiron/model/catalog/GridironTeamCatalog.kt) with roster counts, stats, and ability text.
+- [x] **Goal:** All 23 Goblins & Gridirons team cards in [GridironTeamCatalog.kt](../backend/src/main/kotlin/com/mhaefele/gridiron/model/catalog/GridironTeamCatalog.kt) with roster counts, stats, and ability text.
 - [x] **Files:** `model/catalog/GridironTeamCatalog.kt`, `TeamCatalog.kt`, `PlayerAbility.kt`, `api/CatalogController.kt`
 - [x] **Acceptance:** `GET /api/catalog/teams` lists 23 teams; specialists expose `CardAbilityDto`; create-match accepts any catalog id.
 - [x] **Note:** Kotlin catalog, not JSON resource — sufficient for play; ability **enforcement** is PA.* / [D1.G](#d1g--challenge-gated-player-abilities-2026-07). Phase closed: [D2](#d2--player-abilities-phase-closed-2026-07).
@@ -1655,7 +1655,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### D2 — Player abilities phase closed *(2026-07)*
 
 - [x] **Closed:** Deferred Phase D2 had no remaining work beyond what already shipped — full catalog ([D2.4](#d24--full-team-card-catalog)), base-game ability enforcement (PA.0–PA.6 / PA.F), and challenge-gated Bloodlust / Minion ([D1.G](#d1g--challenge-gated-player-abilities-2026-07)).
-- [x] **Architecture stub:** [AbilityHook](backend/ARCHITECTURE.md#extension-points-deferred) remains documentary only.
+- [x] **Architecture stub:** [AbilityHook](../backend/ARCHITECTURE.md#extension-points-deferred) remains documentary only.
 - [x] **Rulebook:** team cards pp. 9, 23–24, 36; advanced pp. 23–24
 
 ---
@@ -1663,16 +1663,16 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ## AI1 — Basic computer opponent
 
 - [x] **AI1.1** — `OpponentStrategy` port (`game/opponent/OpponentStrategy.kt`)
-- [x] **AI1.2** — Heuristic bot [`ScriptedOpponentStrategy`](backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/ScriptedOpponentStrategy.kt): chase ball, mark/block carrier, run toward end zone
-- [x] **AI1.3** — In-process [`ComputerCoachAgent`](backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/ComputerCoachAgent.kt) + create-match [`CoachControl`](frontend/src/app/CoachControlToggle.tsx) toggle (no separate `bot-move` endpoint)
-- [x] **AI1.4** — Bot chooses only from `legalMovesForActiveCoach` outputs ([`ComputerCoachApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/ComputerCoachApiTest.kt))
+- [x] **AI1.2** — Heuristic bot [`ScriptedOpponentStrategy`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/ScriptedOpponentStrategy.kt): chase ball, mark/block carrier, run toward end zone
+- [x] **AI1.3** — In-process [`ComputerCoachAgent`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/ComputerCoachAgent.kt) + create-match [`CoachControl`](../frontend/src/app/CoachControlToggle.tsx) toggle (no separate `bot-move` endpoint)
+- [x] **AI1.4** — Bot chooses only from `legalMovesForActiveCoach` outputs ([`ComputerCoachApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/ComputerCoachApiTest.kt))
 - [x] **AI1.5** — Per-match write lock — [AI1.5](#ai15--per-match-write-lock-2026-07)
 - [x] **AI1.6** — Lookahead over legal move graph — [AI1.6](#ai16--lookahead-over-the-legal-move-graph-2026-08)
 
 ### AI1.5 — Per-match write lock *(2026-07)*
 
 - [x] **Goal:** Serialize load→mutate→save on `MatchGame` per match so concurrent writers (human HTTP + computer coach) cannot lost-update; publish SSE **after** releasing the lock.
-- [x] **Shipped:** [`MatchGame`](backend/src/main/kotlin/com/mhaefele/gridiron/api/MatchGame.kt) `ReentrantLock` map; `startMatch` / `submitActionOutcome` share `mutateAndPublish`; [ARCHITECTURE — Match persistence](backend/ARCHITECTURE.md#match-persistence); [`MatchWriteLockApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/MatchWriteLockApiTest.kt).
+- [x] **Shipped:** [`MatchGame`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/MatchGame.kt) `ReentrantLock` map; `startMatch` / `submitActionOutcome` share `mutateAndPublish`; [ARCHITECTURE — Match persistence](../backend/ARCHITECTURE.md#match-persistence); [`MatchWriteLockApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/MatchWriteLockApiTest.kt).
 - [x] **Acceptance:** Concurrent submit of the same legal action id → one success, one 400; match state / `lastEventId` advance once.
 
 ---
@@ -1683,7 +1683,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 - [x] **Goal:** Document keep / relax / hybrid decision for Board / MatchState updates.
 - [x] **Decision:** **Hybrid** — immutable persisted `model/`; working state via `BoardMutator` / `MatchMutator` accumulators (not full CoW ceremony).
-- [x] **Shipped:** [ARCHITECTURE — immutability strategy](backend/ARCHITECTURE.md#immutability-strategy) aligned with [immutability.mdc](backend/.cursor/rules/immutability.mdc); stale `ActionResolver.resolve(state, command, dice)` / CoW-ceremony wording removed.
+- [x] **Shipped:** [ARCHITECTURE — immutability strategy](../backend/ARCHITECTURE.md#immutability-strategy) aligned with [immutability.mdc](../backend/.cursor/rules/immutability.mdc); stale `ActionResolver.resolve(state, command, dice)` / CoW-ceremony wording removed.
 
 ### TD.2 — Board mutation vocabulary
 
@@ -1708,13 +1708,13 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### TD.6 — Clarify and subdivide packages *(2026-07)*
 
 - [x] **Goal:** Package names tell you what lives where — split by role; each top-level package has a one-sentence charter.
-- [x] **Shipped:** Layout + charters + create-match import path in [backend ARCHITECTURE — layering / package layout](backend/ARCHITECTURE.md#layering-overview); removed stale `ActionCommand` / `ActionValidator` / `MatchCommandMapping` / `model/.../shared` / `domain/model/catalog` drift; `game/cards/` + `game/opponent/` documented; [kotlin-domain-files.mdc](backend/.cursor/rules/kotlin-domain-files.mdc) aligned.
+- [x] **Shipped:** Layout + charters + create-match import path in [backend ARCHITECTURE — layering / package layout](../backend/ARCHITECTURE.md#layering-overview); removed stale `ActionCommand` / `ActionValidator` / `MatchCommandMapping` / `model/.../shared` / `domain/model/catalog` drift; `game/cards/` + `game/opponent/` documented; [kotlin-domain-files.mdc](../backend/.cursor/rules/kotlin-domain-files.mdc) aligned.
 - [x] **Note:** No further mechanical package moves — structure already navigable.
 
 ### TD.10 — Extract `shared` package *(2026-07)*
 
 - [x] **Goal:** Value types on both sides of the HTTP boundary live in `shared/` — not whole aggregates; documented inventory; no single-consumer types.
-- [x] **Shipped:** Full inventory in [ARCHITECTURE — shared package inventory](backend/ARCHITECTURE.md#shared-package-inventory) including `CoachControl`, `LegalActionId`, `DomainEventId`, `ThrowRange` (was mis-listed under `game/action/dto/`). Audit: every `shared/` type has multiple consumers.
+- [x] **Shipped:** Full inventory in [ARCHITECTURE — shared package inventory](../backend/ARCHITECTURE.md#shared-package-inventory) including `CoachControl`, `LegalActionId`, `DomainEventId`, `ThrowRange` (was mis-listed under `game/action/dto/`). Audit: every `shared/` type has multiple consumers.
 
 ### TD.3 — DI and class-shaped resolvers *(2026-07 triage)*
 
@@ -1725,9 +1725,9 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### TD.4 — Standardize mutation/resolver return values *(2026-07 triage)*
 
 - [x] **Goal:** One composable shape for board/match + ordered events instead of ad-hoc `*Result` / parallel `d8Rolls` tuples.
-- [x] **Shipped (evolved design):** [`BoardMutator`](backend/src/main/kotlin/com/mhaefele/gridiron/game/board/dto/BoardMutator.kt) / [`MatchMutator`](backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/MatchMutator.kt) accumulators append `DomainEvent`s. Gone: `BounceOutcome`, `PathMovementResult`, `BoardResolution`, parallel `d8Rolls`.
+- [x] **Shipped (evolved design):** [`BoardMutator`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/board/dto/BoardMutator.kt) / [`MatchMutator`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/MatchMutator.kt) accumulators append `DomainEvent`s. Gone: `BounceOutcome`, `PathMovementResult`, `BoardResolution`, parallel `d8Rolls`.
 - [x] **Depends on:** [TD.2](#td2--board-mutation-vocabulary).
-- [x] **Note:** Accumulator design superseded “same envelope type” acceptance ([immutability.mdc](backend/.cursor/rules/immutability.mdc)).
+- [x] **Note:** Accumulator design superseded “same envelope type” acceptance ([immutability.mdc](../backend/.cursor/rules/immutability.mdc)).
 
 ### TD.7 — `StateResolution` for board + turn side effects *(2026-07 triage)*
 
@@ -1738,7 +1738,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### TD.9 — Event-driven turn and progress updates *(won't do)*
 
 - [x] **Won't do (2026-07):** Original goal was resolvers emit board + events only, then a reducer folds events into `TurnState` / `MatchProgress`.
-- [x] **Kept instead:** [`MatchMutator`](backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/MatchMutator.kt) dual-write — named verbs mutate turn/progress and append the matching `DomainEvent` in one place. That already fixed the old scattered turn patches / `blockerTurnEnded` out-params ([TD.7](#td7--stateresolution-for-board--turn-side-effects-2026-07-triage)).
+- [x] **Kept instead:** [`MatchMutator`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/MatchMutator.kt) dual-write — named verbs mutate turn/progress and append the matching `DomainEvent` in one place. That already fixed the old scattered turn patches / `blockerTurnEnded` out-params ([TD.7](#td7--stateresolution-for-board--turn-side-effects-2026-07-triage)).
 - [x] **Note:** Stream consumers still fold events for the HUD; domain match state is not event-sourced from the log.
 
 
@@ -1768,48 +1768,48 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## Rulebook fidelity fixes (RF.1–RF.6)
 
-> Digest audit vs [`reference/rulebook-digest.md`](reference/rulebook-digest.md). Shipped 2026-07 — covered by [`RulebookFidelityApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/RulebookFidelityApiTest.kt) plus targeted unit/API tests.
+> Digest audit vs [`reference/rulebook-digest.md`](../reference/rulebook-digest.md). Shipped 2026-07 — covered by [`RulebookFidelityApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/RulebookFidelityApiTest.kt) plus targeted unit/API tests.
 
 ### RF.1 — Marked players cannot Throw
 
 - [x] **Goal:** Throw is an **Open**-only action. Marked carriers are not offered Throw; API rejects Marked throw POST with 400. Bonus **Nerves of Steel** (D1) is the later exception.
-- [x] **Shipped:** [`ActionAvailability`](backend/src/main/kotlin/com/mhaefele/gridiron/game/legalmoves/ActionAvailability.kt) adds `THROW` only for Open carriers.
+- [x] **Shipped:** [`ActionAvailability`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/legalmoves/ActionAvailability.kt) adds `THROW` only for Open carriers.
 - [x] **Rulebook:** pp. 15, 17
 
 ### RF.2 — Skip entire Pre-Turn on each coach’s first turn
 
 - [x] **Goal:** On **each** coach’s first turn, skip the **whole** Pre-Turn Sequence (Refresh Challenges, No Ball in Play, Emergency Reserves). Coach A’s first turn also cannot claim challenges (cards phase) — claim skip is Coach A–only.
-- [x] **Shipped:** [`TurnEngine.runPreTurn`](backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/TurnEngine.kt) skips pre-turn on Coach A turn 1 and Coach B turn 2; [backend ARCHITECTURE](backend/ARCHITECTURE.md#turn-sequence-state-machine) updated.
+- [x] **Shipped:** [`TurnEngine.runPreTurn`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/TurnEngine.kt) skips pre-turn on Coach A turn 1 and Coach B turn 2; [backend ARCHITECTURE](../backend/ARCHITECTURE.md#turn-sequence-state-machine) updated.
 - [x] **Rulebook:** p. 14; Emergency Reserves p. 19; No Ball p. 20
 
 ### RF.3 — Throw fumble on modified result of 1
 
 - [x] **Goal:** Fumble when Throw Check is **1 before or after modifiers** → bounce from thrower. Natural 1 remains automatic fail/fumble; natural 2 + −1 (Long/Obstructed) that yields modified 1 also fumbles.
-- [x] **Shipped:** [`throwCheck`](backend/src/main/kotlin/com/mhaefele/gridiron/game/dice/DiceCheck.kt) returns `Fumble` for natural 1 and modified 1.
+- [x] **Shipped:** [`throwCheck`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/dice/DiceCheck.kt) returns `Fumble` for natural 1 and modified 1.
 - [x] **Rulebook:** p. 17 Fumble; p. 8 modifier cap / natural 1–6
 
 ### RF.4 — Emergency Reserves: one free action only
 
 - [x] **Goal:** When dugout count **≥** team ER at the Emergency Reserves step, the coach may make **one** free Reserves Action — not repeat until the dugout falls below ER.
-- [x] **Shipped:** [`TurnEngine`](backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/TurnEngine.kt) queues a single ER decision in `runPreTurn`.
+- [x] **Shipped:** [`TurnEngine`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/turn/TurnEngine.kt) queues a single ER decision in `runPreTurn`.
 - [x] **Rulebook:** p. 19 Emergency Reserves
 
 ### RF.5 — Setup ball on trapdoor without bounce
 
 - [x] **Goal:** After both teams finish initial End Zone placement, place a ball on a trapdoor (**no** Bounce roll). Multi-trapdoor pitches: pick randomly. Distinct from pre-turn **New Ball!** which always bounces.
-- [x] **Shipped:** [`NewBallResolver.placeKickoffBall`](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/NewBallResolver.kt) when leaving `PIECE_PLACEMENT`.
+- [x] **Shipped:** [`NewBallResolver.placeKickoffBall`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/action/NewBallResolver.kt) when leaving `PIECE_PLACEMENT`.
 - [x] **Rulebook:** p. 13 setup step 7; p. 20 New Ball!
 
 ### RF.6 — Coin-toss roles (Coach A = loser of toss)
 
 - [x] **Goal:** Toss **winner** chooses pitch (and, for box teams, which team); toss **loser** sets up first and is **Coach A** (acts first). Pitch remains create-match client choice as product stand-in.
-- [x] **Shipped:** [`MatchGame.coinToss`](backend/src/main/kotlin/com/mhaefele/gridiron/api/MatchGame.kt) sets `coachA` to the toss loser; documented + tested.
+- [x] **Shipped:** [`MatchGame.coinToss`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/MatchGame.kt) sets `coachA` to the toss loser; documented + tested.
 - [x] **Rulebook:** pp. 12–14
 
 ### BG.1 — Physical Throw Ruler geometry *(2026-07)*
 
 - [x] **Goal:** Map throw range and obstruction to the cardboard **Throw Ruler** (rulebook p. 17), not abstract Within alone.
-- [x] **Shipped:** Euclidean centre-to-centre Short ≤4 / full ≤8 (`THROW_RULER_SHORT_MAX` / `THROW_RULER_MAX`); obstruction along centre-to-centre **supercover** grid line (interior blocked / Open opposition, or Marked catcher). Documented in [`docs/throw-ruler.md`](docs/throw-ruler.md); constants in [`ThrowGeometry.kt`](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/utils/ThrowGeometry.kt).
+- [x] **Shipped:** Euclidean centre-to-centre Short ≤4 / full ≤8 (`THROW_RULER_SHORT_MAX` / `THROW_RULER_MAX`); obstruction along centre-to-centre **supercover** grid line (interior blocked / Open opposition, or Marked catcher). Documented in [`docs/throw-ruler.md`](../docs/throw-ruler.md); constants in [`ThrowGeometry.kt`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/action/utils/ThrowGeometry.kt).
 - [x] **Closed:** Accepted as complete — no further cardboard band re-measure planned.
 - [x] **Rulebook:** p. 17 — Throw Ruler
 
@@ -1822,13 +1822,13 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### PM.0 — Remaining-move infrastructure
 
 - [x] **Goal:** After a Run lands on a ball with Move left, pause with `PendingDecision.ContinueRun` (squares remaining); legal-actions offer Run continue-path + Skip. Events stay in rulebook order (pickup/bounce → continue).
-- [x] **Shipped:** [`PendingDecision.ContinueRun`](backend/src/main/kotlin/com/mhaefele/gridiron/model/PendingDecision.kt); [`ActionResolver`](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/ActionResolver.kt) applies the Run as usual then maybe prepends continue; [`LegalMoves`](backend/src/main/kotlin/com/mhaefele/gridiron/game/legalmoves/LegalMoves.kt) + [`PlayerActionExecutor`](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/PlayerActionExecutor.kt) resume without a second budget spend; ability hooks deferred until the Run fully resolves.
+- [x] **Shipped:** [`PendingDecision.ContinueRun`](../backend/src/main/kotlin/com/mhaefele/gridiron/model/PendingDecision.kt); [`ActionResolver`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/action/ActionResolver.kt) applies the Run as usual then maybe prepends continue; [`LegalMoves`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/legalmoves/LegalMoves.kt) + [`PlayerActionExecutor`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/action/PlayerActionExecutor.kt) resume without a second budget spend; ability hooks deferred until the Run fully resolves.
 - [x] **Rulebook:** p. 16 movement; interrupt/resume framing p. 9 / glossary
 
 ### PM.1 — Continue Run after ball pickup
 
 - [x] **Goal:** On Run, entering a loose-ball square picks up (when legal) **without ending the Run** if Move budget remains — pause after pickup events, then coach continues with remaining squares (or ends early).
-- [x] **Acceptance:** API — mid-path pickup → `CONTINUE_RUN`; continue up to remaining Move; Skip ends early; one budget action; carrier onto a second ball bounces then may continue. [`MovementApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/MovementApiTest.kt).
+- [x] **Acceptance:** API — mid-path pickup → `CONTINUE_RUN`; continue up to remaining Move; Skip ends early; one budget action; carrier onto a second ball bounces then may continue. [`MovementApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/MovementApiTest.kt).
 - [x] **Rulebook:** p. 16 — Picking Up a Ball (pickup does not say the Run ends)
 - [x] **Note:** Former Future **F.4** (Run half). Mark/Sidestep do **not** continue — see [PM.2](#pm2--mark--sidestep-end-on-ball-no-continue).
 
@@ -1842,33 +1842,33 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### PM.3 — Random D6 move (Run)
 
 - [x] **Goal:** `MoveValue.RandomD6` — roll D6 at **start** of Run, emit roll, then pending offers path up to that many squares (tabletop: roll, then move). Not a separate `ActionType`.
-- [x] **Shipped:** [`LegalAction.DeclareRun`](backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) → `DiceRolled(MOVE)` → [`PendingDecision.RandomMoveRun`](backend/src/main/kotlin/com/mhaefele/gridiron/model/PendingDecision.kt); paths capped at rolled Move (not truncated). Rattle Cart in catalog. [`MovementApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/MovementApiTest.kt).
+- [x] **Shipped:** [`LegalAction.DeclareRun`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) → `DiceRolled(MOVE)` → [`PendingDecision.RandomMoveRun`](../backend/src/main/kotlin/com/mhaefele/gridiron/model/PendingDecision.kt); paths capped at rolled Move (not truncated). Rattle Cart in catalog. [`MovementApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/MovementApiTest.kt).
 - [x] **Rulebook:** p. 16 — Random Move Value
 - [x] **Note:** Former Future **F.2**. War Machine Run whilst Marked shipped in [PA.F.3](#paf3--war-machine-run-whilst-marked-2026-07).
 
 ### PM.4 — Mark forced end when becoming adjacent
 
 - [x] **Goal:** Mark “must finish this move as soon as” the mover becomes adjacent to standing opposition — pathfinder stops extending after first Marked square.
-- [x] **Shipped:** [`markPaths`](backend/src/main/kotlin/com/mhaefele/gridiron/game/legalmoves/MovePathFinder.kt) filters out 2-step paths whose first step is already Marked; [`MovePathFinderTest`](backend/src/test/kotlin/com/mhaefele/gridiron/game/legalmoves/MovePathFinderTest.kt).
+- [x] **Shipped:** [`markPaths`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/legalmoves/MovePathFinder.kt) filters out 2-step paths whose first step is already Marked; [`MovePathFinderTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/game/legalmoves/MovePathFinderTest.kt).
 - [x] **Rulebook:** p. 16 — Mark Action
 
 ### PM.5.1 — Handling Skills mid-path
 
 - [x] **Goal:** Handling picks up on ball entry during Mark/Sidestep (as though a Run). No continue after — action still ends on the ball square ([PM.2](#pm2--mark--sidestep-end-on-ball-no-continue)).
-- [x] **Shipped:** Already in [`BoardMovement.picksUpLooseBallOnEntry`](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/BoardMovement.kt); acceptance [`PlayerAbilityAcceptanceApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/PlayerAbilityAcceptanceApiTest.kt) (`handling skills picks up on mark onto ball square`).
+- [x] **Shipped:** Already in [`BoardMovement.picksUpLooseBallOnEntry`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/action/BoardMovement.kt); acceptance [`PlayerAbilityAcceptanceApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/PlayerAbilityAcceptanceApiTest.kt) (`handling skills picks up on mark onto ball square`).
 - [x] **Note:** Former PA.F.6.
 
 ### PM.5.2 — Elusive / Little Creature
 
 - [x] **Goal:** Run may enter adjacent-to-opp but **must end** there — drop paths that continue past a first adjacent square.
-- [x] **Shipped:** [`mustEndRunWhenAdjacentToOpponents`](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/ability/AbilityRunRules.kt) + filter in [`runPaths`](backend/src/main/kotlin/com/mhaefele/gridiron/game/legalmoves/MovePathFinder.kt); [`MovePathFinderTest`](backend/src/test/kotlin/com/mhaefele/gridiron/game/legalmoves/MovePathFinderTest.kt) / acceptance.
+- [x] **Shipped:** [`mustEndRunWhenAdjacentToOpponents`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/action/ability/AbilityRunRules.kt) + filter in [`runPaths`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/legalmoves/MovePathFinder.kt); [`MovePathFinderTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/game/legalmoves/MovePathFinderTest.kt) / acceptance.
 - [x] **Note:** Untouchable / Leap / War Machine keep adjacent entry without this forced end (different card text).
 
 ### PM.6 — GUI: remaining-move / roll-then-path
 
 - [x] **Module:** frontend
 - [x] **Goal:** When pending is continue-path or RandomD6-after-roll, HUD shows remaining Move (from max legal Run path); path picker reuses selection-first UX; declare-run / continue hints; event playback does not invent order.
-- [x] **Shipped:** [`remainingMoveSquaresFromLegal`](frontend/src/render/actionVisuals.ts) + HUD / Play wiring; SSE already refetches legal actions on `InputRequired` (no full page refresh). MOVE die shout in [`presentEvents`](frontend/src/state/presentEvents.ts).
+- [x] **Shipped:** [`remainingMoveSquaresFromLegal`](../frontend/src/render/actionVisuals.ts) + HUD / Play wiring; SSE already refetches legal actions on `InputRequired` (no full page refresh). MOVE die shout in [`presentEvents`](../frontend/src/state/presentEvents.ts).
 - [x] **Note:** Remaining budget inferred from legal Run paths (no extra wire field). Challenge-bonus mid-move (PM.5.3–5.4) shipped with [D1.E](#d1e--bonus-play-effects-by-timing-family-2026-07).
 
 ---
@@ -1889,11 +1889,11 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## D1.A — Card model & catalog *(2026-07)*
 
-> First slice of Phase D1 (remnants in [BACKLOG.md](BACKLOG.md#phase-d1-challenge-cards-remnants)). Claim/refresh turn steps remain D1.B.
+> First slice of Phase D1 (remnants in [BACKLOG.md](../BACKLOG.md#phase-d1-challenge-cards-remnants)). Claim/refresh turn steps remain D1.B.
 
 - [x] **D1.A.1 — `CardState` on match** — Tableau slots 1–3, ordered deck (top visible), discard, per-coach hands, `claimsThisTurn`. Seeded at create: shuffle 26 via `DiceRoller.shuffle`, deal top→slots.
-- [x] **D1.A.2 — Catalog of 26** — [`ChallengeCardCatalog`](backend/src/main/kotlin/com/mhaefele/gridiron/model/catalog/ChallengeCardCatalog.kt) + [`ChallengeCard`](backend/src/main/kotlin/com/mhaefele/gridiron/model/catalog/ChallengeCard.kt) titles/bonuses/conditions from [`reference/challenge-cards.md`](reference/challenge-cards.md) (provisional collage pairings).
-- [x] **D1.A.3 — Claim condition primitives** — Pure [`ClaimEligibility`](backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/ClaimEligibility.kt) over `ActionClaimFacts` + `TurnClaimStats` + board.
+- [x] **D1.A.2 — Catalog of 26** — [`ChallengeCardCatalog`](../backend/src/main/kotlin/com/mhaefele/gridiron/model/catalog/ChallengeCardCatalog.kt) + [`ChallengeCard`](../backend/src/main/kotlin/com/mhaefele/gridiron/model/catalog/ChallengeCard.kt) titles/bonuses/conditions from [`reference/challenge-cards.md`](../reference/challenge-cards.md) (provisional collage pairings).
+- [x] **D1.A.3 — Claim condition primitives** — Pure [`ClaimEligibility`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/ClaimEligibility.kt) over `ActionClaimFacts` + `TurnClaimStats` + board.
 - [x] **Acceptance:** Catalog tests list 26 ids; points/bonus keys match reference; setup places 3 actives + deck top; public `ChallengeTableauDto` has no bonus text; seat-private `toBonusHandDto` separate from shared snapshot.
 - [x] **Also:** `MatchGameStateDto.challenges` public tableau; `ScriptedDiceRoller.shuffle` is identity (deterministic catalog deal in tests).
 
@@ -1907,8 +1907,8 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 - [x] **D1.B.2–3 — Claim step** — After each completed player action (incl. free) + TD; Coach A T1 skipped; single eligible auto-claim; multi → `ClaimChallenge`; slot left empty until Refresh; points + hand + events.
 - [x] **D1.B.4 — Clean Sweep** — Third claim in a turn → +2.
 - [x] **D1.B.5 — Hand limit** — End of turn trim to 3 (oldest discarded).
-- [x] **Facts** — [`ClaimFactsFromAction`](backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/ClaimFactsFromAction.kt) folds action-bracket events + board (not hand-filled in resolvers).
-- [x] **Wiring** — [`ChallengeTurnSteps`](backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/ChallengeTurnSteps.kt) from `TurnEngine` / `PlayerActionExecutor`.
+- [x] **Facts** — [`ClaimFactsFromAction`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/ClaimFactsFromAction.kt) folds action-bracket events + board (not hand-filled in resolvers).
+- [x] **Wiring** — [`ChallengeTurnSteps`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/ChallengeTurnSteps.kt) from `TurnEngine` / `PlayerActionExecutor`.
 
 ### D1.B.choice — Coach pick claim / replace slot *(2026-07)*
 
@@ -1923,10 +1923,10 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 > Claim points already updated score in D1.B. This slice adds endgame.
 
 - [x] **D1.C.1 — Challenge points on score** — Already shipped in D1.B (`claimChallengeCard` / `awardCleanSweep` → `progress.addPoints`); Sudden Death unchanged.
-- [x] **D1.C.2 — Score track presentation** — Skipped (optional polish); integer score remains source of truth. Noted in [`docs/D1-open-questions.md`](docs/D1-open-questions.md).
+- [x] **D1.C.2 — Score track presentation** — Skipped (optional polish); integer score remains source of truth. Noted in [`docs/D1-open-questions.md`](../docs/D1-open-questions.md).
 - [x] **D1.C.3 — Points Victory** — Last challenge dealt into an active slot (Refresh/Replace) arms `pointsVictoryTurnsRemaining = 2`; each coach close decrements; at 0 → `MatchResult.PointsVictory` (draw on tie). Sudden Death at coach hand-off still pre-empts. Optional `turnLimit` only applies when Points Victory is not armed.
 - [x] **Events / API** — `PointsVictoryArmed`, `PointsVictoryCountdown`; `MatchEnded.endKind` (`suddenDeath` | `turnLimit` | `pointsVictory`); snapshot `pointsVictoryTurnsRemaining`.
-- [x] **Acceptance:** [`PointsVictoryApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/PointsVictoryApiTest.kt); arming unit tests on [`ChallengeTurnStepsTest`](backend/src/test/kotlin/com/mhaefele/gridiron/game/cards/ChallengeTurnStepsTest.kt).
+- [x] **Acceptance:** [`PointsVictoryApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/PointsVictoryApiTest.kt); arming unit tests on [`ChallengeTurnStepsTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/game/cards/ChallengeTurnStepsTest.kt).
 
 ---
 
@@ -1934,17 +1934,17 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 > Timing windows + play rules; effects are no-ops until D1.E.
 
-- [x] **D1.D.1 — Play timing windows** — [`BonusPlayTiming`](backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/BonusPlayTiming.kt) + [`BonusPlayWindows`](backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/BonusPlayWindows.kt); `PendingDecision.BonusPlayWindow` on the existing pending queue; `isInterrupt()` blocks nested interrupts.
+- [x] **D1.D.1 — Play timing windows** — [`BonusPlayTiming`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/BonusPlayTiming.kt) + [`BonusPlayWindows`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/BonusPlayWindows.kt); `PendingDecision.BonusPlayWindow` on the existing pending queue; `isInterrupt()` blocks nested interrupts.
 - [x] **D1.D.2 — Hand secrecy & play rules** — One type per turn via `TurnState.bonusPlaysUsedThisTurn`; play → discard (`MatchMutator.playBonusCard`); hands stay seat-private.
-- [x] **D1.D.3 — Legal PlayBonus** — [`legalMovesForBonusPlayWindow`](backend/src/main/kotlin/com/mhaefele/gridiron/game/legalmoves/LegalMoves.kt); only matching timing + unused types.
+- [x] **D1.D.3 — Legal PlayBonus** — [`legalMovesForBonusPlayWindow`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/legalmoves/LegalMoves.kt); only matching timing + unused types.
 - [x] **Hooks** — Before-action (TurnEngine cue), start-of-turn / after-pre-turn, after-own-action / Inspiration, after block dice (Do-Over pause + `ResumeBlockDice`).
-- [x] **Acceptance:** [`BonusPlayFrameworkApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/BonusPlayFrameworkApiTest.kt) — Do-Over once with two copies; Skip resumes block; before-action Skip leaves budget.
+- [x] **Acceptance:** [`BonusPlayFrameworkApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/BonusPlayFrameworkApiTest.kt) — Do-Over once with two copies; Skip resumes block; before-action Skip leaves budget.
 
 ---
 
 ## D1.E — Bonus play effects (by timing family) *(2026-07)*
 
-> Open fidelity notes in [`docs/D1-open-questions.md`](docs/D1-open-questions.md); API coverage in `BonusPlayEffectsApiTest`.
+> Open fidelity notes in [`docs/D1-open-questions.md`](../docs/D1-open-questions.md); API coverage in `BonusPlayEffectsApiTest`.
 
 - [x] **D1.E.1 — Pre-action modifiers** — Sprint, Aggressive Mark, Dodge, Accurate Throw, Nerves of Steel, Reserves, Jump Up.
 - [x] **D1.E.2 — Turn-scope auras** — Blocking Play; Defensive Play.
@@ -1967,7 +1967,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### D1.F.4 — Annotate legal actions that could claim a challenge *(2026-07)*
 
 - [x] **Goal:** Tag legal player actions that could earn an active challenge; expose title / points / slot / certainty on the wire.
-- [x] **Shipped:** `PotentialChallengeClaim` + `ClaimCertainty` on `LegalAction`; [`ActionAttachedClaims`](backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/ActionAttachedClaims.kt) after legal-move enumeration; Coach A turn-1 gate matches claim step; [`ClaimAnnotationApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/ClaimAnnotationApiTest.kt).
+- [x] **Shipped:** `PotentialChallengeClaim` + `ClaimCertainty` on `LegalAction`; [`ActionAttachedClaims`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/cards/ActionAttachedClaims.kt) after legal-move enumeration; Coach A turn-1 gate matches claim step; [`ClaimAnnotationApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/ClaimAnnotationApiTest.kt).
 - [x] **Acceptance:** Get Moving Runs → `CERTAIN`; Take Them Down Blocks → `POTENTIAL`; turn-1 Coach A unannotated; GUI cue [FF.10](#ff10--challenge-earn-cue-on-legal-actions-gui-2026-07).
 
 ### FF.10 — Challenge-earn cue on legal actions (GUI) *(2026-07)*
@@ -2002,7 +2002,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### FF.1 — Local coach / seat identity *(2026-07)*
 
 - [x] **Goal:** HUD / bonus hand / “Your turn” bind to this client’s seat; document hotseat vs vs-computer.
-- [x] **Shipped:** `state/seatIdentity.ts` (`resolveLocalCoach`, `seatIsYou`, `?coach=HOME|AWAY`); store `preferredLocalCoach`; HUD You/Hotseat/CPU chips; bonus hand follows resolved seat; seat model in [frontend ARCHITECTURE](frontend/ARCHITECTURE.md#seat-identity).
+- [x] **Shipped:** `state/seatIdentity.ts` (`resolveLocalCoach`, `seatIsYou`, `?coach=HOME|AWAY`); store `preferredLocalCoach`; HUD You/Hotseat/CPU chips; bonus hand follows resolved seat; seat model in [frontend ARCHITECTURE](../frontend/ARCHITECTURE.md#seat-identity).
 - [x] **Acceptance:** Vs-computer shows You on the human seat only; hotseat labels both Hotseat; optional `?coach=` pins a human seat.
 
 ### FF.3 — Seed event log from hydrate *(2026-07)*
@@ -2034,7 +2034,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ## D1.G — Challenge-gated player abilities *(2026-07)*
 
 - [x] **D1.G.1 — Bloodlust (Block / Throw)**
-- [x] **D1.G.2 — Minion** — auto-redirect; coach choice parked in [`docs/D1-open-questions.md`](docs/D1-open-questions.md).
+- [x] **D1.G.2 — Minion** — auto-redirect; coach choice parked in [`docs/D1-open-questions.md`](../docs/D1-open-questions.md).
 
 ---
 
@@ -2065,7 +2065,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## PA.F.1 — Enforcer full multi-die resolution *(2026-07)*
 
-- [x] **Shipped:** [`EnforcerAbilityApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/EnforcerAbilityApiTest.kt).
+- [x] **Shipped:** [`EnforcerAbilityApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/EnforcerAbilityApiTest.kt).
 
 ---
 
@@ -2080,14 +2080,14 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 - [x] **Goal:** Open player adjacent to Prone opposition may Foul; one Block Die mapped to Foul chart (Miss→Spotted, Tackle→Take That, Shove→Slipped, Smash/Flatten→Got Them).
 - [x] **Files:** `FoulResolver`, `FoulResult` / `foulResultFor`, `ActionType.FOUL`, `LegalAction.Foul`, `ActionAvailability` / `foulTargets`, claim facts for Send Them Off, frontend action visuals + OpenAPI regen; digest Foul section.
 - [x] **Acceptance:** Legal foul only when Open + adjacent Prone opposition; Got Them / Take That injure without armour; Spotted ejects fouler; Slipped ends fouler turn; held balls bounce before dugout; `FoulApiTest` covers chart faces; Send Them Off accepts Foul injuries (not fouler send-off alone).
-- [x] **Rulebook:** pp. 23–24; Get the Ref! remapping remains [D4](BACKLOG.md#deferred--phase-d4-optional-rules).
+- [x] **Rulebook:** pp. 23–24; Get the Ref! remapping remains [D4](../BACKLOG.md#deferred--phase-d4-optional-rules).
 
 
 ---
 
 ## Quick TODO — pending-queue / bonus / shake-loose *(2026-08)*
 
-> Shipped from the old active Quick TODO. Remnants live under [Parking lot → Engine](BACKLOG.md#engine-parked): interrupt-vs-claim product decision; MatchMutator/TurnState consolidation.
+> Shipped from the old active Quick TODO. Remnants live under [Parking lot → Engine](../BACKLOG.md#engine-parked): interrupt-vs-claim product decision; MatchMutator/TurnState consolidation.
 
 ### Shake-loose crashes
 
@@ -2121,7 +2121,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ## PA.C — Align ability behavior with official card text *(2026-07)*
 
-> Source of truth: [`PlayerAbility`](backend/src/main/kotlin/com/mhaefele/gridiron/model/catalog/PlayerAbility.kt). API coverage in `PlayerAbilityAcceptanceApiTest`, `PlayerAbilityApiTest`, `EnforcerAbilityApiTest`, `MovePathFinderTest`, `ClaimEligibilityTest`.
+> Source of truth: [`PlayerAbility`](../backend/src/main/kotlin/com/mhaefele/gridiron/model/catalog/PlayerAbility.kt). API coverage in `PlayerAbilityAcceptanceApiTest`, `PlayerAbilityApiTest`, `EnforcerAbilityApiTest`, `MovePathFinderTest`, `ClaimEligibilityTest`.
 
 - [x] **PA.C.1 — Hit and Run:** free Run ≤2; may end adjacent
 - [x] **PA.C.2 — Defensive:** adjacent opposition cannot Assist (Block still legal)
@@ -2148,7 +2148,7 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 - [x] **D1.C-fix.1 — Show No Fear:** claim when a player ends **any Action** on a Trapdoor (`ClaimEligibilityTest`)
 - [x] **D1.C-fix.2 — Pairings:** sync catalog to official Challenge ↔ Bonus table
-- [x] **Acceptance:** claim/eligibility + catalog tests follow [`reference/challenge-cards.md`](reference/challenge-cards.md)
+- [x] **Acceptance:** claim/eligibility + catalog tests follow [`reference/challenge-cards.md`](../reference/challenge-cards.md)
 - [x] **Rulebook:** pp. 21–22; official Cards page under `reference/html/`
 
 ---
@@ -2158,21 +2158,21 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ### D3.2 — Throw Team-mate *(2026-08)*
 
 - [x] **Goal:** Throw Team-mate (Ogre/Troll/Oakwalker); occupied square landing; fumble injury rules.
-- [x] **Shipped:** [`ThrowTeammateResolver`](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/ThrowTeammateResolver.kt), `LegalAction.ThrowTeammateSelect` / `ThrowTeammate` / `CancelThrowTeammate`, `PendingDecision.ThrowTeammateLanding`, [`ThrowTeammateApiTest`](backend/src/test/kotlin/com/mhaefele/gridiron/integration/ThrowTeammateApiTest.kt); bot prefers ball-carrying teammate; claim facts treat Throw Team-mate as a Throw Action.
+- [x] **Shipped:** [`ThrowTeammateResolver`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/action/ThrowTeammateResolver.kt), `LegalAction.ThrowTeammateSelect` / `ThrowTeammate` / `CancelThrowTeammate`, `PendingDecision.ThrowTeammateLanding`, [`ThrowTeammateApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/ThrowTeammateApiTest.kt); bot prefers ball-carrying teammate; claim facts treat Throw Team-mate as a Throw Action.
 - [x] **Acceptance:** Two-step select → landing; cancel returns to select; occupied landing / fumble injury per pp. 23–24.
 - [x] **Rulebook:** pp. 23–24 — Special Actions
 
-> **D3 closed** for base advanced actions (Foul [D3.1](#d31--foul-action-2026-07) + Throw Team-mate). Get the Ref! foul remapping waits on [D4](BACKLOG.md#deferred--phase-d4-optional-rules).
+> **D3 closed** for base advanced actions (Foul [D3.1](#d31--foul-action-2026-07) + Throw Team-mate). Get the Ref! foul remapping waits on [D4](../BACKLOG.md#deferred--phase-d4-optional-rules).
 
 ---
 
 ## AI1.6 — Lookahead over the legal move graph *(2026-08)*
 
 - [x] **Goal:** Smarter scripted opponent: simulate candidate legal actions against a copy of match state, score resulting positions, pick from the evaluated move graph.
-- [x] **Shipped:** [`LookaheadSearch`](backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/lookahead/LookaheadSearch.kt), [`ActionSimulator`](backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/simulator/ActionSimulator.kt), [`LookaheadOpponentStrategy`](backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/lookahead/LookaheadOpponentStrategy.kt) (`@Primary`); private per-sample `ScriptedDiceRoller` (never live `MatchGame` roller); think budgets (~300ms vs human / ~100ms AI-vs-AI); dicey blocks/bombs still fall back to heuristic; prompt handling defers to [`ScriptedOpponentStrategy`](backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/scripted/ScriptedOpponentStrategy.kt).
+- [x] **Shipped:** [`LookaheadSearch`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/lookahead/LookaheadSearch.kt), [`ActionSimulator`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/simulator/ActionSimulator.kt), [`LookaheadOpponentStrategy`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/lookahead/LookaheadOpponentStrategy.kt) (`@Primary`); private per-sample `ScriptedDiceRoller` (never live `MatchGame` roller); think budgets (~300ms vs human / ~100ms AI-vs-AI); dicey blocks/bombs still fall back to heuristic; prompt handling defers to [`ScriptedOpponentStrategy`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/scripted/ScriptedOpponentStrategy.kt).
 - [x] **Tests:** `LookaheadOpponentStrategyTest`, `HeuristicVsLookaheadTest`, arena runners.
 - [x] **Acceptance:** Bot prefers better one-/short-N-ply outcomes in fixtures; search bounded; human play / SSE unchanged when bot not seated.
-- [x] **Note:** Still heuristic search over the closed legal set — **not** [AI2](BACKLOG.md#deferred--phase-ai2-trainable-model). Residual polish (e.g. singleton telemetry) is not open backlog work.
+- [x] **Note:** Still heuristic search over the closed legal set — **not** [AI2](../BACKLOG.md#deferred--phase-ai2-trainable-model). Residual polish (e.g. singleton telemetry) is not open backlog work.
 - [x] **Rulebook:** n/a
 
 ---
@@ -2186,18 +2186,18 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 ## Phase D1 remnants — face art *(won't track)*
 
 - [x] **Per-card challenge face art** — shipped in registry `CHALLENGE_FACES` (c01–c26) + tableau/celebration UI. No longer an open D1 polish item.
-- [x] **Minion coach choice / opponent hand-count UI** — remain parked in [`docs/D1-open-questions.md`](docs/D1-open-questions.md) only (not active backlog).
+- [x] **Minion coach choice / opponent hand-count UI** — remain parked in [`docs/D1-open-questions.md`](../docs/D1-open-questions.md) only (not active backlog).
 
 
 ---
 
 ## Task 7.13 — Better API / domain test style *(partial ship 2026-08)*
 
-> Practices and acceptance already landed. Remaining open work stays in [BACKLOG.md](BACKLOG.md#task-713--better-api--domain-test-style).
+> Practices and acceptance already landed. Remaining open work stays in [BACKLOG.md](../BACKLOG.md#task-713--better-api--domain-test-style).
 
 - [x] **Goal:** Make geometry-sensitive and ability-gated API/domain tests readable, exact, and self-contained.
 - [x] **Files:** helpers + ability / movement / pathfinder suites.
-- [x] **Exact membership via helpers:** `assertAvailable` / `assertUnavailable` / `action` / `onlyAction` in [LegalActionAsserts.kt](backend/src/test/kotlin/com/mhaefele/gridiron/support/LegalActionAsserts.kt); play via `api.play(...)`.
+- [x] **Exact membership via helpers:** `assertAvailable` / `assertUnavailable` / `action` / `onlyAction` in [LegalActionAsserts.kt](../backend/src/test/kotlin/com/mhaefele/gridiron/support/LegalActionAsserts.kt); play via `api.play(...)`.
 - [x] **Ability negative control:** same geometry twice — plain absent / ability present.
 - [x] **ASCII diagrams when position matters.**
 - [x] **Self-contained tiny pitches:** `GameScenario.tinyBoard(...)` / `sealedEndZones(width)`.

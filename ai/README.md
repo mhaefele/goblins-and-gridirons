@@ -10,7 +10,7 @@ Python harness (Stable-Baselines3) over the Kotlin `/api/ai/...` trainer API.
 | [TRAINING_ROADMAP.md](TRAINING_ROADMAP.md) | Phases, gates, mix knobs |
 | [ACTION_SAMPLING.md](ACTION_SAMPLING.md) | Action heads / soft-mask inventory |
 
-**Engine:** [`../backend/`](../backend/) · **Eval bots:** `backend/.../game/opponent/` ([AI1](../BACKLOG-done.md#ai1--basic-computer-opponent)).
+**Engine:** [`../backend/`](../backend/) · **Eval bots:** `backend/.../game/opponent/` ([AI1](../archive/BACKLOG-done.md#ai1--basic-computer-opponent)).
 
 ## Setup (once)
 
