@@ -103,17 +103,17 @@ class BlockResolver(
     private fun handleLegalAction(session: MatchMutator, ongoing: OngoingBlockMutator, action: LegalAction) {
         check(ongoing.awaitsInput) { "handleLegalAction expects awaitsInput, was ${ongoing.stage}" }
         when (ongoing.stage) {
-            OngoingBlock.BlockStage.HANDLE_QUICK_RELEASE       -> {
+            OngoingBlock.BlockStage.HANDLE_QUICK_RELEASE  -> {
                 handleQuickRelease(session, ongoing, action)
                 ongoing.offeredAbility = null
                 ongoing.offeredAbilityPlayerId = null
                 ongoing.stage = OngoingBlock.BlockStage.OFFER_BRACE
             }
-            OngoingBlock.BlockStage.HANDLE_BRACE   -> {
+            OngoingBlock.BlockStage.HANDLE_BRACE          -> {
                 handleBrace(session, ongoing, action)
                 ongoing.stage = OngoingBlock.BlockStage.OFFER_UNDERDOG
             }
-            OngoingBlock.BlockStage.HANDLE_UNDERDOG           -> {
+            OngoingBlock.BlockStage.HANDLE_UNDERDOG       -> {
                 handleUnderdog(session, ongoing, action)
                 ongoing.assisted = computeAssisted(session, ongoing)
                 ongoing.stage = OngoingBlock.BlockStage.VIOLENT_CHECK
@@ -146,13 +146,13 @@ class BlockResolver(
             OngoingBlock.BlockStage.HANDLE_ABILITY_FOLLOW_UP    -> {
                 val ability = checkNotNull(ongoing.offeredAbility) { "HANDLE_ABILITY_FOLLOW_UP missing ability" }
                 when {
-                    action is LegalAction.Skip                      -> {
+                    action is LegalAction.Skip                        -> {
                         ongoing.resolvedFollowUpAbilities = ongoing.resolvedFollowUpAbilities + ability
                         ongoing.offeredAbility = null
                         ongoing.offeredAbilityPlayerId = null
                         ongoing.stage = OngoingBlock.BlockStage.OFFER_ABILITY_FOLLOW_UPS
                     }
-                    ability == PlayerAbility.`Strike and Fade`          -> {
+                    ability == PlayerAbility.`Strike and Fade`        -> {
                         val run = action as? LegalAction.Run ?: error("Strike and Fade expects Run, was ${action::class.simpleName}")
                         ongoing.nestedRun = runResolver.beginNested(session, run)
                         ongoing.stage = OngoingBlock.BlockStage.DELEGATE_FREE_ACTION
@@ -163,7 +163,7 @@ class BlockResolver(
                         ongoing.nestedBlock = beginNested(session, block, allInTackleProneAfterBlock = false)
                         ongoing.stage = OngoingBlock.BlockStage.DELEGATE_FREE_ACTION
                     }
-                    ability == PlayerAbility.Rally           -> {
+                    ability == PlayerAbility.Rally                    -> {
                         val standUp = action as? LegalAction.StandUp ?: error("Rally expects StandUp")
                         boardMovement.applyStandUp(session.board, standUp)
                         session.recordTurnAction(standUp.playerId, ActionType.STAND_UP, isFree = true)
@@ -172,7 +172,7 @@ class BlockResolver(
                         ongoing.offeredAbilityPlayerId = null
                         ongoing.stage = OngoingBlock.BlockStage.OFFER_ABILITY_FOLLOW_UPS
                     }
-                    else                                            -> error("No Block free-action handling for $ability")
+                    else                                              -> error("No Block free-action handling for $ability")
                 }
             }
             OngoingBlock.BlockStage.DELEGATE_FREE_ACTION        -> {
@@ -316,7 +316,7 @@ class BlockResolver(
 
                 OngoingBlock.BlockStage.APPLY_BEST_FACE -> {
                     when (val result = bestBlockFace(ongoing.faces!!)) {
-                        BlockDieFace.SMASH    -> {
+                        BlockDieFace.SMASH   -> {
                             ongoing.enforcerFollowUpSquare = session.board.playerCoordinate(ongoing.targetId)
                             ongoing.nestedKnockDown = knockDownResolver.beginStanding(session, ongoing.targetId, withArmour = true, armourMinusOne = false, offerBladed = true)
                             ongoing.stage = OngoingBlock.BlockStage.DELEGATE_KNOCK_DOWN_TARGET
@@ -326,14 +326,14 @@ class BlockResolver(
                             ongoing.nestedKnockDown = knockDownResolver.beginStanding(session, ongoing.targetId, withArmour = true, armourMinusOne = true, offerBladed = true)
                             ongoing.stage = OngoingBlock.BlockStage.DELEGATE_KNOCK_DOWN_TARGET
                         }
-                        BlockDieFace.TACKLE   -> {
+                        BlockDieFace.TACKLE  -> {
                             ongoing.enforcerFollowUpSquare = session.board.playerCoordinate(ongoing.targetId)
                             ongoing.nestedKnockDown = knockDownResolver.beginStanding(session, ongoing.targetId, withArmour = true, armourMinusOne = false, offerBladed = true)
                             ongoing.stage = OngoingBlock.BlockStage.DELEGATE_KNOCK_DOWN_TARGET
                             session.endPlayerTurn(ongoing.blockerId)
                         }
-                        BlockDieFace.SHOVE    -> applyShove(session, ongoing)
-                        BlockDieFace.MISS     -> {
+                        BlockDieFace.SHOVE   -> applyShove(session, ongoing)
+                        BlockDieFace.MISS    -> {
                             session.endPlayerTurn(ongoing.blockerId)
                             ongoing.stage = OngoingBlock.BlockStage.CORE_COMPLETE
                         }
@@ -441,39 +441,39 @@ class BlockResolver(
 
     private fun handleQuickRelease(session: MatchMutator, ongoing: OngoingBlockMutator, action: LegalAction) {
         when (action) {
-            is LegalAction.ContinueBlock -> Unit
-            is LegalAction.QuickReleaseThrow  -> throwResolver.beginQuickReleaseThrow(session, action)
-            else                         -> error("HANDLE_QUICK_RELEASE expects ContinueBlock or QuickReleaseThrow, was ${action::class.simpleName}")
+            is LegalAction.ContinueBlock     -> Unit
+            is LegalAction.QuickReleaseThrow -> throwResolver.beginQuickReleaseThrow(session, action)
+            else                             -> error("HANDLE_QUICK_RELEASE expects ContinueBlock or QuickReleaseThrow, was ${action::class.simpleName}")
         }
     }
 
     private fun handleBrace(session: MatchMutator, ongoing: OngoingBlockMutator, action: LegalAction) {
         when (action) {
-            is LegalAction.DeclineBonus    -> Unit
-            is LegalAction.PlayBrace -> {
+            is LegalAction.DeclineBonus -> Unit
+            is LegalAction.PlayBrace    -> {
                 session.playBonusCard(ongoing.targetTeam, action.bonusPlay)
                 ongoing.braceNoAssist = true
                 ongoing.braceShoveIsMiss = true
             }
-            else                           -> error("HANDLE_BRACE expects PlayBrace or DeclineBonus, was ${action::class.simpleName}")
+            else                        -> error("HANDLE_BRACE expects PlayBrace or DeclineBonus, was ${action::class.simpleName}")
         }
     }
 
     private fun handleUnderdog(session: MatchMutator, ongoing: OngoingBlockMutator, action: LegalAction) {
         when (action) {
-            is LegalAction.DeclineBonus    -> Unit
+            is LegalAction.DeclineBonus -> Unit
             is LegalAction.PlayUnderdog -> {
                 session.playBonusCard(session.activeCoach, action.bonusPlay)
                 ongoing.underdog = true
             }
-            else                           -> error("HANDLE_UNDERDOG expects PlayUnderdog or DeclineBonus, was ${action::class.simpleName}")
+            else                        -> error("HANDLE_UNDERDOG expects PlayUnderdog or DeclineBonus, was ${action::class.simpleName}")
         }
     }
 
     /** Returns true when post-pool abilities should be re-checked (Do-Over re-roll). */
     private fun handlePostPool(session: MatchMutator, ongoing: OngoingBlockMutator, action: LegalAction): Boolean {
         when (action) {
-            is LegalAction.DeclineBonus           -> {
+            is LegalAction.DeclineBonus        -> {
                 ongoing.doOverBlockDeclined = true
                 val blocker = session.board.getPlayer(ongoing.blockerId)
                 return blocker.hasAbility(PlayerAbility.`Second Swing`) && !ongoing.secondSwingUsed
@@ -487,7 +487,7 @@ class BlockResolver(
                 ongoing.faces = newFaces
                 return true
             }
-            is LegalAction.ChooseBlockReroll      -> {
+            is LegalAction.ChooseBlockReroll   -> {
                 ongoing.doOverBlockDeclined = true
                 if (action.reroll) {
                     val blocker = session.board.getPlayer(ongoing.blockerId)
@@ -506,7 +506,7 @@ class BlockResolver(
                 }
                 return false
             }
-            else                                  -> error("HANDLE_POST_POOL unexpected command ${action::class.simpleName}")
+            else                               -> error("HANDLE_POST_POOL unexpected command ${action::class.simpleName}")
         }
     }
 
@@ -587,8 +587,8 @@ class BlockResolver(
                     session.endPlayerTurn(ongoing.blockerId)
                 }
             }
-            BlockDieFace.SHOVE                                             -> applyEnforcerShove(session, ongoing)
-            BlockDieFace.MISS                                              -> session.endPlayerTurn(ongoing.blockerId)
+            BlockDieFace.SHOVE                                            -> applyEnforcerShove(session, ongoing)
+            BlockDieFace.MISS                                             -> session.endPlayerTurn(ongoing.blockerId)
         }
     }
 

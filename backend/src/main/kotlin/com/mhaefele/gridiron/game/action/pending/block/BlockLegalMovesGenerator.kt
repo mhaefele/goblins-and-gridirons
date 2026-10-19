@@ -92,9 +92,9 @@ class BlockLegalMovesGenerator(
         cards: CardState,
     ): List<LegalAction> =
         when (ongoing.stage) {
-            OngoingBlock.BlockStage.HANDLE_BRACE -> playIfPresent(cards, ongoing.targetTeam, turn, BonusPlay.Brace)
-            OngoingBlock.BlockStage.HANDLE_UNDERDOG         -> playIfPresent(cards, turn.activeCoach, turn, BonusPlay.Underdog)
-            else                                        -> error("BlockContinuation mid-action bonus stage unexpected: ${ongoing.stage}")
+            OngoingBlock.BlockStage.HANDLE_BRACE    -> playIfPresent(cards, ongoing.targetTeam, turn, BonusPlay.Brace)
+            OngoingBlock.BlockStage.HANDLE_UNDERDOG -> playIfPresent(cards, turn.activeCoach, turn, BonusPlay.Underdog)
+            else                                    -> error("BlockContinuation mid-action bonus stage unexpected: ${ongoing.stage}")
         }
 
     private fun heldBlockDice(

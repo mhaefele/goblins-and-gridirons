@@ -19,6 +19,6 @@ data class ArmourCheckContinuation(
     override val localPromptPlayerId: PlayerId?
         get() = when (ongoingArmourCheck.stage) {
             OngoingArmourCheck.ArmourCheckStage.HANDLE_ARMOUR_DO_OVER -> ongoingArmourCheck.playerId
-            else                                                         -> null
+            else                                                      -> null
         }
 }

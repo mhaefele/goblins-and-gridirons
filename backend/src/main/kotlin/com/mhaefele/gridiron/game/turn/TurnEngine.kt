@@ -90,7 +90,7 @@ class TurnEngine(
                     }
                 }
                 TurnPhase.TURN_START      -> when (session.turnStartStep) {
-                    TurnStartStep.SUDDEN_DEATH        -> {
+                    TurnStartStep.SUDDEN_DEATH  -> {
                         maybeEndBySuddenDeath(session)
                         session.setStep(TurnStartStep.GANG_UP)
                     }
@@ -186,22 +186,22 @@ class TurnEngine(
                         session.setStep(PlayerActionStep.TOUCHDOWN)
                     }
                     // Once per turn-slot beat — after the action (and nested follow-ups) truly complete.
-                    PlayerActionStep.TOUCHDOWN         -> {
+                    PlayerActionStep.TOUCHDOWN          -> {
                         scoreTouchdownIfPossible(session)
                         ChallengeTurnSteps.maybeClaimAfterAction(session, session.requireCurrentPlayerAction())
                             ?.let { session.setPendingDecision(it) }
                         session.setStep(PlayerActionStep.CLAIM)
                     }
-                    PlayerActionStep.CLAIM             -> {
+                    PlayerActionStep.CLAIM              -> {
                         // ClaimChallenge (if any) pauses via needsPlayerInput; once gone → THIRST.
                         session.setStep(PlayerActionStep.THIRST)
                     }
-                    PlayerActionStep.THIRST         -> {
+                    PlayerActionStep.THIRST             -> {
                         Thirst.afterClaimStep(session, session.requireCurrentPlayerAction(), bounce)
                         session.clearCurrentPlayerAction()
                         session.setStep(PlayerActionStep.QUEUE_NEXT)
                     }
-                    PlayerActionStep.AFTER_THIRD       -> {
+                    PlayerActionStep.AFTER_THIRD        -> {
                         if (OfferDanceStepResolver.canOffer(session)) {
                             session.setPendingDecision(offerDanceStepResolver.begin(session))
                             session.setStep(PlayerActionStep.OFFER_DANCE_STEP)
@@ -214,7 +214,7 @@ class TurnEngine(
                             session.enterPhase(TurnPhase.TURN_END, TurnEndStep.CLEANUP)
                         }
                     }
-                    PlayerActionStep.OFFER_DANCE_STEP    -> {
+                    PlayerActionStep.OFFER_DANCE_STEP   -> {
                         // Skip/drain cleared the pending; Accept+Sidestep nests a continuation → reconcile → IN_ACTION.
                         check(!session.hasPendingDecision()) { "OFFER_DANCE_STEP with pending — Accept should still be awaiting input" }
                         // Do not re-enter AFTER_THIRD (would re-offer the same Skip) — chain Extra Effort or end.
@@ -275,12 +275,12 @@ class TurnEngine(
     private fun reconcilePlayerActionStep(session: MatchMutator) {
         if (session.phase != TurnPhase.PLAYER_ACTION) return
         when (session.playerActionStep) {
-            PlayerActionStep.SELECT            -> {
+            PlayerActionStep.SELECT             -> {
                 if (!session.hasPendingDecision()) return
                 val rpa = session.pendingAs<RegularPlayerAction>()
                 if (rpa.delegate != null) enterInAction(session)
             }
-            PlayerActionStep.OFFER_DANCE_STEP    -> {
+            PlayerActionStep.OFFER_DANCE_STEP   -> {
                 // No pending: Skip cleared the offer — OFFER_DANCE_STEP arm runs next.
                 if (!session.hasPendingDecision()) return
                 val offer = session.pendingAs<OfferDanceStep>()
@@ -294,11 +294,11 @@ class TurnEngine(
                 // Play parks bare RPA (still this step). Fourth-action pick nests *Continuation under that RPA.
                 if (selectingRpa?.delegate != null) enterInAction(session)
             }
-            PlayerActionStep.IN_ACTION         -> {
+            PlayerActionStep.IN_ACTION          -> {
                 val pending = session.requirePendingDecision()
                 val continuationGone = when (pending) {
                     is RegularPlayerAction -> pending.delegate == null
-                    is OfferDanceStep       -> pending.delegate == null
+                    is OfferDanceStep      -> pending.delegate == null
                     is OfferExtraEffort    -> pending.delegate?.delegate == null
                     else                   -> error("IN_ACTION unexpected pending $pending")
                 }
@@ -306,13 +306,13 @@ class TurnEngine(
                 // Throw Team-mate cancel (etc.): *Continuation cleared, selecting / offer root again.
                 check(session.currentPlayerAction == null) { "turn-slot continuation cleared but currentPlayerAction still set" }
                 when (pending) {
-                    is OfferDanceStep       -> session.setStep(PlayerActionStep.OFFER_DANCE_STEP)
+                    is OfferDanceStep      -> session.setStep(PlayerActionStep.OFFER_DANCE_STEP)
                     is OfferExtraEffort    -> session.setStep(PlayerActionStep.OFFER_EXTRA_EFFORT)
                     is RegularPlayerAction -> session.setStep(PlayerActionStep.SELECT)
                     else                   -> error("unreachable")
                 }
             }
-            else                               -> Unit
+            else                                -> Unit
         }
     }
 

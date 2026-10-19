@@ -251,8 +251,8 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
         val (focus, expected) = when (scenario) {
             TrainingScenarioEnum.CLAIM_SEND_THEM_OFF_FOUL -> SEND_THEM_OFF to LegalAction.Foul::class
             TrainingScenarioEnum.CLAIM_SEND_THEM_OFF      -> SEND_THEM_OFF to LegalAction.Block::class
-            TrainingScenarioEnum.CLAIM_DROP_THEM        -> DROP_THEM to LegalAction.Block::class
-            else                                             -> return
+            TrainingScenarioEnum.CLAIM_DROP_THEM          -> DROP_THEM to LegalAction.Block::class
+            else                                          -> return
         }
         playThroughForcedReplaceToPlayerAction(matchId)
         val legals = legalMovesGenerator.forActingCoach(loadMatch(matchId))

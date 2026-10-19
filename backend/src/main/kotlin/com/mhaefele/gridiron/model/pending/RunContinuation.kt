@@ -30,7 +30,7 @@ data class RunContinuation(
                      -> ongoingRun.playerId
                 OngoingRun.RunStage.CHOOSE_INTERRUPT_MARK    -> checkNotNull(ongoingRun.interruptMarkPlayerId) { "CHOOSE_INTERRUPT_MARK missing interruptMarkPlayerId" }
                 OngoingRun.RunStage.HANDLE_ABILITY_FOLLOW_UP -> checkNotNull(ongoingRun.offeredAbilityPlayerId) { "HANDLE_ABILITY_FOLLOW_UP missing offeredAbilityPlayerId" }
-                OngoingRun.RunStage.HANDLE_CUT_OFF      -> null
+                OngoingRun.RunStage.HANDLE_CUT_OFF           -> null
                 else                                         -> error("promptPlayerId unexpected Run stage ${ongoingRun.stage}")
             }
 }

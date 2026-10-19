@@ -17,8 +17,8 @@ enum class FoulResult {
 /** Map a rolled Block Die face to its Foul chart result. */
 fun foulResultFor(face: BlockDieFace): FoulResult =
     when (face) {
-        BlockDieFace.MISS                         -> FoulResult.SPOTTED
-        BlockDieFace.TACKLE                       -> FoulResult.TAKE_THAT
-        BlockDieFace.SHOVE                        -> FoulResult.SLIPPED
+        BlockDieFace.MISS                        -> FoulResult.SPOTTED
+        BlockDieFace.TACKLE                      -> FoulResult.TAKE_THAT
+        BlockDieFace.SHOVE                       -> FoulResult.SLIPPED
         BlockDieFace.SMASH, BlockDieFace.FLATTEN -> FoulResult.GOT_THEM
     }

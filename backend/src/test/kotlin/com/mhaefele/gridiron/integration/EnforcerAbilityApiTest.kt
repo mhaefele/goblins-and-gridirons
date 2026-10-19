@@ -302,7 +302,7 @@ class EnforcerAbilityApiTest : BaseApiTest() {
             var blocker = Coordinate(5, 6)
             for (i in 0 until killingFaceIndex) {
                 when (faces[i]) {
-                    BlockDieFace.SHOVE                                             -> {
+                    BlockDieFace.SHOVE                                            -> {
                         val next = Coordinate(at.x + (at.x - blocker.x).coerceIn(-1, 1), at.y + (at.y - blocker.y).coerceIn(-1, 1))
                         // auto follow
                         blocker = at
@@ -311,7 +311,7 @@ class EnforcerAbilityApiTest : BaseApiTest() {
                     BlockDieFace.SMASH, BlockDieFace.FLATTEN, BlockDieFace.TACKLE -> {
                         // KD in place; armour held → stay; no follow-up
                     }
-                    BlockDieFace.MISS                                              -> Unit
+                    BlockDieFace.MISS                                             -> Unit
                 }
             }
             return at

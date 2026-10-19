@@ -22,7 +22,7 @@ class ArmourCheckLegalMovesGenerator : PendingDecisionLegalMovesGenerator<Armour
         val turn = state.currentTurnState
         val cards = state.cards
         return when (ongoing.stage) {
-            OngoingArmourCheck.ArmourCheckStage.HANDLE_BLADED            -> playIfPresent(cards, turn.activeCoach, turn, BonusPlay.`Spiked Gauntlets`) + LegalAction.DeclineBonus
+            OngoingArmourCheck.ArmourCheckStage.HANDLE_BLADED         -> playIfPresent(cards, turn.activeCoach, turn, BonusPlay.`Spiked Gauntlets`) + LegalAction.DeclineBonus
             OngoingArmourCheck.ArmourCheckStage.HANDLE_ARMOUR_DO_OVER -> {
                 val armour = state.board.player(ongoing.playerId).profile.stats.armour
                 val effective = if (ongoing.spikedGauntlets) ArmourStat.Threshold(6) else armour
@@ -35,7 +35,7 @@ class ArmourCheckLegalMovesGenerator : PendingDecisionLegalMovesGenerator<Armour
                 }
                 rt + LegalAction.DeclineBonus
             }
-            else                                                         -> error("ArmourCheckContinuation legal moves unexpected stage: ${ongoing.stage}")
+            else                                                      -> error("ArmourCheckContinuation legal moves unexpected stage: ${ongoing.stage}")
         }
     }
 }

@@ -31,7 +31,7 @@ data class OngoingArmourCheck(
         val awaitsInput: Boolean
             get() = when (this) {
                 HANDLE_BLADED, HANDLE_ARMOUR_DO_OVER -> true
-                else                                    -> false
+                else                                 -> false
             }
     }
 }

@@ -79,7 +79,7 @@ class SidestepResolver(
                 ongoing.respondingCoach = null
                 ongoing.stage = OngoingSidestep.SidestepStage.DONE
             }
-            else                                           -> error("handleLegalAction unexpected ${ongoing.stage}")
+            else                                             -> error("handleLegalAction unexpected ${ongoing.stage}")
         }
     }
 
@@ -97,7 +97,7 @@ class SidestepResolver(
                         ongoing.stage = OngoingSidestep.SidestepStage.DONE
                     }
                 }
-                else                                          -> error("auto-crank unexpected ${ongoing.stage}")
+                else                                            -> error("auto-crank unexpected ${ongoing.stage}")
             }
         }
         return ongoing.ongoingSidestep

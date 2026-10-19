@@ -109,7 +109,7 @@ class MarkResolver(
             OngoingMark.MarkStage.HANDLE_ABILITY_FOLLOW_UP -> {
                 val ability = checkNotNull(ongoing.offeredAbility) { "HANDLE_ABILITY_FOLLOW_UP missing offeredAbility" }
                 when {
-                    action is LegalAction.Skip                                                             -> {
+                    action is LegalAction.Skip                                                          -> {
                         val playerId = checkNotNull(ongoing.offeredAbilityPlayerId) { "HANDLE_ABILITY_FOLLOW_UP Skip missing player" }
                         ongoing.resolvedFollowUpOffers = ongoing.resolvedFollowUpOffers + (ability to playerId)
                         ongoing.offeredAbility = null
@@ -121,7 +121,7 @@ class MarkResolver(
                         ongoing.nestedBlock = blockResolver.beginNested(session, block, allInTackleProneAfterBlock = false)
                         ongoing.stage = OngoingMark.MarkStage.DELEGATE_ABILITY_FREE_ACTION
                     }
-                    ability == PlayerAbility.Rally                                                  -> {
+                    ability == PlayerAbility.Rally                                                      -> {
                         val standUp = action as? LegalAction.StandUp ?: error("Rally expects StandUp, was ${action::class.simpleName}")
                         boardMovement.applyStandUp(session.board, standUp)
                         session.recordTurnAction(standUp.playerId, ActionType.STAND_UP, isFree = true)
@@ -130,7 +130,7 @@ class MarkResolver(
                         ongoing.offeredAbilityPlayerId = null
                         ongoing.stage = OngoingMark.MarkStage.OFFER_ABILITY_FOLLOW_UPS
                     }
-                    else                                                                                   -> error("No Mark free-action handling for $ability")
+                    else                                                                                -> error("No Mark free-action handling for $ability")
                 }
             }
 
@@ -139,7 +139,7 @@ class MarkResolver(
             OngoingMark.MarkStage.HANDLE_MARK_BONUS_CARDS -> {
                 val coach = checkNotNull(ongoing.respondingCoach) { "HANDLE_MARK_BONUS_CARDS missing respondingCoach" }
                 when (action) {
-                    is LegalAction.DeclineBonus                               -> {
+                    is LegalAction.DeclineBonus                                 -> {
                         ongoing.respondingCoach = null
                         ongoing.stage = OngoingMark.MarkStage.DONE
                     }
@@ -151,7 +151,7 @@ class MarkResolver(
                         ongoing.respondingCoach = coach
                         ongoing.stage = OngoingMark.MarkStage.CHOOSE_MARK_BONUS_FREE_BLOCK
                     }
-                    else                                                      -> error("HANDLE_MARK_BONUS_CARDS expects PlayMomentum, PlayAllInTackle, or DeclineBonus, was ${action::class.simpleName}")
+                    else                                                        -> error("HANDLE_MARK_BONUS_CARDS expects PlayMomentum, PlayAllInTackle, or DeclineBonus, was ${action::class.simpleName}")
                 }
             }
 

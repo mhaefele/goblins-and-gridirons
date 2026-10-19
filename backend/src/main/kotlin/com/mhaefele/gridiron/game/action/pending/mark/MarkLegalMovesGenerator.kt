@@ -32,7 +32,7 @@ class MarkLegalMovesGenerator(
         val turn = state.currentTurnState
         val cards = state.cards
         return when (ongoing.stage) {
-            OngoingMark.MarkStage.HANDLE_SLIP_AWAY              -> {
+            OngoingMark.MarkStage.HANDLE_SLIP_AWAY               -> {
                 val coach = checkNotNull(ongoing.respondingCoach) { "HANDLE_SLIP_AWAY missing respondingCoach" }
                 playIfPresent(cards, coach, turn, BonusPlay.`Slip Away`) + LegalAction.DeclineBonus
             }

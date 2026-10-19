@@ -420,7 +420,7 @@ class LookaheadSearch(
     /** Optional free-ability offers always include Skip — take it without enumerating free Run/Block menus. */
     private fun abilityFollowUpSkip(front: PendingDecision): LegalAction? {
         val playerId: PlayerId = when (front) {
-            is OfferUndying   -> front.playerId
+            is OfferUndying      -> front.playerId
             is ThrowContinuation ->
                 front.ongoingThrow.takeIf { it.stage == OngoingThrow.ThrowStage.HANDLE_ABILITY_FOLLOW_UP }
                     ?.let { it.offeredAbilityPlayerId ?: it.throwerId } ?: return null

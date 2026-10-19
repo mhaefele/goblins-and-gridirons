@@ -159,7 +159,7 @@ class DeterministicActionSearch(
             is LegalAction.ThrowTeammate                       -> overlay.queueD6(6)
             is LegalAction.Block, is LegalAction.ContinueBlock -> overlay.queueBlockDice(BlockDieFace.SMASH)
             is LegalAction.Foul                                -> overlay.queueBlockDice(BlockDieFace.SMASH)
-            is LegalAction.QuickReleaseThrow                        -> overlay.queueD6(6)
+            is LegalAction.QuickReleaseThrow                   -> overlay.queueD6(6)
             is LegalAction.Run,
             is LegalAction.Mark,
             is LegalAction.Sidestep,

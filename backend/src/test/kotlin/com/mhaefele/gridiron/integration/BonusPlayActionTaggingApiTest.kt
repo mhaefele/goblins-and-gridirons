@@ -252,9 +252,7 @@ class BonusPlayActionTaggingApiTest : BaseApiTest() {
 
         val block = match.legalActions<LegalAction.Block>().first()
         assertThat(block.requiredBonusCard).isNull()
-        assertThat(block.availableBonusCards).anyMatch {
-            it.bonusPlay == BonusPlay.Underdog
-        }
+        assertThat(block.availableBonusCards).anyMatch { it.bonusPlay == BonusPlay.Underdog }
         match.play(block)
 
         val plays = match.legalActions<LegalAction.PlayBonusCard>()

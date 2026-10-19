@@ -131,9 +131,9 @@ class ClaimCleanSweepTrainingScenario : AbstractChallengeClaimTrainingScenario(n
         return remaining.any { condition ->
             condition in claimable && when (condition) {
                 GRAB_IT   -> action is LegalAction.Run && action.ballEncounter == BallEncounter.PICK_UP
-                HUDDLE_UP   -> action is LegalAction.Run || action is LegalAction.Mark || action is LegalAction.Sidestep
+                HUDDLE_UP -> action is LegalAction.Run || action is LegalAction.Mark || action is LegalAction.Sidestep
                 DROP_THEM -> action is LegalAction.Block
-                else           -> false
+                else      -> false
             }
         }
     }

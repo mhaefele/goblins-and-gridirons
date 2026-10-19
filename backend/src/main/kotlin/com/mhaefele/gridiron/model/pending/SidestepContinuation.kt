@@ -16,6 +16,6 @@ data class SidestepContinuation(
     override val localPromptPlayerId: PlayerId?
         get() = when (ongoingSidestep.stage) {
             OngoingSidestep.SidestepStage.HANDLE_STICK_CLOSE -> null
-            else                                           -> error("promptPlayerId unexpected Sidestep stage ${ongoingSidestep.stage}")
+            else                                             -> error("promptPlayerId unexpected Sidestep stage ${ongoingSidestep.stage}")
         }
 }

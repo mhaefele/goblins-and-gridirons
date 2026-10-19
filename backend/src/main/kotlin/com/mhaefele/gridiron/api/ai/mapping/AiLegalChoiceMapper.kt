@@ -78,47 +78,47 @@ class AiLegalChoiceMapper(
 
     private fun LegalAction.toAiLegalKind(): AiLegalKind =
         when (this) {
-            is LegalAction.Run                      -> AiLegalKind.run
-            is LegalAction.Mark                     -> AiLegalKind.mark
-            is LegalAction.Sidestep                 -> AiLegalKind.sidestep
-            is LegalAction.Throw                    -> AiLegalKind.`throw`
-            is LegalAction.ThrowTeammateSelect      -> AiLegalKind.throwTeammateSelect
-            is LegalAction.ThrowTeammate            -> AiLegalKind.throwTeammate
-            is LegalAction.CancelThrowTeammate      -> error("CancelThrowTeammate is excluded from AI legals")
-            is LegalAction.Block                    -> AiLegalKind.block
-            is LegalAction.Foul                     -> AiLegalKind.foul
-            is LegalAction.StandUp                  -> AiLegalKind.standUp
-            is LegalAction.Reserves                 -> AiLegalKind.reserves
-            is LegalAction.Skip                     -> AiLegalKind.declineOffer
-            is LegalAction.DeclineBonus             -> AiLegalKind.declineOffer
-            is LegalAction.ContinueBlock            -> AiLegalKind.declineOffer
-            is LegalAction.PlaceLooseBall           -> AiLegalKind.placeLooseBall
-            is LegalAction.ChooseBlockReroll        -> if (reroll) AiLegalKind.`reroll` else AiLegalKind.declineOffer
-            is LegalAction.ChooseThrowReroll        -> if (reroll) AiLegalKind.`reroll` else AiLegalKind.declineOffer
-            is LegalAction.ChooseBlockFaceOrder     -> error("ChooseBlockFaceOrder is excluded from AI legals (humans-only)")
-            is LegalAction.AdjustThrowByDoOver   -> AiLegalKind.adjustByDoOver
-            is LegalAction.AdjustBlockByDoOver   -> AiLegalKind.adjustByDoOver
-            is LegalAction.AdjustArmourByDoOver  -> AiLegalKind.adjustByDoOver
-            is LegalAction.QuickReleaseThrow             -> AiLegalKind.quickReleaseThrow
-            is LegalAction.DeclareRun               -> AiLegalKind.declareRun
-            is LegalAction.PlayGangUp         -> AiLegalKind.playGangUp
-            is LegalAction.PlayHoldTheLine        -> AiLegalKind.playHoldTheLine
-            is LegalAction.PlayExtraEffort          -> AiLegalKind.playExtraEffort
-            is LegalAction.PlayMomentum                -> AiLegalKind.playMomentum
-            is LegalAction.PlayAllInTackle         -> AiLegalKind.playAllInTackle
-            is LegalAction.PlaySlipAway            -> AiLegalKind.playSlipAway
-            is LegalAction.PlayCutOff         -> AiLegalKind.playCutOff
-            is LegalAction.PlayStickClose            -> AiLegalKind.playStickClose
-            is LegalAction.PlayBackOnYourFeet               -> AiLegalKind.playBackOnYourFeet
-            is LegalAction.PlayFreshLegs             -> AiLegalKind.playFreshLegs
-            is LegalAction.PlayBrace          -> AiLegalKind.playBrace
-            is LegalAction.PlayUnderdog          -> AiLegalKind.playUnderdog
-            is LegalAction.PlaySpikedGauntlets -> AiLegalKind.playSpikedGauntlets
-            is LegalAction.PlayDeadEye        -> AiLegalKind.playDeadEye
-            is LegalAction.PlayHailMary             -> AiLegalKind.playHailMary
-            is LegalAction.PlaySprint               -> AiLegalKind.playSprint
-            is LegalAction.ClaimChallenge           -> AiLegalKind.claimChallenge
-            is LegalAction.ReplaceChallenge         -> AiLegalKind.replaceChallenge
+            is LegalAction.Run                  -> AiLegalKind.run
+            is LegalAction.Mark                 -> AiLegalKind.mark
+            is LegalAction.Sidestep             -> AiLegalKind.sidestep
+            is LegalAction.Throw                -> AiLegalKind.`throw`
+            is LegalAction.ThrowTeammateSelect  -> AiLegalKind.throwTeammateSelect
+            is LegalAction.ThrowTeammate        -> AiLegalKind.throwTeammate
+            is LegalAction.CancelThrowTeammate  -> error("CancelThrowTeammate is excluded from AI legals")
+            is LegalAction.Block                -> AiLegalKind.block
+            is LegalAction.Foul                 -> AiLegalKind.foul
+            is LegalAction.StandUp              -> AiLegalKind.standUp
+            is LegalAction.Reserves             -> AiLegalKind.reserves
+            is LegalAction.Skip                 -> AiLegalKind.declineOffer
+            is LegalAction.DeclineBonus         -> AiLegalKind.declineOffer
+            is LegalAction.ContinueBlock        -> AiLegalKind.declineOffer
+            is LegalAction.PlaceLooseBall       -> AiLegalKind.placeLooseBall
+            is LegalAction.ChooseBlockReroll    -> if (reroll) AiLegalKind.`reroll` else AiLegalKind.declineOffer
+            is LegalAction.ChooseThrowReroll    -> if (reroll) AiLegalKind.`reroll` else AiLegalKind.declineOffer
+            is LegalAction.ChooseBlockFaceOrder -> error("ChooseBlockFaceOrder is excluded from AI legals (humans-only)")
+            is LegalAction.AdjustThrowByDoOver  -> AiLegalKind.adjustByDoOver
+            is LegalAction.AdjustBlockByDoOver  -> AiLegalKind.adjustByDoOver
+            is LegalAction.AdjustArmourByDoOver -> AiLegalKind.adjustByDoOver
+            is LegalAction.QuickReleaseThrow    -> AiLegalKind.quickReleaseThrow
+            is LegalAction.DeclareRun           -> AiLegalKind.declareRun
+            is LegalAction.PlayGangUp           -> AiLegalKind.playGangUp
+            is LegalAction.PlayHoldTheLine      -> AiLegalKind.playHoldTheLine
+            is LegalAction.PlayExtraEffort      -> AiLegalKind.playExtraEffort
+            is LegalAction.PlayMomentum         -> AiLegalKind.playMomentum
+            is LegalAction.PlayAllInTackle      -> AiLegalKind.playAllInTackle
+            is LegalAction.PlaySlipAway         -> AiLegalKind.playSlipAway
+            is LegalAction.PlayCutOff           -> AiLegalKind.playCutOff
+            is LegalAction.PlayStickClose       -> AiLegalKind.playStickClose
+            is LegalAction.PlayBackOnYourFeet   -> AiLegalKind.playBackOnYourFeet
+            is LegalAction.PlayFreshLegs        -> AiLegalKind.playFreshLegs
+            is LegalAction.PlayBrace            -> AiLegalKind.playBrace
+            is LegalAction.PlayUnderdog         -> AiLegalKind.playUnderdog
+            is LegalAction.PlaySpikedGauntlets  -> AiLegalKind.playSpikedGauntlets
+            is LegalAction.PlayDeadEye          -> AiLegalKind.playDeadEye
+            is LegalAction.PlayHailMary         -> AiLegalKind.playHailMary
+            is LegalAction.PlaySprint           -> AiLegalKind.playSprint
+            is LegalAction.ClaimChallenge       -> AiLegalKind.claimChallenge
+            is LegalAction.ReplaceChallenge     -> AiLegalKind.replaceChallenge
         }
 
     /** Free factors (MultiDiscrete) + sugar (pending-fixed / attached bonus; not matched). */
@@ -129,30 +129,30 @@ class AiLegalChoiceMapper(
         fun pitchOf(coord: Coordinate) = AiFactor.BoardTarget(gameState.perspectivePitchIndex(coord, perspectiveSeat))
 
         return when (this) {
-            is LegalAction.PathMovement            -> listOf(actorOf(playerId), pitchOf(path.squares.last())) to emptyList()
-            is LegalAction.DeclareRun              -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.Throw                   -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.ThrowTeammateSelect     -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.ThrowTeammate           -> listOf(pitchOf(targetCoordinate)) to listOf(actorOf(playerId))
-            is LegalAction.CancelThrowTeammate     -> error("CancelThrowTeammate is excluded from AI legals")
-            is LegalAction.Block                   -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.Foul                    -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.StandUp                 -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.Reserves                -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.Skip                    -> emptyList<AiFactor>() to listOf(actorOf(playerId))
-            is LegalAction.DeclineBonus            -> emptyList<AiFactor>() to emptyList()
-            is LegalAction.ContinueBlock           -> emptyList<AiFactor>() to listOf(actorOf(playerId), pitchOf(targetCoordinate))
-            is LegalAction.PlaceLooseBall          -> listOf(pitchOf(to)) to listOf(actorOf(playerId))
-            is LegalAction.ChooseBlockReroll       -> emptyList<AiFactor>() to listOf(actorOf(playerId))
-            is LegalAction.ChooseThrowReroll       -> emptyList<AiFactor>() to listOf(actorOf(playerId))
-            is LegalAction.ChooseBlockFaceOrder    -> error("ChooseBlockFaceOrder is excluded from AI legals")
+            is LegalAction.PathMovement         -> listOf(actorOf(playerId), pitchOf(path.squares.last())) to emptyList()
+            is LegalAction.DeclareRun           -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
+            is LegalAction.Throw                -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
+            is LegalAction.ThrowTeammateSelect  -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
+            is LegalAction.ThrowTeammate        -> listOf(pitchOf(targetCoordinate)) to listOf(actorOf(playerId))
+            is LegalAction.CancelThrowTeammate  -> error("CancelThrowTeammate is excluded from AI legals")
+            is LegalAction.Block                -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
+            is LegalAction.Foul                 -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
+            is LegalAction.StandUp              -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
+            is LegalAction.Reserves             -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
+            is LegalAction.Skip                 -> emptyList<AiFactor>() to listOf(actorOf(playerId))
+            is LegalAction.DeclineBonus         -> emptyList<AiFactor>() to emptyList()
+            is LegalAction.ContinueBlock        -> emptyList<AiFactor>() to listOf(actorOf(playerId), pitchOf(targetCoordinate))
+            is LegalAction.PlaceLooseBall       -> listOf(pitchOf(to)) to listOf(actorOf(playerId))
+            is LegalAction.ChooseBlockReroll    -> emptyList<AiFactor>() to listOf(actorOf(playerId))
+            is LegalAction.ChooseThrowReroll    -> emptyList<AiFactor>() to listOf(actorOf(playerId))
+            is LegalAction.ChooseBlockFaceOrder -> error("ChooseBlockFaceOrder is excluded from AI legals")
             is LegalAction.AdjustThrowByDoOver  -> emptyList<AiFactor>() to listOf(actorOf(playerId), pitchOf(destination))
             is LegalAction.AdjustBlockByDoOver  -> emptyList<AiFactor>() to listOf(actorOf(playerId), pitchOf(destination))
             is LegalAction.AdjustArmourByDoOver -> emptyList<AiFactor>() to listOf(actorOf(targetId))
-            is LegalAction.QuickReleaseThrow            -> listOf(pitchOf(targetCoordinate)) to listOf(actorOf(playerId))
-            is LegalAction.PlayBonusCard           -> emptyList<AiFactor>() to emptyList()
-            is LegalAction.ClaimChallenge          -> listOf(AiFactor.ChallengeSlot(slotIndex)) to emptyList()
-            is LegalAction.ReplaceChallenge        -> listOf(AiFactor.ChallengeSlot(slotIndex)) to emptyList()
+            is LegalAction.QuickReleaseThrow    -> listOf(pitchOf(targetCoordinate)) to listOf(actorOf(playerId))
+            is LegalAction.PlayBonusCard        -> emptyList<AiFactor>() to emptyList()
+            is LegalAction.ClaimChallenge       -> listOf(AiFactor.ChallengeSlot(slotIndex)) to emptyList()
+            is LegalAction.ReplaceChallenge     -> listOf(AiFactor.ChallengeSlot(slotIndex)) to emptyList()
         }
     }
 

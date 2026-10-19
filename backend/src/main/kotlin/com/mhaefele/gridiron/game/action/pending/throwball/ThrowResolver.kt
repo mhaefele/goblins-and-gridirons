@@ -108,7 +108,7 @@ class ThrowResolver(
                         ongoingThrow.nestedRun = runResolver.beginNested(session, run)
                         ongoingThrow.stage = OngoingThrow.ThrowStage.DELEGATE_ABILITY_FREE_ACTION
                     }
-                    PlayerAbility.Rally -> {
+                    PlayerAbility.Rally          -> {
                         val standUp = action as? LegalAction.StandUp ?: error("Rally expects StandUp")
                         boardMovement.applyStandUp(session.board, standUp)
                         session.recordTurnAction(standUp.playerId, ActionType.STAND_UP, isFree = true)
@@ -117,12 +117,10 @@ class ThrowResolver(
                         ongoingThrow.offeredAbilityPlayerId = null
                         ongoingThrow.stage = OngoingThrow.ThrowStage.OFFER_ABILITY_FOLLOW_UPS
                     }
-                    else                       -> error("No Throw free-action handling for $ability")
+                    else                         -> error("No Throw free-action handling for $ability")
                 }
             }
-            OngoingThrow.ThrowStage.DELEGATE_ABILITY_FREE_ACTION -> {
-                ongoingThrow.nestedRun = runResolver.mutate(session, ongoingThrow.nestedRun!!, action)
-            }
+            OngoingThrow.ThrowStage.DELEGATE_ABILITY_FREE_ACTION -> { ongoingThrow.nestedRun = runResolver.mutate(session, ongoingThrow.nestedRun!!, action) }
             else                                                 -> error("handleLegalAction unexpected ${ongoingThrow.stage}")
         }
     }
@@ -219,18 +217,18 @@ class ThrowResolver(
 
     private fun handleThrowTargetChosen(session: MatchMutator, ongoingThrow: OngoingThrowMutator, command: LegalAction) {
         when (command) {
-            is LegalAction.DeclineBonus      -> Unit
-            is LegalAction.PlayDeadEye -> {
+            is LegalAction.DeclineBonus -> Unit
+            is LegalAction.PlayDeadEye  -> {
                 //  TODO:  Can we handle this as a required card on the legal action?
                 session.playBonusCard(session.activeCoach, command.bonusPlay)
                 ongoingThrow.deadEye = true
             }
-            is LegalAction.PlayHailMary      -> {
+            is LegalAction.PlayHailMary -> {
                 session.playBonusCard(session.activeCoach, command.bonusPlay)
                 ongoingThrow.hailMary = true
                 ongoingThrow.target = reResolveThrowTarget(session, ongoingThrow)
             }
-            else                             -> error("ThrowTargetChosen expects PlayDeadEye, PlayHailMary, or DeclineBonus, was ${command::class.simpleName}")
+            else                        -> error("ThrowTargetChosen expects PlayDeadEye, PlayHailMary, or DeclineBonus, was ${command::class.simpleName}")
         }
     }
 
@@ -311,9 +309,9 @@ class ThrowResolver(
 
     private fun throwCheckOutcome(session: MatchMutator, thrower: Player, naturalRoll: Int, range: ThrowRange, obstructed: Boolean, ongoingThrow: OngoingThrowMutator): ThrowCheckOutcome {
         return when {
-            ongoingThrow.hailMary      -> throwCheck(naturalRoll, ThrowStat.Threshold(4), ThrowRange.SHORT, obstructed = false)
-            ongoingThrow.deadEye -> throwCheck(naturalRoll, ThrowStat.Threshold(2), ThrowRange.SHORT, obstructed = false)
-            else                       -> throwCheck(naturalRoll, thrower.profile.stats.throwStat, range, obstructed)
+            ongoingThrow.hailMary -> throwCheck(naturalRoll, ThrowStat.Threshold(4), ThrowRange.SHORT, obstructed = false)
+            ongoingThrow.deadEye  -> throwCheck(naturalRoll, ThrowStat.Threshold(2), ThrowRange.SHORT, obstructed = false)
+            else                  -> throwCheck(naturalRoll, thrower.profile.stats.throwStat, range, obstructed)
         }
     }
 

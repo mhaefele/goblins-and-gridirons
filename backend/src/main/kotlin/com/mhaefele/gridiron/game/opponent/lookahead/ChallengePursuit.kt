@@ -87,9 +87,7 @@ object ChallengePursuit {
             when (kind) {
                 ChallengeClaimCondition.KEEP_RUNNING -> {
                     val used = state.currentTurnState.actionsThisTurn.map { it.playerId }.toSet()
-                    val runs = legal.filter {
-                        (it is LegalAction.Run || it is LegalAction.DeclareRun) && (it as LegalAction.PlayerLegalAction).playerId !in used
-                    }
+                    val runs = legal.filter { (it is LegalAction.Run || it is LegalAction.DeclareRun) &&(it as LegalAction.PlayerLegalAction).playerId !in used }
                     if (runs.isNotEmpty()) return runs
                 }
                 ChallengeClaimCondition.CONNECT,
@@ -110,7 +108,7 @@ object ChallengePursuit {
                     if (fouls.isNotEmpty()) return fouls
                     if (blocks.isNotEmpty()) return blocks
                 }
-                ChallengeClaimCondition.SEND_THEM_OFF -> {
+                ChallengeClaimCondition.SEND_THEM_OFF  -> {
                     val fouls = legal.filterIsInstance<LegalAction.Foul>()
                     val annotatedFouls = fouls.filter { claimsKind(it, kind) }
                     if (annotatedFouls.isNotEmpty()) return annotatedFouls
@@ -120,7 +118,7 @@ object ChallengePursuit {
                     if (annotatedBlocks.isNotEmpty()) return annotatedBlocks
                     if (blocks.isNotEmpty()) return blocks
                 }
-                ChallengeClaimCondition.GRAB_IT -> {
+                ChallengeClaimCondition.GRAB_IT        -> {
                     val pickup = legal.filterIsInstance<LegalAction.Run>().filter { it.ballEncounter == BallEncounter.PICK_UP }
                     val annotatedPickup = pickup.filter { claimsKind(it, kind) }
                     if (annotatedPickup.isNotEmpty()) return listOf(annotatedPickup.minBy { it.path.steps })
@@ -150,7 +148,7 @@ object ChallengePursuit {
                     val annotated = legal.filter { claimsKind(it, kind) }
                     if (annotated.isNotEmpty()) return annotated
                 }
-                ChallengeClaimCondition.ALL_HANDS         -> {
+                ChallengeClaimCondition.ALL_HANDS -> {
                     val log = state.currentTurnState.actionsThisTurn
                     val typesDone = log.map { it.actionType }.toSet()
                     val playersDone = log.map { it.playerId }.toSet()

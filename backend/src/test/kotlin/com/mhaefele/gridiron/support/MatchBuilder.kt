@@ -219,17 +219,17 @@ class MatchBuilder {
                 step = when (decision) {
                     is ReplaceChallenge   -> PreTurnStep.REPLACE_CHALLENGE
                     // Engine queues ER then advances to BONUS_CARDS — park there so clear does not re-queue.
-                    is EmergencyReserves  -> PreTurnStep.BONUS_CARDS
-                    is OfferGangUp  -> TurnStartStep.AFTER_GANG_UP
-                    is OfferHoldTheLine -> PreTurnStep.AFTER_BONUS_CARDS
-                    is ClaimChallenge     -> PlayerActionStep.CLAIM
-                    is OfferUndying    -> PreTurnStep.PLAYER_ABILITIES
-                    is OfferExtraEffort   -> when {
+                    is EmergencyReserves -> PreTurnStep.BONUS_CARDS
+                    is OfferGangUp       -> TurnStartStep.AFTER_GANG_UP
+                    is OfferHoldTheLine  -> PreTurnStep.AFTER_BONUS_CARDS
+                    is ClaimChallenge    -> PlayerActionStep.CLAIM
+                    is OfferUndying      -> PreTurnStep.PLAYER_ABILITIES
+                    is OfferExtraEffort  -> when {
                         decision.delegate == null          -> PlayerActionStep.OFFER_EXTRA_EFFORT
                         decision.delegate.delegate != null -> PlayerActionStep.IN_ACTION
                         else                               -> PlayerActionStep.OFFER_EXTRA_EFFORT
                     }
-                    is OfferDanceStep      -> when {
+                    is OfferDanceStep    -> when {
                         decision.delegate != null -> PlayerActionStep.IN_ACTION
                         else                      -> PlayerActionStep.OFFER_DANCE_STEP
                     }

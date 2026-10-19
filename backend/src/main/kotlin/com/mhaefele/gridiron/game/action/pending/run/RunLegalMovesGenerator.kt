@@ -39,7 +39,7 @@ class RunLegalMovesGenerator(
                 pathMoves(player.id, runPaths(player, board, ongoing.squaresRemaining), LegalAction::Run) + LegalAction.Skip(player.id)
             }
             OngoingRun.RunStage.HANDLE_SPRINT                -> playIfPresent(cards, turn.activeCoach, turn, BonusPlay.Sprint) + LegalAction.DeclineBonus
-            OngoingRun.RunStage.HANDLE_CUT_OFF          -> {
+            OngoingRun.RunStage.HANDLE_CUT_OFF               -> {
                 val coach = checkNotNull(ongoing.respondingCoach) { "HANDLE_CUT_OFF missing respondingCoach" }
                 playIfPresent(cards, coach, turn, BonusPlay.`Cut Off`) + LegalAction.DeclineBonus
             }

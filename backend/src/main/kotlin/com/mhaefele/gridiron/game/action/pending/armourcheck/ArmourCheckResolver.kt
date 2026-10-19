@@ -41,21 +41,21 @@ class ArmourCheckResolver(
     private fun handleLegalAction(session: MatchMutator, ongoing: OngoingArmourCheckMutator, action: LegalAction) {
         check(ongoing.awaitsInput) { "handleLegalAction expects awaitsInput, was ${ongoing.stage}" }
         when (ongoing.stage) {
-            OngoingArmourCheck.ArmourCheckStage.HANDLE_BLADED            -> {
+            OngoingArmourCheck.ArmourCheckStage.HANDLE_BLADED         -> {
                 when (action) {
-                    is LegalAction.DeclineBonus             -> Unit
+                    is LegalAction.DeclineBonus        -> Unit
                     is LegalAction.PlaySpikedGauntlets -> {
                         session.playBonusCard(session.activeCoach, action.bonusPlay)
                         ongoing.spikedGauntlets = true
                     }
-                    else                                    -> error("HANDLE_BLADED expects PlaySpikedGauntlets or DeclineBonus, was ${action::class.simpleName}")
+                    else                               -> error("HANDLE_BLADED expects PlaySpikedGauntlets or DeclineBonus, was ${action::class.simpleName}")
                 }
                 ongoing.stage = OngoingArmourCheck.ArmourCheckStage.ROLL_ARMOUR
             }
             OngoingArmourCheck.ArmourCheckStage.HANDLE_ARMOUR_DO_OVER -> {
                 val armour = effectiveArmour(session, ongoing)
                 when (action) {
-                    is LegalAction.DeclineBonus            -> { applyArmourOutcome(session.board, ongoing.playerId, armour, ongoing.armourMinusOne, ongoing.naturalRoll!!) }
+                    is LegalAction.DeclineBonus         -> { applyArmourOutcome(session.board, ongoing.playerId, armour, ongoing.armourMinusOne, ongoing.naturalRoll!!) }
                     is LegalAction.AdjustArmourByDoOver -> {
                         session.playBonusCard(session.activeCoach, BonusPlay.`Do-Over`)
                         val armourStat = armour as? ArmourStat.Threshold ?: error("Do-Over armour re-roll expects Threshold armour, was $armour")
@@ -63,11 +63,11 @@ class ArmourCheckResolver(
                         session.board.record(armourDiceRolled(roll, armourStat, ongoing.armourMinusOne, bonusPlay = BonusPlay.`Do-Over`))
                         applyArmourOutcome(session.board, ongoing.playerId, armourStat, ongoing.armourMinusOne, roll)
                     }
-                    else                                   -> error("HANDLE_ARMOUR_DO_OVER expects AdjustArmourByDoOver or DeclineBonus, was ${action::class.simpleName}")
+                    else                                -> error("HANDLE_ARMOUR_DO_OVER expects AdjustArmourByDoOver or DeclineBonus, was ${action::class.simpleName}")
                 }
                 ongoing.stage = OngoingArmourCheck.ArmourCheckStage.DONE
             }
-            else                                                         -> error("handleLegalAction unexpected ${ongoing.stage}")
+            else                                                      -> error("handleLegalAction unexpected ${ongoing.stage}")
         }
     }
 

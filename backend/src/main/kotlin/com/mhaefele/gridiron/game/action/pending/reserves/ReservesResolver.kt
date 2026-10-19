@@ -47,12 +47,12 @@ class ReservesResolver(
         val ongoing = pending.ongoingReserves
         check(ongoing.stage == OngoingReserves.ReservesStage.HANDLE_FRESH_LEGS_BONUS) { "ReservesContinuation mutate unexpected stage: ${ongoing.stage}" }
         when (command) {
-            is LegalAction.DeclineBonus -> session.consumeRegularActionSlot()
+            is LegalAction.DeclineBonus  -> session.consumeRegularActionSlot()
             is LegalAction.PlayFreshLegs -> {
                 session.playBonusCard(session.activeCoach, command.bonusPlay)
                 session.markCurrentPlayerActionFree()
             }
-            else                        -> error("HANDLE_FRESH_LEGS_BONUS expects PlayFreshLegs or DeclineBonus, was ${command::class.simpleName}")
+            else                         -> error("HANDLE_FRESH_LEGS_BONUS expects PlayFreshLegs or DeclineBonus, was ${command::class.simpleName}")
         }
         boardMovement.applyReservesPlacement(
             session.board,

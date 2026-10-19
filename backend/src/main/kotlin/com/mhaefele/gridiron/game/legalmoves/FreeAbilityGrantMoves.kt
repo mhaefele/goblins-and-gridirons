@@ -26,9 +26,9 @@ fun PlayerAbility.followUpMoves(player: Player, board: Board): List<LegalAction>
         PlayerAbility.`Relentless After Block`,
         PlayerAbility.Charge,
                                              -> freeBlockMoves(player, board)
-        PlayerAbility.`Strike and Fade`  -> freeStrikeAndFadeMoves(player, board)
+        PlayerAbility.`Strike and Fade` -> freeStrikeAndFadeMoves(player, board)
         PlayerAbility.`Pass on the Run` -> freeShortThrowMoves(player, board)
-        PlayerAbility.`Catch and Go`  -> freeRunMoves(player, board)
+        PlayerAbility.`Catch and Go`    -> freeRunMoves(player, board)
         PlayerAbility.Rally,
         PlayerAbility.Undying,
              -> standUpMove(player, board)

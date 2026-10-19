@@ -84,21 +84,21 @@ object ClaimEligibility {
         board: Board,
     ): Boolean =
         when (condition) {
-            ChallengeClaimCondition.GRAB_IT           -> meetsGrabIt(facts, turnStats)
-            ChallengeClaimCondition.HUDDLE_UP           -> meetsHuddleUp(facts, board)
-            ChallengeClaimCondition.PUSH_FORWARD          -> meetsPushForward(facts)
-            ChallengeClaimCondition.FAN_OUT             -> meetsFanOut(facts, board)
+            ChallengeClaimCondition.GRAB_IT            -> meetsGrabIt(facts, turnStats)
+            ChallengeClaimCondition.HUDDLE_UP          -> meetsHuddleUp(facts, board)
+            ChallengeClaimCondition.PUSH_FORWARD       -> meetsPushForward(facts)
+            ChallengeClaimCondition.FAN_OUT            -> meetsFanOut(facts, board)
             ChallengeClaimCondition.PLAY_TO_THE_STANDS -> facts.touchdownScored
-            ChallengeClaimCondition.CONNECT   -> isThrowAction(facts.actionType) && facts.throwSucceeded && !facts.throwWasHandOff
-            ChallengeClaimCondition.STRIP_IT       -> facts.oppositionBallsLost.isNotEmpty()
-            ChallengeClaimCondition.KEEP_RUNNING             -> facts.actionType == ActionType.RUN && turnStats.runActionCount >= 3
-            ChallengeClaimCondition.HOLD_THE_PIT           -> facts.endedOnHazard && oppositionHoldsAnyBall(board, facts.team)
-            ChallengeClaimCondition.THREAD_THE_NEEDLE     -> isThrowAction(facts.actionType) && facts.throwSucceeded && facts.throwModifier < 0
-            ChallengeClaimCondition.ALL_HANDS         -> meetsAllHands(facts, turnStats)
-            ChallengeClaimCondition.STAR_TURN -> meetsStarTurn(facts, turnStats)
-            ChallengeClaimCondition.DROP_THEM         -> facts.actionType == ActionType.BLOCK && facts.knockDownOccurred
-            ChallengeClaimCondition.LOCK_THEM_DOWN            -> meetsLockThemDown(facts, board)
-            ChallengeClaimCondition.SEND_THEM_OFF       -> facts.actionType in setOf(ActionType.BLOCK, ActionType.FOUL) && facts.injuryOccurred
+            ChallengeClaimCondition.CONNECT            -> isThrowAction(facts.actionType) && facts.throwSucceeded && !facts.throwWasHandOff
+            ChallengeClaimCondition.STRIP_IT           -> facts.oppositionBallsLost.isNotEmpty()
+            ChallengeClaimCondition.KEEP_RUNNING       -> facts.actionType == ActionType.RUN && turnStats.runActionCount >= 3
+            ChallengeClaimCondition.HOLD_THE_PIT       -> facts.endedOnHazard && oppositionHoldsAnyBall(board, facts.team)
+            ChallengeClaimCondition.THREAD_THE_NEEDLE  -> isThrowAction(facts.actionType) && facts.throwSucceeded && facts.throwModifier < 0
+            ChallengeClaimCondition.ALL_HANDS          -> meetsAllHands(facts, turnStats)
+            ChallengeClaimCondition.STAR_TURN          -> meetsStarTurn(facts, turnStats)
+            ChallengeClaimCondition.DROP_THEM          -> facts.actionType == ActionType.BLOCK && facts.knockDownOccurred
+            ChallengeClaimCondition.LOCK_THEM_DOWN     -> meetsLockThemDown(facts, board)
+            ChallengeClaimCondition.SEND_THEM_OFF      -> facts.actionType in setOf(ActionType.BLOCK, ActionType.FOUL) && facts.injuryOccurred
         }
 
     /** Throw Team-mate counts as a Throw Action for challenge claims (digest § Throw Team-mate). */

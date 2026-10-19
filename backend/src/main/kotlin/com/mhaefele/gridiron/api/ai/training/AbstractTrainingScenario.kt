@@ -268,9 +268,9 @@ abstract class AbstractTrainingScenario {
 
     protected fun isThrowToScoringEndZone(action: LegalAction, board: Board, trainerSide: TeamSide): Boolean {
         val dest = when (action) {
-            is LegalAction.Throw        -> action.targetCoordinate
+            is LegalAction.Throw             -> action.targetCoordinate
             is LegalAction.QuickReleaseThrow -> action.targetCoordinate
-            else                        -> return false
+            else                             -> return false
         }
         return isOpponentEndZone(board, dest, trainerSide)
     }

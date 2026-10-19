@@ -529,15 +529,9 @@ private fun LegalAction.getLegalActionIdString(): String {
                 add(token(action.destination))
                 add(action.reroll.toString())
             }
-            is LegalAction.AdjustThrowByDoOver   -> {
-                add(token(action.destination))
-            }
-            is LegalAction.AdjustBlockByDoOver   -> {
-                add(token(action.destination))
-            }
-            is LegalAction.AdjustArmourByDoOver  -> {
-                add(token(action.targetId.value))
-            }
+            is LegalAction.AdjustThrowByDoOver      -> { add(token(action.destination)) }
+            is LegalAction.AdjustBlockByDoOver      -> { add(token(action.destination)) }
+            is LegalAction.AdjustArmourByDoOver     -> { add(token(action.targetId.value)) }
             is LegalAction.PlaceLooseBall           -> {
                 add(token(action.from))
                 add(token(action.to))
@@ -568,9 +562,9 @@ fun LegalActionId.getPlayerId(knownPlayers: Collection<PlayerId>): PlayerId? {
     val actionToken = parts.getOrNull(0) ?: return null
     // Coach-level ids have no player token (PLAY*, CLAIMCHALLENGE_slot0, bare SKIP).
     when {
-        actionToken.startsWith("PLAY")                                                                                   -> return null
+        actionToken.startsWith("PLAY")                                                                                -> return null
         actionToken == "CLAIMCHALLENGE" || actionToken == "REPLACECHALLENGE" || actionToken == "ADJUSTARMOURBYDOOVER" -> return null
-        actionToken == "SKIP" && parts.size == 1                                                                         -> return null // DeclineBonus
+        actionToken == "SKIP" && parts.size == 1                                                                      -> return null // DeclineBonus
     }
     val playerId = parts.getOrNull(1) ?: return null
     val matches = knownPlayers.filter { it.value == playerId }
@@ -588,22 +582,22 @@ private fun LegalAction.token(path: Path): String = path.squares.joinToString("-
 /** Coach-level Play* legal action for a pause window (not Sprint/Weave/etc. geometry tags). */
 fun playBonusLegalAction(bonus: BonusPlay): LegalAction.PlayBonusCard =
     when (bonus) {
-        BonusPlay.`Gang Up`  -> LegalAction.PlayGangUp
-        BonusPlay.`Hold the Line` -> LegalAction.PlayHoldTheLine
-        BonusPlay.`Extra Effort`      -> LegalAction.PlayExtraEffort
-        BonusPlay.Momentum         -> LegalAction.PlayMomentum
-        BonusPlay.`All-In Tackle`  -> LegalAction.PlayAllInTackle
-        BonusPlay.`Slip Away`     -> LegalAction.PlaySlipAway
-        BonusPlay.`Cut Off`     -> LegalAction.PlayCutOff
-        BonusPlay.`Stick Close`        -> LegalAction.PlayStickClose
-        BonusPlay.`Back on Your Feet`        -> LegalAction.PlayBackOnYourFeet
-        BonusPlay.`Fresh Legs`         -> LegalAction.PlayFreshLegs
-        BonusPlay.Brace   -> LegalAction.PlayBrace
-        BonusPlay.Underdog      -> LegalAction.PlayUnderdog
-        BonusPlay.`Spiked Gauntlets`                                                                -> LegalAction.PlaySpikedGauntlets
-        BonusPlay.`Dead Eye`                                                                        -> LegalAction.PlayDeadEye
-        BonusPlay.`Hail Mary Pass`                                                                        -> LegalAction.PlayHailMary
-        BonusPlay.Sprint                                                                                  -> LegalAction.PlaySprint
+        BonusPlay.`Gang Up`                                                         -> LegalAction.PlayGangUp
+        BonusPlay.`Hold the Line`                                                   -> LegalAction.PlayHoldTheLine
+        BonusPlay.`Extra Effort`                                                    -> LegalAction.PlayExtraEffort
+        BonusPlay.Momentum                                                          -> LegalAction.PlayMomentum
+        BonusPlay.`All-In Tackle`                                                   -> LegalAction.PlayAllInTackle
+        BonusPlay.`Slip Away`                                                       -> LegalAction.PlaySlipAway
+        BonusPlay.`Cut Off`                                                         -> LegalAction.PlayCutOff
+        BonusPlay.`Stick Close`                                                     -> LegalAction.PlayStickClose
+        BonusPlay.`Back on Your Feet`                                               -> LegalAction.PlayBackOnYourFeet
+        BonusPlay.`Fresh Legs`                                                      -> LegalAction.PlayFreshLegs
+        BonusPlay.Brace                                                             -> LegalAction.PlayBrace
+        BonusPlay.Underdog                                                          -> LegalAction.PlayUnderdog
+        BonusPlay.`Spiked Gauntlets`                                                -> LegalAction.PlaySpikedGauntlets
+        BonusPlay.`Dead Eye`                                                        -> LegalAction.PlayDeadEye
+        BonusPlay.`Hail Mary Pass`                                                  -> LegalAction.PlayHailMary
+        BonusPlay.Sprint                                                            -> LegalAction.PlaySprint
         BonusPlay.Weave, BonusPlay.Press, BonusPlay.`Ice Cold`, BonusPlay.`Do-Over` -> error("$bonus uses attached geometry or Adjust*ByDoOver, not a Play* pause")
     }
 

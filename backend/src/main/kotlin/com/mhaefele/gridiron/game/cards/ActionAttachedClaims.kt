@@ -312,18 +312,18 @@ object ActionAttachedClaims {
     /** Skip fact/meets work when this action type cannot contribute to the claim. */
     private fun ChallengeClaimCondition.mayApplyTo(actionType: ActionType): Boolean =
         when (this) {
-            ChallengeClaimCondition.KEEP_RUNNING       -> actionType == ActionType.RUN
-            ChallengeClaimCondition.DROP_THEM   -> actionType == ActionType.BLOCK
+            ChallengeClaimCondition.KEEP_RUNNING  -> actionType == ActionType.RUN
+            ChallengeClaimCondition.DROP_THEM     -> actionType == ActionType.BLOCK
             ChallengeClaimCondition.SEND_THEM_OFF -> actionType == ActionType.BLOCK || actionType == ActionType.FOUL
             ChallengeClaimCondition.CONNECT,
             ChallengeClaimCondition.THREAD_THE_NEEDLE,
                                                            -> actionType == ActionType.THROW || actionType == ActionType.THROW_TEAMMATE
-            ChallengeClaimCondition.LOCK_THEM_DOWN            -> actionType == ActionType.MARK
-            ChallengeClaimCondition.HUDDLE_UP           -> actionType == ActionType.RUN || actionType == ActionType.MARK || actionType == ActionType.SIDESTEP
-            ChallengeClaimCondition.FAN_OUT             -> actionType == ActionType.RUN || actionType == ActionType.SIDESTEP
-            ChallengeClaimCondition.STRIP_IT       -> actionType == ActionType.BLOCK || actionType == ActionType.FOUL
-            ChallengeClaimCondition.GRAB_IT           -> actionType == ActionType.RUN || actionType == ActionType.MARK || actionType == ActionType.SIDESTEP || actionType == ActionType.RESERVES
-            ChallengeClaimCondition.PUSH_FORWARD          -> actionType == ActionType.RUN || actionType == ActionType.THROW || actionType == ActionType.THROW_TEAMMATE
+            ChallengeClaimCondition.LOCK_THEM_DOWN     -> actionType == ActionType.MARK
+            ChallengeClaimCondition.HUDDLE_UP          -> actionType == ActionType.RUN || actionType == ActionType.MARK || actionType == ActionType.SIDESTEP
+            ChallengeClaimCondition.FAN_OUT            -> actionType == ActionType.RUN || actionType == ActionType.SIDESTEP
+            ChallengeClaimCondition.STRIP_IT           -> actionType == ActionType.BLOCK || actionType == ActionType.FOUL
+            ChallengeClaimCondition.GRAB_IT            -> actionType == ActionType.RUN || actionType == ActionType.MARK || actionType == ActionType.SIDESTEP || actionType == ActionType.RESERVES
+            ChallengeClaimCondition.PUSH_FORWARD       -> actionType == ActionType.RUN || actionType == ActionType.THROW || actionType == ActionType.THROW_TEAMMATE
             ChallengeClaimCondition.PLAY_TO_THE_STANDS -> actionType == ActionType.RUN || actionType == ActionType.MARK || actionType == ActionType.SIDESTEP || actionType == ActionType.RESERVES
             ChallengeClaimCondition.HOLD_THE_PIT,
             ChallengeClaimCondition.ALL_HANDS,

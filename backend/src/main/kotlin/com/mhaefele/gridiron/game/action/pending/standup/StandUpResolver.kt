@@ -35,12 +35,12 @@ class StandUpResolver(
         val ongoing = pending.ongoingStandUp
         check(ongoing.stage == OngoingStandUp.StandUpStage.HANDLE_BACK_ON_YOUR_FEET) { "StandUpContinuation mutate unexpected stage: ${ongoing.stage}" }
         when (command) {
-            is LegalAction.DeclineBonus -> session.consumeRegularActionSlot()
-            is LegalAction.PlayBackOnYourFeet   -> {
+            is LegalAction.DeclineBonus       -> session.consumeRegularActionSlot()
+            is LegalAction.PlayBackOnYourFeet -> {
                 session.playBonusCard(session.activeCoach, command.bonusPlay)
                 session.markCurrentPlayerActionFree()
             }
-            else                        -> error("HANDLE_BACK_ON_YOUR_FEET expects PlayBackOnYourFeet or DeclineBonus, was ${command::class.simpleName}")
+            else                              -> error("HANDLE_BACK_ON_YOUR_FEET expects PlayBackOnYourFeet or DeclineBonus, was ${command::class.simpleName}")
         }
         boardMovement.applyStandUp(
             session.board,

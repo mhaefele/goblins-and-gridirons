@@ -16,15 +16,15 @@ fun substituteBlockFace(
     if (role == BlockRole.BLOCKER) {
         when {
             player.hasAbility(PlayerAbility.Colossus) && face in setOf(BlockDieFace.TACKLE, BlockDieFace.SMASH) -> return BlockDieFace.FLATTEN
-            player.hasAbility(PlayerAbility.`Heavy Hitter`) && face == BlockDieFace.SMASH                               -> return BlockDieFace.FLATTEN
-            player.hasAbility(PlayerAbility.Underfoot) && face == BlockDieFace.TACKLE                                     -> return BlockDieFace.MISS
-            player.hasAbility(PlayerAbility.`Beneath Notice`) && face == BlockDieFace.TACKLE                              -> return BlockDieFace.MISS
-            player.hasAbility(PlayerAbility.Lobber) && face == BlockDieFace.SHOVE                                      -> return BlockDieFace.MISS
+            player.hasAbility(PlayerAbility.`Heavy Hitter`) && face == BlockDieFace.SMASH                       -> return BlockDieFace.FLATTEN
+            player.hasAbility(PlayerAbility.Underfoot) && face == BlockDieFace.TACKLE                           -> return BlockDieFace.MISS
+            player.hasAbility(PlayerAbility.`Beneath Notice`) && face == BlockDieFace.TACKLE                    -> return BlockDieFace.MISS
+            player.hasAbility(PlayerAbility.Lobber) && face == BlockDieFace.SHOVE                               -> return BlockDieFace.MISS
         }
     }
     if (role == BlockRole.TARGET) {
         when {
-            player.hasAbility(PlayerAbility.Anchored) && face == BlockDieFace.SHOVE    -> return BlockDieFace.MISS
+            player.hasAbility(PlayerAbility.Anchored) && face == BlockDieFace.SHOVE -> return BlockDieFace.MISS
             player.hasAbility(PlayerAbility.Colossus) && face == BlockDieFace.SHOVE -> return BlockDieFace.MISS
         }
     }

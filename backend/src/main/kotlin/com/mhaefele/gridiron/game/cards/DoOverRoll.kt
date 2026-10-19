@@ -35,9 +35,9 @@ object DoOverRoll {
     ): Boolean {
         val thrower = board.player(throwerId)
         val outcome = when {
-            hailMaryActive      -> throwCheck(naturalRoll, ThrowStat.Threshold(4), ThrowRange.SHORT, obstructed = false)
-            deadEyeActive -> throwCheck(naturalRoll, ThrowStat.Threshold(2), ThrowRange.SHORT, obstructed = false)
-            else                -> throwCheck(naturalRoll, thrower.profile.stats.throwStat, range, obstructed)
+            hailMaryActive -> throwCheck(naturalRoll, ThrowStat.Threshold(4), ThrowRange.SHORT, obstructed = false)
+            deadEyeActive  -> throwCheck(naturalRoll, ThrowStat.Threshold(2), ThrowRange.SHORT, obstructed = false)
+            else           -> throwCheck(naturalRoll, thrower.profile.stats.throwStat, range, obstructed)
         }
         return outcome != ThrowCheckOutcome.Success
     }

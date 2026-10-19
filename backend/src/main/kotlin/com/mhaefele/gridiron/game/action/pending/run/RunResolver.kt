@@ -157,7 +157,7 @@ class RunResolver(
                     ongoing.offeredAbilityPlayerId = null
                     ongoing.stage = OngoingRun.RunStage.OFFER_ABILITY_FOLLOW_UPS
                 } else when (val ability = ongoing.offeredAbility) {
-                    PlayerAbility.Rally   -> {
+                    PlayerAbility.Rally             -> {
                         val standUp = action as? LegalAction.StandUp ?: error("Rally expects StandUp")
                         boardMovement.applyStandUp(session.board, standUp)
                         session.recordTurnAction(standUp.playerId, ActionType.STAND_UP, isFree = true)
@@ -171,7 +171,7 @@ class RunResolver(
                         ongoing.nestedThrow = throwResolver.beginNested(session, throwAction)
                         ongoing.stage = OngoingRun.RunStage.DELEGATE_ABILITY_FREE_ACTION
                     }
-                    else                         -> error("No Run free-action handling for $ability")
+                    else                            -> error("No Run free-action handling for $ability")
                 }
             }
 
