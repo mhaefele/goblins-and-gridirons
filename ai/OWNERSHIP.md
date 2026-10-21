@@ -90,4 +90,5 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `paths.py` | `output/` roots |
 | `expert.py` / `clone.py` | Dump → npz → seed zip |
 | `eval_debug.py` | Throwaway scenario-eval logging |
+| `eval_head_agreement.py` | Eval-only head agreement rates (played action unchanged; `summary.sh` prints the latest full-game rates) |
 | `scripts/train_self_play.py` | Train/eval loop entrypoint |

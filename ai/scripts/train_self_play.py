@@ -79,6 +79,13 @@ from gridiron_ai.env import (
     opponent_metrics_label,
 )
 from gridiron_ai.eval_debug import ScenarioEvalDebug
+from gridiron_ai.eval_head_agreement import (
+    diagnose_eval_actions,
+    format_head_agreement,
+    merge_head_agreement,
+    new_head_agreement,
+    record_head_decision,
+)
 from gridiron_ai.eval_opening_diag import diagnose_opening_mispick
 from gridiron_ai.metrics import aggregate_episodes, print_metrics
 from gridiron_ai.scenario_curriculum import (
@@ -196,6 +203,7 @@ def _record_scenario_perfect_summary(
     *,
     scenario: str,
     scenario_difficulty: int,
+    head_agreement: dict[str, int] | None = None,
 ) -> None:
     wins = int(stats.get("wins") or 0)
     losses = int(stats.get("losses") or 0)
@@ -204,6 +212,8 @@ def _record_scenario_perfect_summary(
     winrate = float(stats.get("winrate") or 0.0)
     short = require_catalog().short_name(scenario)
     line = f"  {short} d{scenario_difficulty}  drill_rate={winrate:.3f} W{wins}/L{losses}/D{draws} ({games} ep)"
+    if head_agreement and int(head_agreement.get("decisions") or 0) > 0:
+        line += " " + format_head_agreement(head_agreement)
     _scenario_perfect_summaries.append(line)
 
 
@@ -1160,6 +1170,9 @@ def _format_eval_game_line(
         f"prox={summary.get('ball_proximity_us', 0):.2f} "
         f"gained={summary.get('ball_gained_us', 0)}/{summary.get('ball_gained_them', 0)}"
     )
+    head = summary.get("head_agreement")
+    if head and int(head.get("decisions") or 0) > 0:
+        line += " " + format_head_agreement(head)
     if scenario is not None:
         difficulty = summary.get("scenario_difficulty")
         if difficulty is not None:
@@ -1237,20 +1250,30 @@ def _eval_segment(
     configure_s = clk.lap("configure workers", echo=echo_laps)
     env = pool.vec_env(workers)
     episodes: list[dict[str, Any]] = []
+    head_segment = new_head_agreement()
     try:
         obs = env.reset()
         reset_s = clk.lap(f"reset {workers} matches", echo=echo_laps)
         completions = 0
+        head_pending = [new_head_agreement() for _ in range(workers)]
         while completions < games:
             actions, _states = model.predict(obs, deterministic=True)
+            # Side log. predict() already chose the submitted factors.
+            for env_index, decision in enumerate(diagnose_eval_actions(model.policy, obs, actions)):
+                if decision is not None:
+                    record_head_decision(head_pending[env_index], decision)
             obs, _rewards, dones, infos = env.step(actions)
-            for info, done in zip(infos, dones):
+            for env_index, (info, done) in enumerate(zip(infos, dones)):
                 if not done:
                     continue
                 completions += 1
                 summary = info.get("bb_episode")
+                agreement = dict(head_pending[env_index])
+                head_pending[env_index] = new_head_agreement()
                 truncated = bool(summary.get("truncated")) if summary is not None else bool(info.get("TimeLimit.truncated"))
                 if summary is not None:
+                    summary["head_agreement"] = agreement
+                    merge_head_agreement(head_segment, agreement)
                     _attach_opening_mispick_diag(model, summary)
                 _log_eval_game(
                     summary,
@@ -1280,6 +1303,7 @@ def _eval_segment(
             stats,
             scenario=scenario,
             scenario_difficulty=scenario_difficulty,
+            head_agreement=head_segment,
         )
     else:
         if quiet_scenario:
@@ -1291,6 +1315,8 @@ def _eval_segment(
             for line in game_lines:
                 print(line, flush=True)
         print_metrics(f"Eval {tagged}", stats)
+        if int(head_segment["decisions"]) > 0:
+            print(f"  {format_head_agreement(head_segment)}", flush=True)
         if quiet_scenario:
             print(
                 f"  scenario success: drill_rate={stats['winrate']:.3f} win_by_4_rate={stats['win_by_4_rate']:.3f}",
@@ -1312,6 +1338,8 @@ def _eval_segment(
         if scenario is not None:
             payload["scenario"] = scenario
             payload["scenario_difficulty"] = scenario_difficulty
+        if int(head_segment["decisions"]) > 0:
+            payload["head_agreement"] = head_segment
         t0 = time.perf_counter()
         out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         write_s = time.perf_counter() - t0

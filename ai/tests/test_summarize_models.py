@@ -806,6 +806,109 @@ def test_compact_board_includes_lookahead_trend(monkeypatch, tmp_path: Path) -> 
     assert "30%↑" in text
 
 
+def _full_game_eval_stats(**extra: object) -> dict:
+    stats = {
+        "winrate": 0.5,
+        "wins": 1,
+        "losses": 1,
+        "draws": 0,
+        "score_us": 1.0,
+        "score_them": 1.0,
+        "score_diff": 0.0,
+        "touchdowns": 0.0,
+        "touchdowns_them": 0.0,
+        "ball_rate_us": 0.0,
+        "ball_rate_them": 0.0,
+        "ball_opp_half_rate_us": 0.0,
+        "ball_proximity_us": 0.0,
+        "truncation_rate": 0.0,
+        "submit_error_rate": 0.0,
+        "turns": 1.0,
+        "total_actions": 1.0,
+    }
+    stats.update(extra)
+    return stats
+
+
+def test_eval_block_prints_head_agreement_when_present() -> None:
+    from scripts.summarize_models import _fmt_eval_block
+
+    lines = _fmt_eval_block(
+        "LOOKAHEAD",
+        _full_game_eval_stats(
+            head_agreement={
+                "decisions": 40,
+                "triple_legal": 4,
+                "actor_target_legal": 16,
+                "played_target_ok": 22,
+                "joint_matches_played": 28,
+                "soft_bias": 0,
+            }
+        ),
+    )
+    assert any(
+        line.strip().startswith("heads n=40 ") and "played_tgt=0.55 watch" in line and "joint=0.70 watch" in line
+        for line in lines
+    )
+
+    plain = _fmt_eval_block("LOOKAHEAD", _full_game_eval_stats())
+    assert all("heads n=" not in line for line in plain)
+
+
+def test_compact_board_includes_heads_table(monkeypatch, tmp_path: Path) -> None:
+    from gridiron_ai.training_phases import PHASE_PROFILES
+
+    ckpt_root = tmp_path / "checkpoints"
+    eval_dir = tmp_path / "evals" / "baseline"
+    eval_dir.mkdir(parents=True)
+    _plant(ckpt_root, "baseline", {name: MAX_DIFFICULTY for name in FULL_NAMES}, steps=1_000)
+    (eval_dir / "eval_vs-lookahead_1.json").write_text(
+        json.dumps(
+            _full_game_eval_stats(
+                training_steps=1_000,
+                head_agreement={
+                    "decisions": 40,
+                    "triple_legal": 4,
+                    "actor_target_legal": 16,
+                    "played_target_ok": 22,
+                    "joint_matches_played": 28,
+                    "soft_bias": 0,
+                },
+            )
+        ),
+        encoding="utf-8",
+    )
+    (eval_dir / "eval_vs-heuristic_1.json").write_text(
+        json.dumps(_full_game_eval_stats(training_steps=1_000)),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr(
+        "scripts.summarize_models._train_health_cells",
+        lambda checkpoint_key, *, trend_steps: (
+            "≈1.00 nats ok",
+            "entropy_loss=-1.000 (flat, ok)",
+            "0.0001 ok",
+            "0.50 ok (flat)",
+            "0.20 ok (flat)",
+            "0.040 ok (flat)",
+        ),
+    )
+    text = _fmt_compact_board(
+        [TrainTarget(phase=PHASE_PROFILES, checkpoint_key="baseline", reward_profile="baseline")],
+        trend_steps=100_000,
+    )
+    assert "heads (latest full-game eval" in text
+    assert "played_tgt=0.55 watch" in text
+    assert "joint=0.70 watch" in text
+    heads_at = text.index("heads (latest full-game eval")
+    lookahead_cell = text[heads_at:].splitlines()[2]
+    assert "played_tgt=0.55" in lookahead_cell
+    assert lookahead_cell.rstrip().endswith("—")
+
+
 def test_active_targets_includes_baseline_in_bottom_summary() -> None:
     save_pipeline(PipelineState(stage="profiles"))
     targets = resolve_targets("all", purpose="summary")
