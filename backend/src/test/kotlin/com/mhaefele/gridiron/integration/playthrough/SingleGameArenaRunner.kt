@@ -34,17 +34,15 @@ class SingleGameArenaRunner(
         suffix: String,
     ): TeamSetup {
         val seat = strategy as? FixedBudgetLookahead
-        val lookAheadTeam = TeamSetup(strategy = strategy, team = team, label = if (seat != null) "lookahead" else "hueristic" + suffix,
-                                      telemetry = seat?.telemetry)
+        val lookAheadTeam = TeamSetup(strategy = strategy, team = team, label = if (seat != null) "lookahead" else "hueristic" + suffix)
         return lookAheadTeam
     }
 
-    /** Pins the computer-vs-computer limit on this seat, and keeps the counter the game summary prints. */
+    /** Pins the computer-vs-computer limit on this seat. Search time comes back on each call; this seat adds it up. */
     fun getDefaultTestLookaheadStrategy(): FixedBudgetLookahead =
         FixedBudgetLookahead(
             lookahead = lookahead,
             thinkBudgetOverride = LookaheadOpponentStrategy.AI_VS_AI_THINK_NANOS,
-            telemetry = LookaheadOpponentStrategy.SearchTelemetry(),
         )
 
     fun playGame(
@@ -64,12 +62,12 @@ class SingleGameArenaRunner(
         awayTeamSetup: TeamSetup,
         maxActions: Int = 400,
     ): GameResult {
-        // GameResult has one search total for the whole game. Each lookahead strategy keeps its own counter.
-        // Lookahead-vs-heuristic swaps which side is lookahead, so home's counter wins when it has one, else away.
-        // That counter is reset here and printed below. Both seats lookahead (playGame's default
+        // GameResult has one search total for the whole game. Each FixedBudgetLookahead keeps its own.
+        // Lookahead-vs-heuristic swaps which side is lookahead, so home wins when it has a total, else away.
+        // That seat is the one reset here and printed below. Both seats lookahead (playGame's default
         // arguments): away's searches are dropped and away's counter is not reset.
-        val telemetry = homeTeamSetup.telemetry ?: awayTeamSetup.telemetry
-        telemetry?.reset()
+        val reported = (homeTeamSetup.strategy as? FixedBudgetLookahead) ?: (awayTeamSetup.strategy as? FixedBudgetLookahead)
+        reported?.resetSearchSummary()
 
         var state = matchGame.createMatch(
             homeTeamId = homeTeamSetup.team.id,
@@ -121,8 +119,8 @@ class SingleGameArenaRunner(
             homeTeamSetup,
             awayTeamSetup,
             state.progress,
-            searchMoves = telemetry?.searchMoves ?: 0,
-            avgSearchThinkMs = telemetry?.averageThinkMs ?: 0.0,
+            searchMoves = reported?.searchMoves ?: 0,
+            avgSearchThinkMs = reported?.averageThinkMs ?: 0.0,
             gameStatistics = gameStatistics
         )
     }

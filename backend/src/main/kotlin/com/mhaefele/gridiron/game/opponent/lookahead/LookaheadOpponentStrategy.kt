@@ -36,11 +36,13 @@ class LookaheadOpponentStrategy(
     private val submitTiming: AiSubmitTiming,
 ) : OpponentStrategy {
 
-    /** Pick plus the search scores from that same call. */
+    /** Pick plus the search metadata from that same call. */
     @TestOnly
     data class ChosenAction(
         val action: LegalAction,
         val search: SearchScores = SearchScores.NONE,
+        /** How long [LookaheadSearch.evaluate] took. Null when this call did not search. */
+        val searchNanos: Long? = null,
     )
 
     /** [search.evaluate] baseline and best score. [NONE] when this call did not search. */
@@ -59,61 +61,36 @@ class LookaheadOpponentStrategy(
         }
     }
 
-    class SearchTelemetry {
-        var searchMoves: Int = 0
-            private set
-        var searchNanos: Long = 0L
-            private set
-
-        fun reset() {
-            searchMoves = 0
-            searchNanos = 0L
-        }
-
-        fun record(nanos: Long) {
-            searchMoves++
-            searchNanos += nanos
-        }
-
-        val averageThinkMs: Double
-            get() = if (searchMoves == 0) 0.0 else searchNanos / 1_000_000.0 / searchMoves
-    }
-
-    /** Seats on the match set the limit. No arena search counter. */
+    /** Seats on the match set the limit. */
     override fun chooseAction(state: MatchState, legal: List<LegalAction>): LegalAction =
-        choose(state, legal, thinkBudgetNanos = thinkBudgetNanosFor(state), telemetry = null).action
+        choose(state, legal, thinkBudgetNanos = thinkBudgetNanosFor(state)).action
 
     /**
-     * Same bean, with an arena search limit and search counter.
+     * Same bean, with an arena search limit. Returns this call's pick and search metadata.
      *
      * @param thinkBudgetOverride replaces [thinkBudgetNanosFor] for this call. Live [chooseAction] does not
      *   use this; it reads who controls the seats. An arena passes its own limit when two seats need
      *   different budgets than those seats imply.
-     * @param telemetry null on the live path. The single-game arena passes a counter so its summary can
-     *   print search count and average think time. Live search time is recorded on [AiSubmitTiming].
      */
     internal fun chooseAction(
         state: MatchState,
         legal: List<LegalAction>,
         thinkBudgetOverride: Long,
-        telemetry: SearchTelemetry?,
-    ): LegalAction = choose(state, legal, thinkBudgetNanos = thinkBudgetOverride, telemetry = telemetry).action
+    ): ChosenAction = choose(state, legal, thinkBudgetNanos = thinkBudgetOverride)
 
-    /** Same limit and counter as live [chooseAction]. Also returns the search scores. */
+    /** Same limit as live [chooseAction]. Also returns the search metadata. */
     @TestOnly
     fun chooseActionForTest(state: MatchState, legal: List<LegalAction>): ChosenAction =
-        choose(state, legal, thinkBudgetNanos = thinkBudgetNanosFor(state), telemetry = null)
+        choose(state, legal, thinkBudgetNanos = thinkBudgetNanosFor(state))
 
     /**
      * @param thinkBudgetNanos limit this search uses. Live [chooseAction] passes [thinkBudgetNanosFor].
      *   An arena passes its thinkBudgetOverride here instead.
-     * @param telemetry null on the live path. The single-game arena's counter for the printed summary.
      */
     private fun choose(
         state: MatchState,
         legal: List<LegalAction>,
         thinkBudgetNanos: Long,
-        telemetry: SearchTelemetry?,
     ): ChosenAction {
         require(legal.isNotEmpty()) { "No legal actions to choose from" }
         promptAnswer(state, legal)?.let { return ChosenAction(it) }
@@ -125,12 +102,15 @@ class LookaheadOpponentStrategy(
         obviousPlay(state, searchable)?.let { return ChosenAction(it) }
         val heurPick = heuristic.choose(state, searchable)
         if (heurPick.potentialChallengeClaims.isNotEmpty()) return ChosenAction(heurPick)
-        val ranked = searchPick(state, searchable, thinkBudgetNanos, telemetry)
-        if (ranked.isEmpty()) return ChosenAction(correctSearchMiss(state, heurPick, heurPick, searchable))
+        val ran = searchPick(state, searchable, thinkBudgetNanos)
+        if (ran.ranked.isEmpty()) {
+            return ChosenAction(correctSearchMiss(state, heurPick, heurPick, searchable), searchNanos = ran.searchNanos)
+        }
         val baseline = LookaheadScorer.score(state, state.currentTurnState.activeCoach)
-        val chosen = rankedChoice(searchable, heurPick, ranked, baseline)
+        val chosen = rankedChoice(searchable, heurPick, ran.ranked, baseline)
         val action = correctSearchMiss(state, chosen, heurPick, searchable)
-        return ChosenAction(action, SearchScores(baseline, ranked.maxOf { it.score }, usedSearch = true))
+        val scores = SearchScores(baseline, ran.ranked.maxOf { it.score }, usedSearch = true)
+        return ChosenAction(action, scores, searchNanos = ran.searchNanos)
     }
 
     /**
@@ -162,16 +142,20 @@ class LookaheadOpponentStrategy(
             ?: obviousBlockOnOpponentCarrier(state, legal)
             ?: obviousAssistedBlock(state, legal)
 
+    /** Ranking from one search, plus how long [LookaheadSearch.evaluate] took. Live time is also recorded on [AiSubmitTiming]. */
+    private data class RanSearch(
+        val ranked: List<LookaheadSearch.Evaluation>,
+        val searchNanos: Long,
+    )
+
     /**
      * @param thinkBudgetNanos limit this search uses. Already resolved: [thinkBudgetNanosFor], or the arena's thinkBudgetOverride.
-     * @param telemetry null on the live path. The single-game arena's counter for the printed summary.
      */
     private fun searchPick(
         state: MatchState,
         searchable: List<LegalAction>,
         thinkBudgetNanos: Long,
-        telemetry: SearchTelemetry?,
-    ): List<LookaheadSearch.Evaluation> {
+    ): RanSearch {
         val started = System.nanoTime()
         val pathish = searchable.filter { it.isMostlyDeterministic() }
         // Dicey Block/Foul stay out of pathish — but claim-annotated ones must still be searched
@@ -184,9 +168,8 @@ class LookaheadOpponentStrategy(
             deadlineNanos = started + thinkBudgetNanos,
         )
         val searchNs = System.nanoTime() - started
-        telemetry?.record(searchNs)
         submitTiming.recordLookaheadSearch(state.id, searchNs)
-        return ranked
+        return RanSearch(ranked, searchNs)
     }
 
     private fun rankedChoice(

@@ -75,13 +75,11 @@ class OnnxOpponentPlaythroughTest : BaseApiTest() {
             strategy = onnxFactory.forProfile(profile),
             team = team,
             label = "onnx-${profile.id}",
-            telemetry = null,
         )
         val scripted = TeamSetup(
             strategy = heuristic,
             team = team,
             label = "heuristic",
-            telemetry = null,
         )
         val result = arena.playGame(onnx, scripted, maxActions = 500)
         assertThat(result.actionsPlayed)
