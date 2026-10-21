@@ -1,15 +1,14 @@
 package com.mhaefele.gridiron.integration.playthrough.arena.blindspot
 
 import com.mhaefele.gridiron.api.MatchGame
-import com.mhaefele.gridiron.api.ai.AiSubmitTiming
 import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.game.action.dto.DomainEvent
 import com.mhaefele.gridiron.game.legalmoves.LegalMovesGenerator
 import com.mhaefele.gridiron.game.opponent.OpponentStrategy
 import com.mhaefele.gridiron.game.opponent.lookahead.LookaheadOpponentStrategy
-import com.mhaefele.gridiron.game.opponent.lookahead.LookaheadSearch
 import com.mhaefele.gridiron.game.opponent.onnx.OnnxOpponentFactory
 import com.mhaefele.gridiron.game.opponent.scripted.ScriptedOpponentStrategy
+import com.mhaefele.gridiron.integration.playthrough.FixedBudgetLookahead
 import com.mhaefele.gridiron.model.MatchState
 import com.mhaefele.gridiron.model.catalog.TeamCard
 import com.mhaefele.gridiron.model.catalog.TeamCatalog
@@ -36,9 +35,8 @@ class BlindSpotArena(
     private val repository: InMemoryMatchRepository,
     private val legalMovesGenerator: LegalMovesGenerator,
     private val forkPlayer: TurnForkPlayer,
-    private val lookaheadSearch: LookaheadSearch,
+    private val lookahead: LookaheadOpponentStrategy,
     private val scriptedOpponentStrategy: ScriptedOpponentStrategy,
-    private val submitTiming: AiSubmitTiming,
     private val onnxFactory: OnnxOpponentFactory,
 ) {
     data class Config(
@@ -282,16 +280,9 @@ class BlindSpotArena(
         )
     }
 
-    private fun fatLookahead(thinkBudgetNanos: Long): LookaheadOpponentStrategy {
-        // TODO: don't manually construct the Spring bean.
-        return LookaheadOpponentStrategy(
-            heuristic = scriptedOpponentStrategy,
-            search = lookaheadSearch,
-            submitTiming = submitTiming,
-            telemetry = LookaheadOpponentStrategy.SearchTelemetry(),
-            thinkBudgetNanos = thinkBudgetNanos,
-        )
-    }
+    /** Each seat gets its own limit, instead of the one [LookaheadOpponentStrategy.thinkBudgetNanosFor] would read off the match. */
+    private fun fatLookahead(thinkBudgetOverride: Long): OpponentStrategy =
+        FixedBudgetLookahead(lookahead, thinkBudgetOverride)
 
     companion object {
         const val ADVISOR_THINK_NANOS = 1_000_000_000L

@@ -1,6 +1,5 @@
 package com.mhaefele.gridiron.integration.playthrough
 
-import com.mhaefele.gridiron.api.ai.AiSubmitTiming
 import com.mhaefele.gridiron.api.MatchGame
 import com.mhaefele.gridiron.game.action.dto.DomainEvent
 import com.mhaefele.gridiron.game.legalmoves.LegalMovesGenerator
@@ -9,8 +8,6 @@ import com.mhaefele.gridiron.integration.playthrough.dtos.GameResult
 import com.mhaefele.gridiron.integration.playthrough.dtos.GameStatistics
 import com.mhaefele.gridiron.integration.playthrough.dtos.TeamSetup
 import com.mhaefele.gridiron.game.opponent.lookahead.LookaheadOpponentStrategy
-import com.mhaefele.gridiron.game.opponent.lookahead.LookaheadSearch
-import com.mhaefele.gridiron.game.opponent.scripted.ScriptedOpponentStrategy
 import com.mhaefele.gridiron.model.MatchResult
 import com.mhaefele.gridiron.model.MatchState
 import com.mhaefele.gridiron.model.catalog.TeamCard
@@ -28,8 +25,7 @@ class SingleGameArenaRunner(
     private val matchGame: MatchGame,
     private val repository: InMemoryMatchRepository,
     private val eventRepository: InMemoryDomainEventRepository,
-    private val scriptedOpponentStrategy: ScriptedOpponentStrategy,
-    private val lookaheadSearch: LookaheadSearch,
+    private val lookahead: LookaheadOpponentStrategy,
     private val legalMovesGenerator: LegalMovesGenerator,
 ) {
     fun getTeamSetup(
@@ -37,23 +33,19 @@ class SingleGameArenaRunner(
         team: TeamCard,
         suffix: String,
     ): TeamSetup {
-        val lookAheadTeam = TeamSetup(strategy = strategy, team = team, label = if (strategy is LookaheadOpponentStrategy) "lookahead" else "hueristic" + suffix,
-                                      telemetry = if (strategy is LookaheadOpponentStrategy) strategy.telemetry else null)
+        val seat = strategy as? FixedBudgetLookahead
+        val lookAheadTeam = TeamSetup(strategy = strategy, team = team, label = if (seat != null) "lookahead" else "hueristic" + suffix,
+                                      telemetry = seat?.telemetry)
         return lookAheadTeam
     }
 
-    fun getDefaultTestLookaheadStrategy(): LookaheadOpponentStrategy {
-        val telemetry = LookaheadOpponentStrategy.SearchTelemetry()
-        // TODO: don't manually construct the Spring bean.
-        val lookahead = LookaheadOpponentStrategy(
-            heuristic = scriptedOpponentStrategy,
-            search = lookaheadSearch,
-            submitTiming = AiSubmitTiming(),
-            telemetry = telemetry,
-            thinkBudgetNanos = LookaheadOpponentStrategy.AI_VS_AI_THINK_NANOS,
+    /** Pins the computer-vs-computer limit on this seat, and keeps the counter the game summary prints. */
+    fun getDefaultTestLookaheadStrategy(): FixedBudgetLookahead =
+        FixedBudgetLookahead(
+            lookahead = lookahead,
+            thinkBudgetOverride = LookaheadOpponentStrategy.AI_VS_AI_THINK_NANOS,
+            telemetry = LookaheadOpponentStrategy.SearchTelemetry(),
         )
-        return lookahead
-    }
 
     fun playGame(
         homeTeam: TeamCard,
