@@ -10,7 +10,9 @@ data class GameResult(
     val awayTeamSetup: TeamSetup,
     val matchProgress: MatchProgress,
     val gameStatistics: GameStatistics,
+    /** One search total for the game. Home's lookahead seat when it has one, otherwise away's. Both lookahead: home only. */
     val searchMoves: Int,
+    /** Average think time for [searchMoves] on that same seat. */
     val avgSearchThinkMs: Double,
 ) {
     val homeStrategy: String = homeTeamSetup.label

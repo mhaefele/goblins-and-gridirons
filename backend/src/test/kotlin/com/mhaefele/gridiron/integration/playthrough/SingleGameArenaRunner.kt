@@ -64,7 +64,10 @@ class SingleGameArenaRunner(
         awayTeamSetup: TeamSetup,
         maxActions: Int = 400,
     ): GameResult {
-        // Optional: only Lookahead strategies expose search telemetry.
+        // GameResult has one search total for the whole game. Each lookahead strategy keeps its own counter.
+        // Lookahead-vs-heuristic swaps which side is lookahead, so home's counter wins when it has one, else away.
+        // That counter is reset here and printed below. Both seats lookahead (playGame's default
+        // arguments): away's searches are dropped and away's counter is not reset.
         val telemetry = homeTeamSetup.telemetry ?: awayTeamSetup.telemetry
         telemetry?.reset()
 
