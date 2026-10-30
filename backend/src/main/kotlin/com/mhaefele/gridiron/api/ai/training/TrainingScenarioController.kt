@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController
 /**
  * Creates training scenario matches already opened on the first trainer decision.
  *
- * Request is slim: scenario knobs + AWAY opponent. HOME is always TRAINER; teams/pitch are server-chosen
+ * Request is slim: scenario knobs + AWAY opponent. HOME is always HARNESS; teams/pitch are server-chosen
  * (trainer team via the scenario's [AbstractTrainingScenario.trainerTeamFilter]).
  */
 @RestController
@@ -36,7 +36,7 @@ class TrainingScenarioController(
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     fun createScenarioMatch(@Valid @RequestBody request: CreateScenarioMatchRequest): ScenarioMatchResponse {
-        require(request.awayControlledBy == CoachControl.COMPUTER || request.awayControlledBy == CoachControl.HUMAN) { "awayControlledBy must be COMPUTER or HUMAN(HOME is always TRAINER)" }
+        require(request.awayControlledBy == CoachControl.COMPUTER || request.awayControlledBy == CoachControl.HUMAN) { "awayControlledBy must be COMPUTER or HUMAN(HOME is always HARNESS)" }
         require(request.difficulty in 0..5) { "difficulty must be 0–5, was ${request.difficulty}" }
 
         val state = matchGame.createScenarioMatch(
@@ -57,7 +57,7 @@ class TrainingScenarioController(
 
 /**
  * Slim create body. No Kotlin defaults — callers (Python / tests) always pass every field.
- * HOME is always TRAINER; teams and pitch are chosen on the server.
+ * HOME is always HARNESS; teams and pitch are chosen on the server.
  */
 data class CreateScenarioMatchRequest(
     @field:NotNull

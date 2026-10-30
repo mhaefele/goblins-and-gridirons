@@ -30,7 +30,7 @@ class IntegrationMatchController(
     private val integration: IntegrationMatchService,
     private val repository: InMemoryMatchRepository,
 ) {
-    @Operation(summary = "Create and start a match", description = "No body. Defaults: random distinct teams, agent seat HOME = TRAINER, AWAY = LOOKAHEAD computer. Returns when it is your seat's turn.")
+    @Operation(summary = "Create and start a match", description = "No body. Defaults: random distinct teams, agent seat HOME = HARNESS, AWAY = LOOKAHEAD computer. Returns when it is your seat's turn.")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     fun createMatch(): IntegrationCreateMatchResponse = integration.createMatch()

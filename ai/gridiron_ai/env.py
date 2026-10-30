@@ -352,23 +352,23 @@ class GridironEnv(gym.Env):
         if self.opponent_mode == OPPONENT_HUMAN:
             # Browser plays the non-policy seat; policy seat is the trainer.
             if self.policy_seat == "HOME":
-                home_ctrl, away_ctrl = "TRAINER", "HUMAN"
+                home_ctrl, away_ctrl = "HARNESS", "HUMAN"
             else:
-                home_ctrl, away_ctrl = "HUMAN", "TRAINER"
+                home_ctrl, away_ctrl = "HUMAN", "HARNESS"
             computer_opponent = "LOOKAHEAD"  # ignored
             onnx_profile = None
         elif self.policy_seat == "HOME":
-            home_ctrl, away_ctrl = "TRAINER", "COMPUTER"
+            home_ctrl, away_ctrl = "HARNESS", "COMPUTER"
             computer_opponent = self.computer_opponent
             onnx_profile = self.onnx_profile
         else:
-            home_ctrl, away_ctrl = "COMPUTER", "TRAINER"
+            home_ctrl, away_ctrl = "COMPUTER", "HARNESS"
             computer_opponent = self.computer_opponent
             onnx_profile = self.onnx_profile
 
         if self.scenario is not None:
             if self.policy_seat != "HOME":
-                raise ValueError("scenario drills require policy_seat=HOME (HOME is always TRAINER)")
+                raise ValueError("scenario drills require policy_seat=HOME (HOME is always HARNESS)")
             if self.opponent_mode == OPPONENT_HUMAN:
                 away_ctrl = "HUMAN"
             else:

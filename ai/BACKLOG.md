@@ -2,7 +2,7 @@
 
 Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) defers here.
 
-**Status:** Open — AI2.0–AI2.4 + AI2.7 done; [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) **obs landed** (schema 11; scenarios still open); [AI2.13](#ai213--scenario-catalog-metadata-api) catalog metadata done; [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) blind-spot taxonomy open. Then [AI2.5](#ai25--multi-team-curriculum). Sampling follow-ups: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) ([AI2.11](#ai211--action-sampling--factor-space-inventory)). Harness hygiene: [AI2.14](#ai214--split-train_self_play), [AI2.15](#ai215--coachcontrol-seat-semantics). Ship AI1 done; see [archive/BACKLOG-done.md](../archive/BACKLOG-done.md).
+**Status:** Open — AI2.0–AI2.4 + AI2.7 done; [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) **obs landed** (schema 11; scenarios still open); [AI2.13](#ai213--scenario-catalog-metadata-api) catalog metadata done; [AI2.15](#ai215--coachcontrol-seat-semantics) seat naming done; [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) blind-spot taxonomy open. Then [AI2.5](#ai25--multi-team-curriculum). Sampling follow-ups: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) ([AI2.11](#ai211--action-sampling--factor-space-inventory)). Harness hygiene: [AI2.14](#ai214--split-train_self_play). Optimize (not next): [AI2.opt](#ai2opt--binary-observation-wire), [AI2.18](#ai218--one-bonus-play-action-kind-retrain), [AI2.19](#ai219--fold-ai-action-vocabulary-investigate). Ship AI1 done; see [archive/BACKLOG-done.md](../archive/BACKLOG-done.md).
 
 **Design:** [`DESIGN.md`](DESIGN.md) · **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md) · **Architecture:** [Backend § Long-term product goals](../backend/ARCHITECTURE.md#long-term-product-goals).
 
@@ -33,11 +33,12 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [ ] [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) — Held dice / mid-check obs + scenarios **(prime)**
 - [x] [AI2.13](#ai213--scenario-catalog-metadata-api) — Scenario catalog metadata API (drop Python board/claim mirror)
 - [ ] [AI2.14](#ai214--split-train_self_play) — Split `train_self_play.py` orchestration
-- [ ] [AI2.15](#ai215--coachcontrol-seat-semantics) — CoachControl: human vs harness vs in-process computer
+- [x] [AI2.15](#ai215--coachcontrol-seat-semantics) — CoachControl: human vs harness vs in-process computer
 - [x] [AI2.16](#ai216--remove-ai-choose--in-process-scenario-lookahead-test) — Remove `/choose`; in-process scenario lookahead test
 - [ ] [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) — Blind-spot remediation (from arena diagnostics)
 - [ ] [AI2.opt](#ai2opt--binary-observation-wire) — Binary observation wire (optimization)
 - [ ] [AI2.18](#ai218--one-bonus-play-action-kind-retrain) — One bonus-play action kind *(retrain; bundle with the next layout change)*
+- [ ] [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) — Fold AI action vocabulary into engine *(investigate; not next)*
 
 ---
 
@@ -248,7 +249,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 | Second Swing keep vs reroll | `HANDLE_POST_POOL` with OS; known bad/good faces via scripted dice |
 | Pinpoint Passer keep vs reroll | throw check hold; known natural roll |
 | Do-Over (throw / block) | RT card in hand + improvable hold; vs `declineOffer` / ability reroll when both offered |
-| Enforcer face order | **Dropped** — TRAINER/COMPUTER auto `bestEnforcerOrder`; HUMAN keeps GUI prompt when ≥2 distinct perms |
+| Enforcer face order | **Dropped** — HARNESS/COMPUTER auto `bestEnforcerOrder`; HUMAN keeps GUI prompt when ≥2 distinct perms |
 | (Nice) armour Do-Over | armour hold + RT |
 
 ---
@@ -287,14 +288,14 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 | Field | Detail |
 |-------|--------|
-| **Status** | **Open.** |
-| **Goal** | Make seat control mean three distinct things — not “HUMAN means external submitter.” [`CoachControl`](../backend/src/main/kotlin/com/mhaefele/gridiron/shared/CoachControl.kt) is `HUMAN` / `COMPUTER` / `TRAINER`. Expert dump and PPO already use **TRAINER** (Enforcer auto-sorts; no FO park). Rename / reshape so the wire answers: (1) **browser human**, (2) **external chooser** (PPO / expert / harness HTTP — no in-process agent), (3) **server-started computer opponent** (`ComputerCoachAgent`). |
-| **Depends on** | None. Naming polish; behavior for dump/train is already TRAINER. |
+| **Status** | **Done.** Renamed `TRAINER` → `HARNESS` on the wire. |
+| **Goal** | Make seat control mean three distinct things — not “HUMAN means external submitter.” [`CoachControl`](../backend/src/main/kotlin/com/mhaefele/gridiron/shared/CoachControl.kt) is `HUMAN` / `COMPUTER` / `HARNESS`. Expert dump and PPO use **HARNESS** (Enforcer auto-sorts; no FO park). Wire answers: (1) **browser human**, (2) **external chooser** (PPO / expert / harness HTTP — no in-process agent), (3) **server-started computer opponent** (`ComputerCoachAgent`). |
+| **Depends on** | None. |
 | **Files** | `CoachControl.kt` + create-match / scenario create DTOs; `ComputerCoachRegistry`; `MatchGame` TTL (`hasHuman`); AI create docs in [`DESIGN.md`](DESIGN.md) / [`OWNERSHIP.md`](OWNERSHIP.md). |
-| **Acceptance** | Names/KDoc make the three roles obvious (rename `TRAINER` if needed — e.g. `HARNESS` / `EXTERNAL`); `COMPUTER` remains the only value that spawns an in-process agent; browser GUI still gets meaningful mid-check prompts. No silent “HUMAN means bot via choose().” |
+| **Acceptance** | Names/KDoc make the three roles obvious; `COMPUTER` remains the only value that spawns an in-process agent; browser GUI still gets meaningful mid-check prompts. No silent “HUMAN means bot.” |
 | **Rulebook** | n/a (control plane, not dice). |
 
-**Context:** Enforcer order is hardcoded best-first for non-browser seats; `HELD_ENFORCER_ORDER` scenario removed. **Schema 15 landed:** `chooseBlockFaceOrder` omitted from AI kinds; faceOrder MultiDiscrete head deleted; Lookahead `HANDLE_ENFORCER_ORDER` → `error(...)`. Expert dump seats are TRAINER (no FO park). Remaining work is seat **naming**.
+**Context:** Enforcer order is hardcoded best-first for non-browser seats; `HELD_ENFORCER_ORDER` scenario removed. **Schema 15 landed:** `chooseBlockFaceOrder` omitted from AI kinds; faceOrder MultiDiscrete head deleted; Lookahead `HANDLE_ENFORCER_ORDER` → `error(...)`. Expert dump seats are HARNESS (no FO park).
 
 ---
 
@@ -414,8 +415,20 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 | **Problem** | Each bonus card has its own `ActionType` (`PLAY_UNDERDOG`, …), wire kind, and `AiLegalKind`; Do-Over has three `ADJUST_*_BY_DO_OVER`. Card names leak into the action vocabulary, so a card rename touches engine, wire, AI, and Python. (Moved from public-release PR.TD8.) |
 | **Goal** | `PLAY_BONUS` + `bonusPlay` factor (and one Do-Over adjust). The GUI wire already carries `bonusPlay` + `description` on every bonus choice (`BonusCardChoice`), so the frontend needs little change. |
 | **Cost** | Changes `AiLegalKind` layout / `LEGAL_ACTION_KIND_COUNT` → **retrain every ONNX profile**. Existing profiles must keep working until then: do **not** land alone — bundle with the next planned layout/schema bump. |
-| **Depends on** | Root [Quick TODO](../BACKLOG.md#quick-todo) on folding AI action vocabulary (same family: one Do-Over adjust kind). |
+| **Depends on** | [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) write-up (same family: one Do-Over adjust kind). |
 | **Acceptance** | One kind for bonus plays; card identity is a factor; card rename needs no `AiLegalKind` edit. |
+| **Rulebook** | n/a |
+
+---
+
+## AI2.19 — Fold AI action vocabulary (investigate)
+
+| Field | Detail |
+|-------|--------|
+| **Status** | **Open — optimize / investigate, not a next step.** Moved from root Quick TODO. |
+| **Problem** | Schema 9’s learning contract is intentionally an **AI mapping layer** ([`AiLegalChoiceMapping`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/mapping/AiLegalChoiceMapping.kt) / [`AiLegalKind`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiLegalKind.kt)): domain [`LegalAction`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) + GUI wire kinds / `LegalActionId`s stay as-is. Inventory: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md). |
+| **Goal** | Write-up that decides **per item**: engine `LegalAction` reshape vs keep dual vocabulary; GUI impact; id / submit-by-id; whether `ActionType` collapses stay. **Candidates to pull into engine (or shared wire):** coarse `declineOffer` (Skip / DeclineBonus / ContinueBlock / keep-reroll); single `reroll` vs keep instead of `Choose*Reroll(reroll: Boolean)`; one Do-Over adjust kind (pending already scopes throw/block/armour); free-vs-sugar factor story if GUI ever stops needing sugar on the id; hide/omit cancel-TT after select (force landing). **Keep AI-only unless product wants:** MultiDiscrete pads, `sugarFactors` sidecar, AI legal-set filters (e.g. drop DeclineBonus when OS/EP keep is already offered). Do not blindly unify — mapping is tidy for a reason. Pairs with [AI2.18](#ai218--one-bonus-play-action-kind-retrain). |
+| **Acceptance** | Decision doc (or `ACTION_SAMPLING.md` section) with per-candidate keep/fold; no drive-by unify without a schema-bump plan. |
 | **Rulebook** | n/a |
 
 ---

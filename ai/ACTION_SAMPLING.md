@@ -212,7 +212,7 @@ Wire still sends `kind` + `kindIndex` + typed factors (`Actor.playerIndex`, …)
 
 Unused axes on a row are pad sentinels in the harness; the Kotlin DTO **omits** unused free factors (and puts pending-fixed values + geometry `AttachedBonus` in `sugarFactors`).
 
-**Schema 15:** dropped the faceOrder MultiDiscrete head; Enforcer order is humans-only (TRAINER/COMPUTER auto-sort). Geometry card identity is sugar; when two cards unlock the same free key, the mapper keeps the lower AttachedBonus index. RandomD6 Sprint is `playSprint` after plain `declareRun` (not a DeclareRun twin).
+**Schema 15:** dropped the faceOrder MultiDiscrete head; Enforcer order is humans-only (HARNESS/COMPUTER auto-sort). Geometry card identity is sugar; when two cards unlock the same free key, the mapper keeps the lower AttachedBonus index. RandomD6 Sprint is `playSprint` after plain `declareRun` (not a DeclareRun twin).
 
 Naive flat product of schema-15 widths ≈ **248k**.
 

@@ -108,7 +108,7 @@ class EnforcerAbilityApiTest : BaseApiTest() {
             target = addPlayer(6, 6, team = TeamSide.AWAY, profile = softTargetProfile())
             addPlayer(2, 6, profile = TestProfiles.dwarfLineman()) // teammate keeps menu after Miss turn-end
         }.toMatchState().let { state ->
-            state.copy(config = state.config.copy(homeControlledBy = CoachControl.TRAINER))
+            state.copy(config = state.config.copy(homeControlledBy = CoachControl.HARNESS))
         }
         matchId = seedMatch(seeded)
         val match = MatchApi(api, matchId)

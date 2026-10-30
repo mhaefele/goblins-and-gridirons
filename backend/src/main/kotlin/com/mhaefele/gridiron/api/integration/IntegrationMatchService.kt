@@ -86,7 +86,7 @@ class IntegrationMatchService(
     }
 
     private fun seatControl(agentSeat: TeamSide, seat: TeamSide): CoachControl =
-        if (seat == agentSeat) CoachControl.TRAINER else CoachControl.COMPUTER
+        if (seat == agentSeat) CoachControl.HARNESS else CoachControl.COMPUTER
 
     private fun randomMatchup(): Pair<TeamCatalogId, TeamCatalogId> {
         val teams = TeamCatalog.allTeams()

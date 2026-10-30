@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * and write JSONL via an [ExportStepRecorder] (e.g. gzip [ExpertStepRecord] through [ExpertExportStepRecorder]).
  * Uses the Spring [LookaheadOpponentStrategy] / [ScriptedOpponentStrategy] singletons — same beans as
  * the computer coach. Search already allocates a fresh scripted roller per `evaluate()`,
- * so concurrent games do not share dice queues. Both seats are [CoachControl.TRAINER] (external
+ * so concurrent games do not share dice queues. Both seats are [CoachControl.HARNESS] (external
  * chooser — no in-process agent, Enforcer auto-sorts) so Lookahead never parks on
  * `HANDLE_ENFORCER_ORDER` and uses the 100ms AI-vs-AI think budget.
  *
@@ -191,8 +191,8 @@ class ExpertGameExporter(
         var state = matchGame.createMatch(
             homeTeamId = homeTeam.id,
             awayTeamId = awayTeam.id,
-            homeControlledBy = CoachControl.TRAINER,
-            awayControlledBy = CoachControl.TRAINER,
+            homeControlledBy = CoachControl.HARNESS,
+            awayControlledBy = CoachControl.HARNESS,
         )
         try {
             state = matchGame.startMatch(state.id).newState
@@ -232,8 +232,8 @@ class ExpertGameExporter(
             val state = matchGame.createScenarioMatch(
                 homeTeamId = homeTeam.id,
                 awayTeamId = awayTeam.id,
-                homeControlledBy = CoachControl.TRAINER,
-                awayControlledBy = CoachControl.TRAINER,
+                homeControlledBy = CoachControl.HARNESS,
+                awayControlledBy = CoachControl.HARNESS,
                 trainerSide = TeamSide.HOME,
                 scenario = slot.scenario,
                 difficulty = slot.difficulty,

@@ -100,7 +100,7 @@ class OnnxOpponentPlaythroughTest : BaseApiTest() {
             scenario = TrainingScenarioEnum.TD_RUN,
             difficulty = 1,
             episodeMode = TrainingEpisodeMode.EVAL,
-            awayControlledBy = CoachControl.TRAINER,
+            awayControlledBy = CoachControl.HARNESS,
         )
         matchId = state.id
         val onnx = onnxFactory.forProfile(profile)

@@ -262,7 +262,7 @@ class BlockResolver(
                     val blocker = session.board.getPlayer(ongoing.blockerId)
                     val faces = ongoing.faces!!
                     if (blocker.hasAbility(PlayerAbility.Enforcer) && faces.size > 1) {
-                        // Browser humans keep a meaningful order prompt; TRAINER / COMPUTER auto-sort.
+                        // Browser humans keep a meaningful order prompt; HARNESS / COMPUTER auto-sort.
                         // chooseBlockFaceOrder is omitted from the AI learning contract (schema 15+).
                         val orders = distinctFaceOrders(faces)
                         val humanChooses = orders.size > 1 && session.config.controlledBy(session.activeCoach) == CoachControl.HUMAN

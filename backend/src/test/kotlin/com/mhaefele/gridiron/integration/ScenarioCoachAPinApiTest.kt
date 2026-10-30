@@ -14,7 +14,7 @@ class ScenarioCoachAPinApiTest : BaseApiTest() {
         val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.STRIP_AND_SCORE))
 
         val state = loadMatch(response.matchId)
-        assertThat(state.config.homeControlledBy).isEqualTo(CoachControl.TRAINER)
+        assertThat(state.config.homeControlledBy).isEqualTo(CoachControl.HARNESS)
         assertThat(state.config.awayControlledBy).isEqualTo(CoachControl.COMPUTER)
         assertThat(state.trainingEpisode!!.trainerSide).isEqualTo(TeamSide.HOME)
         assertThat(state.config.coachA).isEqualTo(TeamSide.HOME)

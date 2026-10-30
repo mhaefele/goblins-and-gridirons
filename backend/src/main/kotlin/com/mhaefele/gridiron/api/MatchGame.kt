@@ -110,7 +110,7 @@ class MatchGame(
         )
         repository.save(state)
         invalidateLegalMenuCache(state.id)
-        maybeScheduleTrainerTtl(state)
+        maybeScheduleHarnessTtl(state)
         if (announceStart) logMatchStarted(state)
         return state
     }
@@ -181,7 +181,7 @@ class MatchGame(
         return createScenarioMatch(
             homeTeamId = TrainingScenarioTeamPicker.pickTrainerTeamId(filter),
             awayTeamId = TeamCatalog.allTeams().random().id,
-            homeControlledBy = CoachControl.TRAINER,
+            homeControlledBy = CoachControl.HARNESS,
             awayControlledBy = awayControlledBy,
             trainerSide = trainerSide,
             scenario = scenario,
@@ -357,9 +357,9 @@ class MatchGame(
     }
 
     /** Non-human matches: TTL starts when the match is first persisted. */
-    private fun maybeScheduleTrainerTtl(state: MatchState) {
+    private fun maybeScheduleHarnessTtl(state: MatchState) {
         val hasHuman = state.config.homeControlledBy == CoachControl.HUMAN || state.config.awayControlledBy == CoachControl.HUMAN
-        if (!hasHuman) scheduleEviction(state.id, TRAINER_MATCH_TTL_MINUTES, TimeUnit.MINUTES)
+        if (!hasHuman) scheduleEviction(state.id, HARNESS_MATCH_TTL_MINUTES, TimeUnit.MINUTES)
     }
 
     /** Replace any pending eviction for [matchId] — GETs do not refresh TTL. */
@@ -404,7 +404,7 @@ class MatchGame(
 
     companion object {
         private val log = LoggerFactory.getLogger(MatchGame::class.java)
-        private const val TRAINER_MATCH_TTL_MINUTES = 30L
+        private const val HARNESS_MATCH_TTL_MINUTES = 30L
         private const val POST_END_EVICT_MINUTES = 1L
     }
 }

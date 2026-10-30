@@ -30,7 +30,7 @@ class AiLegalChoiceMapper(
                 action is LegalAction.DeclineBonus &&
                     actions.any { it is LegalAction.ChooseBlockReroll || it is LegalAction.ChooseThrowReroll }
             }
-        check(actions.none { it is LegalAction.ChooseBlockFaceOrder }) { "ChooseBlockFaceOrder must not appear on AI seats(humans-only; TRAINER/COMPUTER auto-sort)" }
+        check(actions.none { it is LegalAction.ChooseBlockFaceOrder }) { "ChooseBlockFaceOrder must not appear on AI seats(humans-only; HARNESS/COMPUTER auto-sort)" }
         // softMaskIds: null = search N/A (use heuristic); non-empty = those ids; empty = searched,
         // none solvable — still fall back to heuristic so soft-mask is not blanked.
         val solvableIds = solvableSoftMask.softMaskIds(state, forAi)

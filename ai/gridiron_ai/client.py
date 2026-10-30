@@ -143,7 +143,7 @@ class GridironClient:
     ) -> str:
         """POST /api/matches.
 
-        Train/eval: one TRAINER (policy) + one COMPUTER. ``computer_opponent`` is LOOKAHEAD,
+        Train/eval: one HARNESS (policy) + one COMPUTER. ``computer_opponent`` is LOOKAHEAD,
         HEURISTIC, or ONNX (with ``onnx_profile`` = reward profile id / ``ai-opponent/{id}/``).
         Ignored when both seats are HUMAN; server default LOOKAHEAD.
         """
@@ -187,7 +187,7 @@ class GridironClient:
     ) -> str:
         """POST /api/ai/training/matches — create + open a scenario already mid-drill.
 
-        ``scenario`` is a ``TrainingScenarioEnum`` name. HOME is always TRAINER; teams and
+        ``scenario`` is a ``TrainingScenarioEnum`` name. HOME is always HARNESS; teams and
         pitch are chosen on the server. Callers must pass every field (no Kotlin defaults).
         ``difficulty`` (0–5) scatters that many extra trainer reserves after scenario pieces.
         ``episode_mode`` is reserved (TRAIN/EVAL); legals are always full engine today.

@@ -13,7 +13,7 @@ package com.mhaefele.gridiron.api.ai.dto
  * - [adjustByDoOver] — AdjustThrow / AdjustBlock / AdjustArmour ByDoOver
  *
  * [CancelThrowTeammate] and [ChooseBlockFaceOrder] are omitted from AI legals
- * (GUI only — Enforcer order is humans-only; TRAINER/COMPUTER auto-sort).
+ * (GUI only — Enforcer order is humans-only; HARNESS/COMPUTER auto-sort).
  *
  * `` `throw` `` / `` `reroll` `` are backticked only because they are Kotlin keywords;
  * [name] is still `"throw"` / `"reroll"`.
