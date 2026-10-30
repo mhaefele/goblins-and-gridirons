@@ -39,6 +39,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [ ] [AI2.opt](#ai2opt--binary-observation-wire) — Binary observation wire (optimization)
 - [ ] [AI2.18](#ai218--one-bonus-play-action-kind-retrain) — One bonus-play action kind *(retrain; bundle with the next layout change)*
 - [ ] [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) — Fold AI action vocabulary into engine *(investigate; not next)*
+- [ ] [AI2.20](#ai220--remove-local-sb3-pickle-aliases) — Remove local SB3 pickle-alias shim *(after resume zips re-saved)*
 
 ---
 
@@ -433,6 +434,18 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 ---
 
+## AI2.20 — Remove local SB3 pickle aliases
+
+| Field | Detail |
+|-------|--------|
+| **Status** | **Open — hygiene; not next.** |
+| **Goal** | Drop the optional gitignored remap once every resume zip on disk pickles under current `gridiron_ai` module paths (one successful continue+save per zip is enough; prune stale `*_steps.zip`). |
+| **Files** | `install_legacy_pickle_aliases` + call in [`__init__.py`](gridiron_ai/__init__.py); [`PICKLE_ALIASES_PATH`](gridiron_ai/paths.py); `.gitignore` entry; alias tests in [`test_checkpoints.py`](tests/test_checkpoints.py); delete local `local.pickle_aliases.properties` if present. |
+| **Acceptance** | Resume works with no aliases file; no pickle-alias install path left in the package. |
+| **Rulebook** | n/a |
+
+---
+
 ## Suggested order of work
 
 ```text
@@ -471,6 +484,7 @@ AI2.0 Kotlin DTOs (contract = source)
 | Scenario catalog metadata | [AI2.13](#ai213--scenario-catalog-metadata-api) |
 | Split train entrypoint | [AI2.14](#ai214--split-train_self_play) |
 | Remove `/choose` + scenario lookahead test | [AI2.16](#ai216--remove-ai-choose--in-process-scenario-lookahead-test) |
+| Remove local SB3 pickle aliases | [AI2.20](#ai220--remove-local-sb3-pickle-aliases) |
 | Root backlog pointer | [`BACKLOG.md` AI2](../BACKLOG.md#deferred--phase-ai2-trainable-model) |
 | Heuristic / lookahead bots | [BACKLOG-done.md AI1](../archive/BACKLOG-done.md#ai1--basic-computer-opponent) |
 | Legal actions (GUI) | `GET /api/matches/{id}/legal-actions` — **not** the AI contract |

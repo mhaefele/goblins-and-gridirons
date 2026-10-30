@@ -6,18 +6,44 @@ See ``ai/OWNERSHIP.md``.
 
 from __future__ import annotations
 
+import importlib
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
-from gridiron_ai.paths import CHECKPOINT_DIR
+from gridiron_ai.paths import CHECKPOINT_DIR, PICKLE_ALIASES_PATH
 
 STEP_CHECKPOINT_PREFIX = "maskable_ppo_selfplay"
 DEFAULT_STEP_CHECKPOINT_KEEP = 50
 _STEP_ZIP_RE = re.compile(
     rf"^{re.escape(STEP_CHECKPOINT_PREFIX)}_(?P<steps>\d+)_steps\.zip$"
 )
+
+
+def install_legacy_pickle_aliases(path: Path | None = None) -> int:
+    """Apply optional ``old.module=new.module`` aliases from a local properties file.
+
+    # DEVIATION: SB3 ``MaskablePPO.load`` unpickles ``policy_class`` by module path.
+    # Zips saved under a prior package name fail without a local remap. Missing/empty
+    # file → no-op. After resume zips are re-saved under current module paths, delete
+    # the file. Path is gitignored (``local.pickle_aliases.properties``).
+    """
+    aliases_path = PICKLE_ALIASES_PATH if path is None else path
+    if not aliases_path.is_file():
+        return 0
+    applied = 0
+    for raw in aliases_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        old_name, new_name = (part.strip() for part in line.split("=", 1))
+        if not old_name or not new_name:
+            continue
+        sys.modules.setdefault(old_name, importlib.import_module(new_name))
+        applied += 1
+    return applied
 
 
 def atomic_model_save(model: Any, save_stem: str | Path) -> Path:

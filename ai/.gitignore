@@ -1,3 +1,6 @@
+# Local-only SB3 pickle module remaps (prior package name → gridiron_ai)
+local.pickle_aliases.properties
+
 # Python training artifacts
 .venv/
 __pycache__/

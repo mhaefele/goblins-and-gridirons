@@ -15,4 +15,4 @@ One statement per beat when the surrounding file does the same. Long lines are f
 ## Also
 
 - `# DEVIATION:` when diverging from stock Gymnasium / SB3 / PyTorch patterns (see [collaborator-context](../../../.cursor/rules/collaborator-context.mdc)).
-- Type hints and `from __future__ import annotations` match existing modules in `blitzbowl_ai/`.
+- Type hints and `from __future__ import annotations` match existing modules in `gridiron_ai/`.

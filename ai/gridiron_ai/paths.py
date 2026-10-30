@@ -9,6 +9,8 @@ helpers there). See ``ai/OWNERSHIP.md``.
 from pathlib import Path
 
 AI_ROOT = Path(__file__).resolve().parents[1]
+# Optional local-only ``old.module=new.module`` lines for SB3 zip unpickle (gitignored).
+PICKLE_ALIASES_PATH = AI_ROOT / "local.pickle_aliases.properties"
 OUTPUT_DIR = AI_ROOT / "output"
 CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
 RUNS_DIR = OUTPUT_DIR / "runs"

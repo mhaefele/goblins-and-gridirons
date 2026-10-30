@@ -20,4 +20,8 @@ Kotlin owns match rules + AI DTOs. Python splits those DTO numbers into a gym Di
 (pitch grid vs benches vs cards) and does not invent extra engine facts.
 """
 
+from gridiron_ai.checkpoints import install_legacy_pickle_aliases
+
 __version__ = "0.1.0"
+
+install_legacy_pickle_aliases()
