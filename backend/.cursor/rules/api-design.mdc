@@ -1,6 +1,6 @@
 ---
 description: REST API design — commands vs views, verb URLs, no conditional nulls
-globs: backend/src/main/kotlin/com/mhaefele/blitzbowl/api/**/*.kt
+globs: backend/src/main/kotlin/com/mhaefele/gridiron/api/**/*.kt
 alwaysApply: false
 ---
 

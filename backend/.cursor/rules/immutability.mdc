@@ -1,6 +1,6 @@
 ---
 description: Backend immutability — fail fast, resolution accumulators, collections over loops
-globs: backend/src/main/kotlin/com/mhaefele/blitzbowl/**/*.kt
+globs: backend/src/main/kotlin/com/mhaefele/gridiron/**/*.kt
 alwaysApply: false
 ---
 

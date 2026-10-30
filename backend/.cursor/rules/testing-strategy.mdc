@@ -10,13 +10,13 @@ Full guide: [backend/TESTING.md](../../TESTING.md). Harness notes: [ARCHITECTURE
 
 ## Absolute rules
 
-1. **Never write unit tests.** Do not add new tests that call production code without HTTP. Features go through [BaseApiTest](../../src/test/kotlin/com/mhaefele/blitzbowl/integration/support/BaseApiTest.kt) + [BlitzbowlApiClient](../../src/test/kotlin/com/mhaefele/blitzbowl/integration/support/BlitzbowlApiClient.kt). Existing domain tests may stay; do not extend them instead of an API test.
+1. **Never write unit tests.** Do not add new tests that call production code without HTTP. Features go through [BaseApiTest](../../src/test/kotlin/com/mhaefele/gridiron/integration/support/BaseApiTest.kt) + [GridironApiClient](../../src/test/kotlin/com/mhaefele/gridiron/integration/support/GridironApiClient.kt). Existing domain tests may stay; do not extend them instead of an API test.
 2. **API test mandatory** for anything reachable over HTTP. Seed with `seedMatch` / `match { }` + `api.play`, not bean crank.
 3. **No `@Autowired` / bean-direct orchestrator tests** without an explicit agreed exception in chat first (`TurnEngine`, `PlayerActionExecutor`, `RegularPlayerActionResolver`, `MatchGame`, …).
 4. **Never hand-wire Spring beans** in tests (`Foo(Bar(), Baz())` for `@Component` types).
-5. **Spring boots once** — one `@SpringBootTest` on [BaseApiTest](../../src/test/kotlin/com/mhaefele/blitzbowl/integration/support/BaseApiTest.kt); no `@MockBean` / `@DirtiesContext` per test; reconfigure the same boundary double (`ScriptedDiceRoller`).
+5. **Spring boots once** — one `@SpringBootTest` on [BaseApiTest](../../src/test/kotlin/com/mhaefele/gridiron/integration/support/BaseApiTest.kt); no `@MockBean` / `@DirtiesContext` per test; reconfigure the same boundary double (`ScriptedDiceRoller`).
 6. **No mock-heavy suites** — assert HTTP/persisted outcomes, not `verify(mock)`.
 
 ### Start here for fixtures
 
-[GameScenario](../../src/test/kotlin/com/mhaefele/blitzbowl/support/GameScenario.kt) / [BoardScenario](../../src/test/kotlin/com/mhaefele/blitzbowl/support/BoardScenario.kt) — ids from `PlacedPlayer`, not literals. Details and checklists in [TESTING.md](../../TESTING.md).
+[GameScenario](../../src/test/kotlin/com/mhaefele/gridiron/support/GameScenario.kt) / [BoardScenario](../../src/test/kotlin/com/mhaefele/gridiron/support/BoardScenario.kt) — ids from `PlacedPlayer`, not literals. Details and checklists in [TESTING.md](../../TESTING.md).

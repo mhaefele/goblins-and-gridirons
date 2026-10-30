@@ -40,4 +40,4 @@ is DomainEvent.PhaseStarted -> "  phase ${event.phase} started"
 - **Visibility defaults to `private`.** Public / internal only when a real external caller exists (grep). Helpers, seat math, and “might be useful” APIs stay private until a second file needs them.
 - Direct-import nested sealed/timing members (`AfterOwnPlayerAction(…)` not a `BonusPlayTiming.`-qualified tower).
 - Comment only rulebook / edge-case / invariant intent the name cannot carry — weird exceptions get more comment, not less.
-- Rulebook-shaped mutations: one beat per rule step, separate events (`playerMoved` then pickup then bounce) — mirror [BoardMutator](../../backend/src/main/kotlin/com/mhaefele/blitzbowl/game/board/dto/BoardMutator.kt) and neighbors.
+- Rulebook-shaped mutations: one beat per rule step, separate events (`playerMoved` then pickup then bounce) — mirror [BoardMutator](../../backend/src/main/kotlin/com/mhaefele/gridiron/game/board/dto/BoardMutator.kt) and neighbors.

@@ -1,13 +1,13 @@
 ---
 description: Ongoing* multi-input action FSM pattern (Block / Throw / Run / Mark / Sidestep)
-globs: backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/**/*.kt
+globs: backend/src/main/kotlin/com/mhaefele/gridiron/game/action/**/*.kt
 alwaysApply: false
 ---
 # Ongoing* resolvers (Block / Throw / Run / Mark / Sidestep / …)
 
-Multi-input actions use one `Ongoing*` on one `*Continuation` pending. Canonical shape: [BlockResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/block/BlockResolver.kt) / [RunResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/run/RunResolver.kt) / [MarkResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/mark/MarkResolver.kt) / [SidestepResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/sidestep/SidestepResolver.kt) / [KnockDownResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/knockdown/KnockDownResolver.kt) / [ArmourCheckResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/armourcheck/ArmourCheckResolver.kt) / [BallGuardResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/ballguard/BallGuardResolver.kt).
+Multi-input actions use one `Ongoing*` on one `*Continuation` pending. Canonical shape: [BlockResolver](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/pending/block/BlockResolver.kt) / [RunResolver](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/pending/run/RunResolver.kt) / [MarkResolver](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/pending/mark/MarkResolver.kt) / [SidestepResolver](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/pending/sidestep/SidestepResolver.kt) / [KnockDownResolver](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/pending/knockdown/KnockDownResolver.kt) / [ArmourCheckResolver](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/pending/armourcheck/ArmourCheckResolver.kt) / [BallGuardResolver](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/pending/ballguard/BallGuardResolver.kt).
 
-Pending decision types live under [model.pending](backend/src/main/kotlin/com/mhaefele/blitzbowl/model/pending/) (one file each). Resolvers + `Ongoing*` live in per-action packages under `game/action/pending/<action>/` and extend [PendingDecisionResolver](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/pending/PendingDecisionResolver.kt). **Resolvers never write the pending slot** — they return the next pending; callers `set` / `update` / `copy(delegate = …)`. Board helpers that are not pending owners ([Bounce](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/Bounce.kt), [NewBall](backend/src/main/kotlin/com/mhaefele/blitzbowl/game/action/NewBall.kt)) are not named `*Resolver`.
+Pending decision types live under [model.pending](backend/src/main/kotlin/com/mhaefele/gridiron/model/pending/) (one file each). Resolvers + `Ongoing*` live in per-action packages under `game/action/pending/<action>/` and extend [PendingDecisionResolver](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/pending/PendingDecisionResolver.kt). **Resolvers never write the pending slot** — they return the next pending; callers `set` / `update` / `copy(delegate = …)`. Board helpers that are not pending owners ([Bounce](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/Bounce.kt), [NewBall](backend/src/main/kotlin/com/mhaefele/gridiron/game/action/NewBall.kt)) are not named `*Resolver`.
 
 ## Shape
 
@@ -42,7 +42,7 @@ Pending decision types live under [model.pending](backend/src/main/kotlin/com/mh
 
 ## Pending / open-action invariants
 
-Canonical list lives on [PendingDecision](backend/src/main/kotlin/com/mhaefele/blitzbowl/model/PendingDecision.kt) KDoc (also MatchMutator / TurnEngine / PlayerActionExecutor). Uphold when editing resolvers:
+Canonical list lives on [PendingDecision](backend/src/main/kotlin/com/mhaefele/gridiron/model/pending/PendingDecision.kt) KDoc (also MatchMutator / TurnEngine / PlayerActionExecutor). Uphold when editing resolvers:
 
 1. One slot — null ⇒ set; same class ⇒ update. Root must be [PendingDecisionSlot.TopLevel]; `ActionContinuation` is NestedOnly under RPA/Extra Effort→RPA.
 2. Stage owns the pending — no shared funnels across unrelated phases.

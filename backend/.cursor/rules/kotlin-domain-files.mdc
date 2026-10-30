@@ -1,6 +1,6 @@
 ---
 description: Kotlin domain file organization — colocate IDs/enums; Jakarta validation; type KDoc
-globs: backend/src/main/kotlin/com/mhaefele/blitzbowl/{model,game,shared}/**/*.kt
+globs: backend/src/main/kotlin/com/mhaefele/gridiron/{model,game,shared}/**/*.kt
 alwaysApply: false
 ---
 
@@ -46,7 +46,7 @@ Runtime `require` vs `check`: [code-style](../../../.cursor/rules/code-style.mdc
 
 ## Convention-heavy types: document on the type
 
-Spatial / indexing / orientation types explain values in **KDoc on the type** — follow [Coordinate.kt](../../src/main/kotlin/com/mhaefele/blitzbowl/shared/Coordinate.kt):
+Spatial / indexing / orientation types explain values in **KDoc on the type** — follow [Coordinate.kt](../../src/main/kotlin/com/mhaefele/gridiron/shared/Coordinate.kt):
 
 1. Indexing base and valid range
 2. What the type validates vs runtime context

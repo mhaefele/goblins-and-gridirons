@@ -2,7 +2,7 @@
 description: Wrong event order → fix backend; don't fudge frontend animation
 globs:
   - frontend/**/*.{ts,tsx}
-  - backend/src/main/kotlin/com/mhaefele/blitzbowl/game/**/*.kt
+  - backend/src/main/kotlin/com/mhaefele/gridiron/game/**/*.kt
 alwaysApply: false
 ---
 
