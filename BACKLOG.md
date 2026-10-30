@@ -50,7 +50,7 @@ Scratch list — not phased work. Prefer these when picking up engine cleanup.
 - [x] **Slip Away skip already returns the card.** Removed the stale TODO; the test name matches `returnBonusCard`.
 - [x] **Reserves onto the ball.** The test builds a tiny end zone where the ball square is the fallback placement, then asserts the bounce.
 - [x] **Single nullable pending decision (FSM, not a stack)** — see [SP.1–SP.6](#sp--single-nullable-pending-decision-fsm). `TurnState.pendingDecision: PendingDecision?`; list / prepend / `COMPOUND_PENDING` removed.
-- [ ] **README: say this is an education project about working with AI.** Reword the "What I built" / lessons sections so that is the point of the repo, not an apology. Keep the experiment: the three modules were different review policies on purpose. Backend was reviewed and refactored closely. Frontend was left unreviewed on purpose, to see what happens when the engine is the source of truth and the client only draws and submits. AI training is the stack being learned (RL), so it is still the part changing most. The lessons stay. What has to change is the wording that sounds like the frontend was neglected or the project is unfinished ("Cursor wrote the code", "no human has reviewed the frontend code").
+- [x] **README: education project about working with AI.** Root README leads with three modules × three AI collaboration strategies (architect-in-the-loop / vibe coding / AI-tutored). Lessons and open questions stay; LinkedIn polish dropped.
 
 ---
 
