@@ -62,7 +62,7 @@ class AiLegalChoiceMapper(
         val (free, sugar) = action.toAiFreeAndSugarFactors(perspectiveSeat)
         val sugarWithBonus = buildList {
             addAll(sugar)
-            action.requiredBonusCard?.let { add(AiFactor.AttachedBonus(AttachedBonusEncoding.indexFor(it.bonusPlay))) }
+            action.requiredBonusCard?.let { add(AiFactor.AttachedBonus(AttachedBonusEncoding.indexFor(it))) }
         }
         return AiLegalChoiceDto(
             kind = kind,

@@ -32,7 +32,7 @@ export type LegalActionId = schemas["LegalActionId"];
 export type LegalActionType = NonNullable<schemas["ActionComplete"]["actionType"]>;
 export type PlayerDecisionType = NonNullable<schemas["PlayerAction"]["decisionType"]>;
 export type PlayerAbility = NonNullable<schemas["PlayerAction"]["ability"]>;
-export type BonusPlay = NonNullable<schemas["RequiredBonusCard"]["bonusPlay"]>;
+export type BonusPlay = NonNullable<schemas["ChallengeCardDto"]["bonusPlay"]>;
 export type ChallengeClaimCondition = NonNullable<schemas["ChallengeCardDto"]["challengeCondition"]>;
 export type BlockDieFace = NonNullable<schemas["DiceRolled"]["blockResult"]>;
 export type ThrowRange = NonNullable<schemas["ChooseThrowReroll"]["range"]>;
@@ -46,9 +46,9 @@ export type LegalActionCommon = {
     id?: LegalActionId;
     actionType: LegalActionType;
     /** Present when this action is illegal without playing that bonus (id encodes it). */
-    requiredBonusCard?: { bonusPlay: BonusPlay } | null;
+    requiredBonusCard?: BonusPlay | null;
     /** Optional bonuses offered if you take this action (Back on Your Feet, Dead Eye, …) — not in id. */
-    availableBonusCards?: { bonusPlay: BonusPlay }[];
+    availableBonusCards?: BonusPlay[];
     /**
      * Active challenges this action could earn if resolved as expected (D1.F.4).
      * Distinct from availableBonusCards (play-from-hand).

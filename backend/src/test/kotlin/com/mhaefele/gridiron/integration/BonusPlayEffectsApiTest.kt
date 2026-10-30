@@ -358,7 +358,7 @@ class BonusPlayEffectsApiTest : BaseApiTest() {
         }
 
         val sprintRun = match.legalActions<LegalAction.Run>()
-            .first { it.requiredBonusCard?.bonusPlay == BonusPlay.Sprint && it.path.steps == 4 }
+            .first { it.requiredBonusCard == BonusPlay.Sprint && it.path.steps == 4 }
         match.play(sprintRun)
 
         assertThat(loadMatch(match).cards.handCards(TeamSide.HOME)).doesNotContain(sprint)

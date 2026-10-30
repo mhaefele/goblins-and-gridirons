@@ -5,8 +5,8 @@ import com.mhaefele.gridiron.model.catalog.BonusPlay
 /**
  * [com.mhaefele.gridiron.api.ai.dto.AiFactor.AttachedBonus] sugar index for geometry cards.
  *
- * Only geometry-attached bonuses ([ActionAttachedBonuses.expandFromHand]) use
- * [com.mhaefele.gridiron.api.dto.response.RequiredBonusCard] on path/throw actions.
+ * Only geometry-attached bonuses ([ActionAttachedBonuses.expandFromHand]) set
+ * [com.mhaefele.gridiron.api.dto.response.LegalAction.requiredBonusCard] on path/throw actions.
  * Indices are sugar (not a MultiDiscrete head). When free keys collide, the AI mapper
  * prefers the lower index (Sprint before Weave, …).
  */

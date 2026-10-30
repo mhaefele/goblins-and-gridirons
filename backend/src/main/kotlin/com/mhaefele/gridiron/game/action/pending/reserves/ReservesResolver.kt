@@ -70,7 +70,7 @@ class ReservesResolver(
     }
 
     private fun shouldOfferFreshLegsBonus(session: MatchMutator, action: LegalAction.Reserves): Boolean {
-        if (action.availableBonusCards.none { it.bonusPlay == BonusPlay.`Fresh Legs` }) return false
+        if (action.availableBonusCards.none { it == BonusPlay.`Fresh Legs` }) return false
         return BonusOffers.hasPlayable(session, session.activeCoach, BonusPlay.`Fresh Legs`)
     }
 }

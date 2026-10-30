@@ -53,7 +53,7 @@ class StandUpResolver(
     }
 
     private fun shouldOfferBackOnYourFeet(session: MatchMutator, action: LegalAction.StandUp): Boolean {
-        if (action.availableBonusCards.none { it.bonusPlay == BonusPlay.`Back on Your Feet` }) return false
+        if (action.availableBonusCards.none { it == BonusPlay.`Back on Your Feet` }) return false
         return BonusOffers.hasPlayable(session, session.activeCoach, BonusPlay.`Back on Your Feet`)
     }
 }

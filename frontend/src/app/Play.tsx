@@ -850,13 +850,13 @@ export default function Play({
                 <div className="action-chooser" role="dialog" aria-label="Confirm bonus card">
                     <p className="action-chooser__bonus-line">
                         <BonusBadge
-                            bonusPlay={bonusConfirm.requiredBonusCard.bonusPlay}
+                            bonusPlay={bonusConfirm.requiredBonusCard}
                             size="md"
                             className="action-chooser__bonus-badge"
                         />
                         <span>
                             This action uses{" "}
-                            <strong>{bonusConfirm.requiredBonusCard.bonusPlay}</strong>.
+                            <strong>{bonusConfirm.requiredBonusCard}</strong>.
                         </span>
                     </p>
                     <p className="action-chooser__detail">{describeAction(bonusConfirm)}</p>
@@ -871,7 +871,7 @@ export default function Play({
                                     void submitAction(action);
                                 }}
                             >
-                                Use {bonusConfirm.requiredBonusCard.bonusPlay}
+                                Use {bonusConfirm.requiredBonusCard}
                             </button>
                         </li>
                     </ul>

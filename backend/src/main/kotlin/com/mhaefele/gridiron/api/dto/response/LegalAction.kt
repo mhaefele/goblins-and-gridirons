@@ -77,16 +77,23 @@ import io.swagger.v3.oas.annotations.media.Schema
 sealed interface LegalAction {
     val actionType: ActionType
     /**
-     * When non-null, this action is illegal without playing [RequiredBonusCard.bonusPlay].
-     * Encoded into [id]; the engine auto-plays the card on submit.
+     * When non-null, this **geometry** action spends [requiredBonusCard] on submit
+     * (Sprint/Weave/Press/Ice Cold/… tagged onto Run/Mark/Throw/…). Encoded into [id];
+     * [com.mhaefele.gridiron.game.action.pending.regular.RegularPlayerActionResolver] auto-plays it
+     * for the active coach when beginning the open action.
+     *
+     * Mid-action [PlayBonusCard] / Do-Over adjust pauses do **not** use this field — the Play*
+     * (or Adjust*) kind *is* the spend, and the spending coach is often not the active one
+     * (Brace, Slip Away, Cut Off, Stick Close, …). Resolvers call [com.mhaefele.gridiron.game.turn.MatchMutator.playBonusCard]
+     * with the right seat.
      */
-    val requiredBonusCard: RequiredBonusCard?
+    val requiredBonusCard: BonusPlay?
         get() = null
     /**
      * Optional bonus cards the coach may play if they take this action (Back on Your Feet, Dead Eye, …).
-     * Not encoded in [id]; submit stays a bare id, then a Play/Skip window may open.
+     * Not encoded in [id]; submit stays a bare id, then a Play/Decline window may open.
      */
-    val availableBonusCards: List<RequiredBonusCard>
+    val availableBonusCards: List<BonusPlay>
         get() = emptyList()
     /**
      * Active challenges this action could earn if resolved as expected (D1.F.4).
@@ -140,8 +147,8 @@ sealed interface LegalAction {
     data class Run(
         override val playerId: PlayerId,
         override val path: Path,
-        override val requiredBonusCard: RequiredBonusCard? = null,
-        override val availableBonusCards: List<RequiredBonusCard> = emptyList(),
+        override val requiredBonusCard: BonusPlay? = null,
+        override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
         override val ballEncounter: BallEncounter? = null,
     ) : PathMovement {
@@ -156,8 +163,8 @@ sealed interface LegalAction {
     data class DeclareRun(
         override val playerId: PlayerId,
         override val targetCoordinate: Coordinate,
-        override val requiredBonusCard: RequiredBonusCard? = null,
-        override val availableBonusCards: List<RequiredBonusCard> = emptyList(),
+        override val requiredBonusCard: BonusPlay? = null,
+        override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
     ) : BasicPlayerAction {
         override val actionType: ActionType = ActionType.RUN
@@ -166,8 +173,8 @@ sealed interface LegalAction {
     data class Mark(
         override val playerId: PlayerId,
         override val path: Path,
-        override val requiredBonusCard: RequiredBonusCard? = null,
-        override val availableBonusCards: List<RequiredBonusCard> = emptyList(),
+        override val requiredBonusCard: BonusPlay? = null,
+        override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
         override val ballEncounter: BallEncounter? = null,
     ) : PathMovement {
@@ -177,8 +184,8 @@ sealed interface LegalAction {
     data class Sidestep(
         override val playerId: PlayerId,
         override val path: Path,
-        override val requiredBonusCard: RequiredBonusCard? = null,
-        override val availableBonusCards: List<RequiredBonusCard> = emptyList(),
+        override val requiredBonusCard: BonusPlay? = null,
+        override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
         override val ballEncounter: BallEncounter? = null,
     ) : PathMovement {
@@ -188,8 +195,8 @@ sealed interface LegalAction {
     data class Throw(
         override val playerId: PlayerId,
         val target: ThrowTarget,
-        override val requiredBonusCard: RequiredBonusCard? = null,
-        override val availableBonusCards: List<RequiredBonusCard> = emptyList(),
+        override val requiredBonusCard: BonusPlay? = null,
+        override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
     ) : BasicPlayerAction {
         override val actionType: ActionType = ActionType.THROW
@@ -204,8 +211,8 @@ sealed interface LegalAction {
         override val playerId: PlayerId,
         val teammateId: PlayerId,
         override val targetCoordinate: Coordinate,
-        override val requiredBonusCard: RequiredBonusCard? = null,
-        override val availableBonusCards: List<RequiredBonusCard> = emptyList(),
+        override val requiredBonusCard: BonusPlay? = null,
+        override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
     ) : BasicPlayerAction {
         override val actionType: ActionType = ActionType.THROW_TEAMMATE
@@ -216,8 +223,8 @@ sealed interface LegalAction {
         override val playerId: PlayerId,
         val teammateId: PlayerId,
         val target: ThrowTarget,
-        override val requiredBonusCard: RequiredBonusCard? = null,
-        override val availableBonusCards: List<RequiredBonusCard> = emptyList(),
+        override val requiredBonusCard: BonusPlay? = null,
+        override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
     ) : BasicPlayerAction {
         override val actionType: ActionType = ActionType.THROW_TEAMMATE
@@ -234,8 +241,8 @@ sealed interface LegalAction {
     data class Block(
         override val playerId: PlayerId,
         val destination: Coordinate,
-        override val requiredBonusCard: RequiredBonusCard? = null,
-        override val availableBonusCards: List<RequiredBonusCard> = emptyList(),
+        override val requiredBonusCard: BonusPlay? = null,
+        override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
     ) : BasicPlayerAction {
         override val actionType: ActionType = ActionType.BLOCK
@@ -246,8 +253,8 @@ sealed interface LegalAction {
     data class Foul(
         override val playerId: PlayerId,
         val destination: Coordinate,
-        override val requiredBonusCard: RequiredBonusCard? = null,
-        override val availableBonusCards: List<RequiredBonusCard> = emptyList(),
+        override val requiredBonusCard: BonusPlay? = null,
+        override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
     ) : BasicPlayerAction {
         override val actionType: ActionType = ActionType.FOUL
@@ -257,8 +264,8 @@ sealed interface LegalAction {
     data class StandUp(
         override val playerId: PlayerId,
         override val targetCoordinate: Coordinate,
-        override val requiredBonusCard: RequiredBonusCard? = null,
-        override val availableBonusCards: List<RequiredBonusCard> = emptyList(),
+        override val requiredBonusCard: BonusPlay? = null,
+        override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
     ) : BasicPlayerAction {
         override val actionType: ActionType = ActionType.STAND_UP
@@ -267,8 +274,8 @@ sealed interface LegalAction {
     data class Reserves(
         override val playerId: PlayerId,
         val placement: Coordinate,
-        override val requiredBonusCard: RequiredBonusCard? = null,
-        override val availableBonusCards: List<RequiredBonusCard> = emptyList(),
+        override val requiredBonusCard: BonusPlay? = null,
+        override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
         /** Non-null [BallEncounter.BOUNCE] when placement lands on a loose ball. */
         val ballEncounter: BallEncounter? = null,
@@ -382,17 +389,19 @@ sealed interface LegalAction {
     }
 
     /**
-     * Play a bonus card from the coach's hand during a bonus offer pending
-     * (phase / interrupt / before-throw / mid-block — not Do-Over held-dice).
-     * Each bonus that opens a pause has its own subtype; the server picks a matching hand card.
-     *
-     * [requiredBonusCard] means this action spends a card.
-     * Dead Eye, Slip Away, and Gang Up stay a second ask: the throw, mark, or block is already
-     * listed, and this pause is the choice to spend the card or decline.
+     * Play a bonus card from hand during a bonus-offer pause (phase / interrupt / before-throw /
+     * mid-block — not Do-Over held-dice). Each card that opens a pause has its own subtype; the
+     * server picks a matching hand card. The throw/mark/block (etc.) was already chosen — this is
+     * the second ask to spend or [DeclineBonus]. Spend via [bonusPlay] in the owning resolver
+     * (not [requiredBonusCard]; that tags geometry actions only).
      */
     sealed interface PlayBonusCard : BonusCardChoice
 
-    /** Coach spends a bonus card from hand ([PlayBonusCard] or a Do-Over adjust) — carries the card text for the prompt. */
+    /**
+     * Coach spends a bonus card from hand ([PlayBonusCard] or a Do-Over adjust) — carries the card
+     * text for the prompt. Kind + [bonusPlay] *are* the spend; see [requiredBonusCard] for why that
+     * field stays null here.
+     */
     sealed interface BonusCardChoice : FollowUpAction {
         val bonusPlay: BonusPlay
         val description: String get() = bonusPlay.description
@@ -547,7 +556,7 @@ private fun LegalAction.getLegalActionIdString(): String {
     }
     val geometry = parts.joinToString("_")
     val bonus = requiredBonusCard ?: return geometry
-    return geometry + "_BONUS_" + token(bonus.bonusPlay.name)
+    return geometry + "_BONUS_" + token(bonus.name)
 }
 
 /** Leading action type from a [LegalAction.id] (`RUN_playerId_…`, `THROW_…_BONUS_Sprint`). */

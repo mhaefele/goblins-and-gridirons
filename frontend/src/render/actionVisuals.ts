@@ -241,9 +241,9 @@ export function describeAction(action: LegalActionWire): string {
             : "";
     const bonusSuffix =
         action.requiredBonusCard != null
-            ? ` · uses ${action.requiredBonusCard.bonusPlay}`
+            ? ` · uses ${action.requiredBonusCard}`
             : action.availableBonusCards != null && action.availableBonusCards.length > 0
-              ? ` · may use ${action.availableBonusCards.map((c) => c.bonusPlay).join(" / ")}`
+              ? ` · may use ${action.availableBonusCards.join(" / ")}`
               : "";
     if (isBonusCardChoice(action)) return `Play ${action.bonusPlay}`;
     const ballSuffix = ballEncounterSuffix(action);

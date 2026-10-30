@@ -17,10 +17,10 @@ function boardOfferedBonusPlays(legalActions: LegalActionWire[]): Map<BonusPlay,
     for (const action of legalActions) {
         const label = formatActionType(action.actionType);
         if (action.requiredBonusCard != null) {
-            offered.set(action.requiredBonusCard.bonusPlay, label);
+            offered.set(action.requiredBonusCard, label);
         }
-        for (const card of action.availableBonusCards ?? []) {
-            offered.set(card.bonusPlay, label);
+        for (const play of action.availableBonusCards ?? []) {
+            offered.set(play, label);
         }
     }
     return offered;

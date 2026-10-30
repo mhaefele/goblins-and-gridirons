@@ -145,7 +145,7 @@ class BonusPlayFrameworkApiTest : BaseApiTest() {
         assertThat(match.legalActions<LegalAction.PlayBonusCard>()).isEmpty()
         val placement = match.legalActions<LegalAction.Reserves>()
             .first { it.playerId == reserve.player.id }
-        assertThat(placement.availableBonusCards).anyMatch { it.bonusPlay == BonusPlay.`Fresh Legs` }
+        assertThat(placement.availableBonusCards).anyMatch { it == BonusPlay.`Fresh Legs` }
 
         match.play(placement)
         val play = match.legalActions<LegalAction.PlayBonusCard>().single()
@@ -226,7 +226,7 @@ class BonusPlayFrameworkApiTest : BaseApiTest() {
 
         val placement = match.legalActions<LegalAction.Reserves>()
             .first { it.playerId == reserve.player.id }
-        assertThat(placement.availableBonusCards).anyMatch { it.bonusPlay == BonusPlay.`Fresh Legs` }
+        assertThat(placement.availableBonusCards).anyMatch { it == BonusPlay.`Fresh Legs` }
         match.play(placement)
         val decline = match.legalActions<LegalAction.DeclineBonus>()
         assertThat(decline).isNotEmpty
@@ -251,7 +251,7 @@ class BonusPlayFrameworkApiTest : BaseApiTest() {
 
         val sprintRun = match.legalActions<LegalAction.Run>()
             .first { it.path.steps == 7 && it.playerId == runner.player.id }
-        assertThat(sprintRun.requiredBonusCard?.bonusPlay).isEqualTo(BonusPlay.Sprint)
+        assertThat(sprintRun.requiredBonusCard).isEqualTo(BonusPlay.Sprint)
         assertThat(sprintRun.id.value).contains("_BONUS_Sprint")
 
         val response = match.play(sprintRun)

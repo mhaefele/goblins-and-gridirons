@@ -1079,7 +1079,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1093,7 +1094,8 @@ export interface components {
             assisted?: boolean;
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             description?: string;
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1111,7 +1113,8 @@ export interface components {
             obstructed?: boolean;
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             description?: string;
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1122,7 +1125,8 @@ export interface components {
         Block: {
             playerId?: components["schemas"]["PlayerId"];
             destination?: components["schemas"]["Coordinate"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             targetCoordinate?: components["schemas"]["Coordinate"];
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1154,7 +1158,8 @@ export interface components {
         };
         CancelThrowTeammate: {
             playerId?: components["schemas"]["PlayerId"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1165,7 +1170,8 @@ export interface components {
             playerId?: components["schemas"]["PlayerId"];
             destination?: components["schemas"]["Coordinate"];
             orderedFaces?: ("SMASH" | "FLATTEN" | "SHOVE" | "TACKLE" | "MISS")[];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1178,7 +1184,8 @@ export interface components {
             faces?: ("SMASH" | "FLATTEN" | "SHOVE" | "TACKLE" | "MISS")[];
             assisted?: boolean;
             reroll?: boolean;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1194,7 +1201,8 @@ export interface components {
             range?: "HAND_OFF" | "SHORT" | "LONG";
             obstructed?: boolean;
             reroll?: boolean;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1209,7 +1217,8 @@ export interface components {
             challengeTitle?: string;
             /** Format: int32 */
             points?: number;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1220,7 +1229,8 @@ export interface components {
             playerId?: components["schemas"]["PlayerId"];
             destination?: components["schemas"]["Coordinate"];
             targetCoordinate?: components["schemas"]["Coordinate"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1230,7 +1240,8 @@ export interface components {
         DeclareRun: {
             playerId?: components["schemas"]["PlayerId"];
             targetCoordinate?: components["schemas"]["Coordinate"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1238,7 +1249,8 @@ export interface components {
             kind: "declareRun";
         };
         DeclineBonus: {
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1248,7 +1260,8 @@ export interface components {
         Foul: {
             playerId?: components["schemas"]["PlayerId"];
             destination?: components["schemas"]["Coordinate"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             targetCoordinate?: components["schemas"]["Coordinate"];
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1301,7 +1314,8 @@ export interface components {
         Mark: {
             playerId?: components["schemas"]["PlayerId"];
             path?: components["schemas"]["Coordinate"][];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description What happens if this move enters a square with a loose ball.
              * @enum {string|null}
@@ -1319,7 +1333,8 @@ export interface components {
             from?: components["schemas"]["Coordinate"];
             to?: components["schemas"]["Coordinate"];
             targetCoordinate?: components["schemas"]["Coordinate"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1330,7 +1345,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1341,7 +1357,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1352,7 +1369,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1363,7 +1381,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1374,7 +1393,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1385,7 +1405,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1396,7 +1417,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1407,7 +1429,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1418,7 +1441,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1429,7 +1453,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1440,7 +1465,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1451,7 +1477,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1462,7 +1489,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1473,7 +1501,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1484,7 +1513,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1495,7 +1525,8 @@ export interface components {
             /** @enum {string} */
             bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1526,7 +1557,8 @@ export interface components {
             playerId?: components["schemas"]["PlayerId"];
             target?: components["schemas"]["ThrowTarget"];
             targetCoordinate?: components["schemas"]["Coordinate"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1540,25 +1572,19 @@ export interface components {
             claimCondition?: "GRAB_IT" | "HUDDLE_UP" | "PUSH_FORWARD" | "FAN_OUT" | "PLAY_TO_THE_STANDS" | "CONNECT" | "STRIP_IT" | "KEEP_RUNNING" | "HOLD_THE_PIT" | "THREAD_THE_NEEDLE" | "ALL_HANDS" | "STAR_TURN" | "DROP_THEM" | "LOCK_THEM_DOWN" | "SEND_THEM_OFF";
             challengeTitle?: string;
             description?: string;
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             kind: "replaceChallenge";
         };
-        /** @description Bonus card that must be spent for this legal action (encoded in the action id). */
-        RequiredBonusCard: {
-            /**
-             * @description Bonus play type that the engine auto-plays on submit.
-             * @enum {string}
-             */
-            bonusPlay?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up";
-        };
         Reserves: {
             playerId?: components["schemas"]["PlayerId"];
             placement?: components["schemas"]["Coordinate"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description What happens if this move enters a square with a loose ball.
              * @enum {string|null}
@@ -1574,7 +1600,8 @@ export interface components {
         Run: {
             playerId?: components["schemas"]["PlayerId"];
             path?: components["schemas"]["Coordinate"][];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description What happens if this move enters a square with a loose ball.
              * @enum {string|null}
@@ -1590,7 +1617,8 @@ export interface components {
         Sidestep: {
             playerId?: components["schemas"]["PlayerId"];
             path?: components["schemas"]["Coordinate"][];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description What happens if this move enters a square with a loose ball.
              * @enum {string|null}
@@ -1605,7 +1633,8 @@ export interface components {
         };
         Skip: {
             playerId?: components["schemas"]["PlayerId"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1615,7 +1644,8 @@ export interface components {
         StandUp: {
             playerId?: components["schemas"]["PlayerId"];
             targetCoordinate?: components["schemas"]["Coordinate"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1625,7 +1655,8 @@ export interface components {
         Throw: {
             playerId?: components["schemas"]["PlayerId"];
             target?: components["schemas"]["ThrowTarget"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             targetCoordinate?: components["schemas"]["Coordinate"];
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1643,7 +1674,8 @@ export interface components {
             playerId?: components["schemas"]["PlayerId"];
             teammateId?: components["schemas"]["PlayerId"];
             target?: components["schemas"]["ThrowTarget"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             targetCoordinate?: components["schemas"]["Coordinate"];
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1655,7 +1687,8 @@ export interface components {
             playerId?: components["schemas"]["PlayerId"];
             teammateId?: components["schemas"]["PlayerId"];
             targetCoordinate?: components["schemas"]["Coordinate"];
-            requiredBonusCard?: components["schemas"]["RequiredBonusCard"] | null;
+            /** @enum {string|null} */
+            requiredBonusCard?: "Stick Close" | "Slip Away" | "Fresh Legs" | "Weave" | "Do-Over" | "Hail Mary Pass" | "Extra Effort" | "Ice Cold" | "Momentum" | "Cut Off" | "Sprint" | "Press" | "Back on Your Feet" | "Dead Eye" | "Brace" | "Spiked Gauntlets" | "Underdog" | "All-In Tackle" | "Hold the Line" | "Gang Up" | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}

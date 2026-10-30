@@ -48,7 +48,7 @@ class RunResolver(
     }
 
     private fun applyDeclared(session: MatchMutator, action: LegalAction.Run): OngoingRunMutator {
-        val sprintBonus = if (action.requiredBonusCard?.bonusPlay == BonusPlay.Sprint) 2 else 0
+        val sprintBonus = if (action.requiredBonusCard == BonusPlay.Sprint) 2 else 0
         val budget = session.board.getPlayer(action.playerId).profile.stats.runMoveAllowance() + sprintBonus
         require(action.path.steps <= budget) { "Path of ${action.path.steps} steps exceeds remaining move budget $budget" }
         val endedOnBall = session.board.square(action.path.squares.last()).looseBallId != null

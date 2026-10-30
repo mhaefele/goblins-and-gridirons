@@ -43,7 +43,7 @@ class BonusPlayActionTaggingApiTest : BaseApiTest() {
         assertThat(base).isNotEmpty
         assertThat(base).allMatch { it.path.steps <= 2 }
         assertThat(sprintOnly).isNotEmpty
-        assertThat(sprintOnly).allMatch { it.requiredBonusCard?.bonusPlay == BonusPlay.Sprint && it.path.steps in 3..4 && it.id.value.contains("_BONUS_Sprint") }
+        assertThat(sprintOnly).allMatch { it.requiredBonusCard == BonusPlay.Sprint && it.path.steps in 3..4 && it.id.value.contains("_BONUS_Sprint") }
         // No duplicate Sprint twin for a base-reachable path.
         val baseKeys = base.map { it.path.squares }.toSet()
         assertThat(sprintOnly.map { it.path.squares }).noneMatch { it in baseKeys }
@@ -82,7 +82,7 @@ class BonusPlayActionTaggingApiTest : BaseApiTest() {
         val chokeWeave = chokeRuns.filter { it.requiredBonusCard != null }
 
         assertThat(chokeWeave).isNotEmpty
-        assertThat(chokeWeave).allMatch { it.requiredBonusCard?.bonusPlay == BonusPlay.Weave }
+        assertThat(chokeWeave).allMatch { it.requiredBonusCard == BonusPlay.Weave }
         val chokeBaseDest = chokeBase.map { it.targetCoordinate }.toSet()
         assertThat(chokeWeave.map { it.targetCoordinate }).noneMatch { it in chokeBaseDest }
         assertThat(chokeWeave.map { it.targetCoordinate }).anyMatch { it.x == 7 && it.y == 6 }
@@ -117,7 +117,7 @@ class BonusPlayActionTaggingApiTest : BaseApiTest() {
         val long = marks.filter { it.requiredBonusCard != null }
         assertThat(base).allMatch { it.path.steps <= 2 }
         assertThat(long).isNotEmpty
-        assertThat(long).allMatch { it.requiredBonusCard?.bonusPlay == BonusPlay.Press && it.path.steps in 3..4 }
+        assertThat(long).allMatch { it.requiredBonusCard == BonusPlay.Press && it.path.steps in 3..4 }
         match.play(long.first())
         assertThat(loadMatch(match).cards.handCards(TeamSide.HOME)).doesNotContain(aggressive)
     }
@@ -138,7 +138,7 @@ class BonusPlayActionTaggingApiTest : BaseApiTest() {
         assertThat(throws).isNotEmpty
         assertThat(throws).allMatch { it.requiredBonusCard == null }
         assertThat(throws).allMatch {
-            it.availableBonusCards.any { c -> c.bonusPlay == BonusPlay.`Hail Mary Pass` }
+            it.availableBonusCards.any { it == BonusPlay.`Hail Mary Pass` }
         }
 
         match.play(throws.first())
@@ -165,7 +165,7 @@ class BonusPlayActionTaggingApiTest : BaseApiTest() {
         val throwAction = match.legalActions<LegalAction.Throw>()
             .first { it.target.range != ThrowRange.HAND_OFF }
         assertThat(throwAction.requiredBonusCard).isNull()
-        assertThat(throwAction.availableBonusCards).anyMatch { it.bonusPlay == BonusPlay.`Dead Eye` }
+        assertThat(throwAction.availableBonusCards).anyMatch { it == BonusPlay.`Dead Eye` }
         match.play(throwAction)
 
         val plays = match.legalActions<LegalAction.PlayBonusCard>()
@@ -252,7 +252,7 @@ class BonusPlayActionTaggingApiTest : BaseApiTest() {
 
         val block = match.legalActions<LegalAction.Block>().first()
         assertThat(block.requiredBonusCard).isNull()
-        assertThat(block.availableBonusCards).anyMatch { it.bonusPlay == BonusPlay.Underdog }
+        assertThat(block.availableBonusCards).anyMatch { it == BonusPlay.Underdog }
         match.play(block)
 
         val plays = match.legalActions<LegalAction.PlayBonusCard>()
@@ -279,7 +279,7 @@ class BonusPlayActionTaggingApiTest : BaseApiTest() {
 
         val throws = match.legalActions<LegalAction.Throw>()
         assertThat(throws).isNotEmpty
-        assertThat(throws).allMatch { it.requiredBonusCard?.bonusPlay == BonusPlay.`Ice Cold` }
+        assertThat(throws).allMatch { it.requiredBonusCard == BonusPlay.`Ice Cold` }
 
         dice.queueD6(6)
         match.play(throws.first { it.target.range != ThrowRange.HAND_OFF })
@@ -388,7 +388,7 @@ class BonusPlayActionTaggingApiTest : BaseApiTest() {
         assertThat(match.legalActions<LegalAction.PlayBonusCard>()).isEmpty()
         val placement = match.legalActions<LegalAction.Reserves>()
             .first { it.playerId == reserve.player.id }
-        assertThat(placement.availableBonusCards).anyMatch { it.bonusPlay == BonusPlay.`Fresh Legs` }
+        assertThat(placement.availableBonusCards).anyMatch { it == BonusPlay.`Fresh Legs` }
 
         match.play(placement)
         val plays = match.legalActions<LegalAction.PlayBonusCard>()
@@ -413,7 +413,7 @@ class BonusPlayActionTaggingApiTest : BaseApiTest() {
         assertThat(match.legalActions<LegalAction.PlayBonusCard>()).isEmpty()
         val standUp = match.legalActions<LegalAction.StandUp>()
             .single { it.playerId == prone.player.id }
-        assertThat(standUp.availableBonusCards).anyMatch { it.bonusPlay == BonusPlay.`Back on Your Feet` }
+        assertThat(standUp.availableBonusCards).anyMatch { it == BonusPlay.`Back on Your Feet` }
 
         match.play(standUp)
         val plays = match.legalActions<LegalAction.PlayBonusCard>()

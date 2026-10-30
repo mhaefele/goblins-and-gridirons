@@ -60,7 +60,7 @@ class ThrowResolver(
         standingTeammateAt(mutator, thrower, action.target.destination)
 
         val ongoingThrow = OngoingThrowMutator(OngoingThrow(action.playerId, action.target, OngoingThrow.ThrowStage.INITIALIZE))
-        when (action.requiredBonusCard?.bonusPlay) {
+        when (action.requiredBonusCard) {
             BonusPlay.`Hail Mary Pass` -> {
                 // Card already consumed via requiredBonusCard auto-play; effect is process-scoped here.
                 // throwTargets already stamped this row long and clear. Reject a throw that claims the card

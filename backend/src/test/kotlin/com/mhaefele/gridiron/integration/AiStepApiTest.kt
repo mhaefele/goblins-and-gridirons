@@ -173,8 +173,8 @@ class AiStepApiTest : BaseApiTest() {
             addPlayer(5, 6, team = TeamSide.AWAY)
         }
         val runs = match.legalActions<LegalAction.Run>()
-        val sprintRuns = runs.filter { it.requiredBonusCard?.bonusPlay == BonusPlay.Sprint }
-        val weaveRuns = runs.filter { it.requiredBonusCard?.bonusPlay == BonusPlay.Weave }
+        val sprintRuns = runs.filter { it.requiredBonusCard == BonusPlay.Sprint }
+        val weaveRuns = runs.filter { it.requiredBonusCard == BonusPlay.Weave }
         assertThat(sprintRuns).isNotEmpty
         assertThat(weaveRuns).isNotEmpty
         val dest = sprintRuns.map { it.targetCoordinate }.toSet().intersect(weaveRuns.map { it.targetCoordinate }.toSet())

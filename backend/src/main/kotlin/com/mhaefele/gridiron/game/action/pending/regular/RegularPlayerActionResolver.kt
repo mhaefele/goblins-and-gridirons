@@ -69,7 +69,7 @@ class RegularPlayerActionResolver(
         command: LegalAction,
     ): RegularPlayerAction {
         command.requiredBonusCard?.let { required ->
-            session.playBonusCard(session.activeCoach, required.bonusPlay)
+            session.playBonusCard(session.activeCoach, required)
         }
         val playerAction = command as? LegalAction.PlayerLegalAction ?: error("RegularPlayerAction expects PlayerLegalAction, was ${command::class.simpleName}")
         session.beginPlayerAction(playerAction.playerId, playerAction.actionType, OpenPlayerAction.Origin.BUDGETED)
