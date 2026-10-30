@@ -45,7 +45,6 @@ class ArmourCheckResolver(
                 when (action) {
                     is LegalAction.DeclineBonus        -> Unit
                     is LegalAction.PlaySpikedGauntlets -> {
-                        // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                         session.playBonusCard(session.activeCoach, action.bonusPlay)
                         ongoing.spikedGauntlets = true
                     }
@@ -58,7 +57,6 @@ class ArmourCheckResolver(
                 when (action) {
                     is LegalAction.DeclineBonus         -> { applyArmourOutcome(session.board, ongoing.playerId, armour, ongoing.armourMinusOne, ongoing.naturalRoll!!) }
                     is LegalAction.AdjustArmourByDoOver -> {
-                        // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                         session.playBonusCard(session.activeCoach, BonusPlay.`Do-Over`)
                         val armourStat = armour as? ArmourStat.Threshold ?: error("Do-Over armour re-roll expects Threshold armour, was $armour")
                         val roll = dice.d6()

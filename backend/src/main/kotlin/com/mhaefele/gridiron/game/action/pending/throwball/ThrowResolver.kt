@@ -221,12 +221,10 @@ class ThrowResolver(
             is LegalAction.PlayDeadEye  -> {
                 // The throw target is already chosen. Playing Dead Eye spends the card and makes the
                 // following check 2+, before the dice are rolled.
-                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(session.activeCoach, command.bonusPlay)
                 ongoingThrow.deadEye = true
             }
             is LegalAction.PlayHailMary -> {
-                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(session.activeCoach, command.bonusPlay)
                 ongoingThrow.hailMary = true
                 // Declared target used ruler geometry. The card ignores range and obstruction.
@@ -246,7 +244,6 @@ class ThrowResolver(
             }
             // One reroll per check (reference/rulebook-digest.md#checks: cannot re-roll a re-roll). Take this result.
             is LegalAction.AdjustThrowByDoOver -> {
-                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(session.activeCoach, BonusPlay.`Do-Over`)
                 rollAndRecordOutcome(session, ongoingThrow, BonusPlay.`Do-Over`)
                 return false

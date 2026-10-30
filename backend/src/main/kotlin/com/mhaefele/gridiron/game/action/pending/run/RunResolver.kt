@@ -96,7 +96,6 @@ class RunResolver(
                 val sprintBonus = when (action) {
                     is LegalAction.DeclineBonus -> 0
                     is LegalAction.PlaySprint   -> {
-                        // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                         session.playBonusCard(session.activeCoach, BonusPlay.Sprint)
                         2
                     }
@@ -117,7 +116,6 @@ class RunResolver(
                     }
                     is LegalAction.PlayBonusCard -> {
                         check(action.bonusPlay == BonusPlay.`Cut Off`) { "HANDLE_CUT_OFF expects CUT_OFF, was ${action.bonusPlay}" }
-                        // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                         val cardId = session.playBonusCard(opposition, action.bonusPlay)
                         val runnerAt = session.board.playerCoordinate(ongoing.playerId)
                         val open = cutOffReachableOpenAlly(session.board.board, opposition, runnerAt) ?: error("Cut Off Play with no reachable Open ally")

@@ -42,7 +42,6 @@ class OfferExtraEffortResolver(
             is LegalAction.DeclineBonus  -> offer.copy(resolved = true)
             is LegalAction.PlayBonusCard -> {
                 check(command.bonusPlay == BonusPlay.`Extra Effort`) { "OfferExtraEffort expects Extra Effort, was ${command.bonusPlay}" }
-                // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                 session.playBonusCard(coach, command.bonusPlay)
                 session.returnRegularActionSlot()
                 offer.copy(delegate = regularPlayerActionResolver.begin(session))

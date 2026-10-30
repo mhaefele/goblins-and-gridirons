@@ -72,7 +72,6 @@ class MarkResolver(
                     }
                     is LegalAction.PlayBonusCard -> {
                         check(action.bonusPlay == BonusPlay.`Slip Away`) { "HANDLE_SLIP_AWAY expects SLIP_AWAY, was ${action.bonusPlay}" }
-                        // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                         val cardId = session.playBonusCard(opposition, action.bonusPlay)
                         val marker = session.board.getPlayer(ongoing.playerId)
                         val marked = markedAllyForSlipAway(session, marker, opposition) ?: error("Slip Away Play with no ally Marked by ${ongoing.playerId}")
@@ -146,7 +145,6 @@ class MarkResolver(
                     }
                     is LegalAction.PlayMomentum, is LegalAction.PlayAllInTackle -> {
                         check(action.bonusPlay == BonusPlay.Momentum || action.bonusPlay == BonusPlay.`All-In Tackle`) { "HANDLE_MARK_BONUS_CARDS expects MOMENTUM or ALL_IN_TACKLE, was ${action.bonusPlay}" }
-                        // TODO: can we make this require a card and follow that path instead of implicitly playing the card based on the action?
                         session.playBonusCard(coach, action.bonusPlay)
                         // Close Mark-bonus window and spawn free Block; re-offer via OFFER_MARK_BONUS_CARDS after the grant.
                         ongoing.markBonusCard = action.bonusPlay
