@@ -1,4 +1,4 @@
-"""Behavioral clone: copy expert factor labels into a MaskablePPO zip.
+"""Behavioral clone: copy expert legal-row indices into a MaskablePPO zip.
 
 Owner: npz → checkpoint weights via ``evaluate_actions`` (not ``learn()``). No HTTP.
 Called by ``scripts/clone_expert``. See ``ai/OWNERSHIP.md``.
@@ -20,10 +20,10 @@ from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.vec_env import DummyVecEnv
 
-from gridiron_ai.actions import action_head_sizes
-from gridiron_ai.conditional_policy import ConditionalActorCriticPolicy
+from gridiron_ai.actions import legal_row_action_mask, legal_row_action_n
 from gridiron_ai.checkpoints import atomic_model_save
 from gridiron_ai.expert import NPZ_KEY_ACTION, batch_gym_obs, load_npz
+from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
 from gridiron_ai.obs import dict_observation_space, empty_step_observation
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ def clone_arrays_into_checkpoint(
         model = MaskablePPO.load(str(resume_zip), env=bootstrap, device=device)
     else:
         model = MaskablePPO(
-            ConditionalActorCriticPolicy,
+            LegalRowActorCriticPolicy,
             bootstrap,
             n_steps=_CLONE_N_STEPS,
             batch_size=_CLONE_BATCH_SIZE,
@@ -182,7 +182,7 @@ class _PolicySpacesEnv(gym.Env):
     def __init__(self) -> None:
         super().__init__()
         self.observation_space = dict_observation_space()
-        self.action_space = spaces.MultiDiscrete(action_head_sizes())
+        self.action_space = spaces.Discrete(legal_row_action_n())
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
         super().reset(seed=seed)
@@ -193,4 +193,4 @@ class _PolicySpacesEnv(gym.Env):
         return empty_step_observation(), 0.0, True, False, {}
 
     def action_masks(self) -> np.ndarray:
-        return np.ones(sum(action_head_sizes()), dtype=np.bool_)
+        return legal_row_action_mask(legal_move_count=0)

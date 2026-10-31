@@ -1,0 +1,52 @@
+"""Legal-row Discrete action resolve + mask helpers."""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from gridiron_ai.actions import (
+    legal_row_action_mask,
+    match_legal_row_index,
+    resolve_legal_row_index,
+)
+from gridiron_ai.constants import LEGAL_ROW_SCORE_WIDTH, encode_actor_kind
+
+
+def test_legal_row_action_mask_enables_prefix() -> None:
+    mask = legal_row_action_mask(legal_move_count=3)
+    assert mask.shape == (LEGAL_ROW_SCORE_WIDTH,)
+    assert mask[:3].all()
+    assert not mask[3:].any()
+
+
+def test_resolve_legal_row_index_returns_harness_id() -> None:
+    moves = [
+        [encode_actor_kind(1, 0), 10, 3],
+        [encode_actor_kind(2, 1), 11, 3],
+    ]
+    rows = [
+        {"kind": "run", "legalActionId": "a", "factors": []},
+        {"kind": "block", "legalActionId": "b", "factors": []},
+    ]
+    resolved = resolve_legal_row_index(1, legal_moves=moves, legal_rows=rows)
+    assert resolved.legal_action_id == "b"
+    assert resolved.sampled_kind == "block"
+
+
+def test_match_legal_row_index_finds_factors() -> None:
+    moves = np.asarray(
+        [
+            [encode_actor_kind(1, 0), 10, 3],
+            [encode_actor_kind(2, 1), 11, 3],
+        ],
+        dtype=np.int64,
+    )
+    assert match_legal_row_index([encode_actor_kind(2, 1), 11, 3], moves) == 1
+
+
+def test_resolve_rejects_out_of_range_index() -> None:
+    moves = [[encode_actor_kind(1, 0), 10, 3]]
+    rows = [{"kind": "run", "legalActionId": "a", "factors": []}]
+    with pytest.raises(RuntimeError, match="out of range"):
+        resolve_legal_row_index(1, legal_moves=moves, legal_rows=rows)

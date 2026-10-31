@@ -196,9 +196,13 @@ Baseline is schema 9 (~29M product). Remaining Maybes relative to that:
 
 ---
 
-## Policy heads (schema 15)
+## Policy action (schema 16)
 
-Canonical MultiDiscrete order (storage / submit / sample):
+**Gym action:** `Discrete(MAX_LEGAL_MOVES)` — index into this step’s packed `legal_moves` menu.
+The policy **join-scores** each live row with the board latent (`LegalRowActorCriticPolicy`):
+one preference over complete moves (not independent factor heads + remask).
+
+Each packed row is still three ints (storage / ONNX legal-matrix input):
 
 | Slot | Factor | Width | Who uses it |
 |------|--------|------:|-------------|
@@ -206,27 +210,23 @@ Canonical MultiDiscrete order (storage / submit / sample):
 | 1 | boardTarget | 166 | **pitch only** `0..164` + unused |
 | 2 | challengeSlot | 4 | claim / replace |
 
-**Sample order** (`CONDITIONAL_SAMPLE_ORDER`): actorKind → boardTarget → challenge.
-
-Wire still sends `kind` + `kindIndex` + typed factors (`Actor.playerIndex`, …). Harness packs the joint index.
+Wire still sends `kind` + `kindIndex` + typed factors (`Actor.playerIndex`, …). Harness packs the joint index onto each legal row.
 
 Unused axes on a row are pad sentinels in the harness; the Kotlin DTO **omits** unused free factors (and puts pending-fixed values + geometry `AttachedBonus` in `sugarFactors`).
 
-**Schema 15:** dropped the faceOrder MultiDiscrete head; Enforcer order is humans-only (HARNESS/COMPUTER auto-sort). Geometry card identity is sugar; when two cards unlock the same free key, the mapper keeps the lower AttachedBonus index. RandomD6 Sprint is `playSprint` after plain `declareRun` (not a DeclareRun twin).
+**Schema 16:** legal-row join scores; obs packing unchanged from 15. Soft-mask biases preferred **rows**. ONNX: packed obs + padded legal matrix → row scores (re-export required; schema-15 factor-logit artifacts will not load).
 
-Naive flat product of schema-15 widths ≈ **248k**.
+**Schema 15 (historical):** MultiDiscrete remask; faceOrder head already dropped; Enforcer order humans-only.
 
-### Head-width audit (tight vs padded)
+### Factor-width audit (row packing)
 
-| Head | Width | Vs real rule/API max | Verdict |
+| Factor | Width | Vs real rule/API max | Verdict |
 |------|------:|----------------------|---------|
 | actorKind | 374 | 11 × 34 (`0..10` × kinds) | Exact product of roster pad × kinds. |
 | boardTarget | 166 | Pitch 165 + unused | Exact pitch (+ pad). |
 | challengeSlot | 4 | 3 active challenges + unused | Exact. |
 
 **playerIndex:** `0` = empty / no free actor; `1..10` = roster slot + 1 (catalog max 10). Same id on the occupied cell (`AiCellPlayerObs.playerIndex`) and on `AiFactor.Actor`. Both teams reuse `1..10`; `teamRel` on the cell separates us/them.
-
-**AI2.9 landed vs not:** one forward → three logits + remask after each pick (legality). Not sequential **conditioning** (next-head logits recomputed given prior picks).
 
 ---
 

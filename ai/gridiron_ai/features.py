@@ -1,7 +1,7 @@
-"""Game-state feature extractor for ConditionalActorCriticPolicy.
+"""Game-state feature extractor for LegalRowActorCriticPolicy.
 
-Owner: gym Dict → embedding/MLP vector for the policy. Legal rows stay mask-only
-(not features). See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
+Owner: gym Dict → embedding/MLP vector for the board trunk. Legal rows are scored
+in the policy (joined to this vector), not embedded here. See ``ai/OWNERSHIP.md``.
 
 # DEVIATION: stock CombinedExtractor would Flatten each Dict Box. We embed enums,
 add pitch (x, y, dist-to-ball), keep benches as a table, then Linear-project.

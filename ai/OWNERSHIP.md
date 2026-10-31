@@ -25,7 +25,7 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 | Obs packing / `schemaVersion` / cell layout | Kotlin `AiObsPacker`, `AiObsLayout`, `AiObsDto` | Re-encode eligibility or channel order in Python |
 | Gym Dict slice + spaces | `gridiron_ai/obs.py`, `constants.py` | Invent new obs facts client-side |
 | Feature extract (embed / pitch coords) | `gridiron_ai/features.py` | Put legality into features |
-| Legal row pack / factor heads / soft-mask values | Kotlin `AiLegalPacker` + `actions.py` / `conditional_policy.py` | Hard-mask distractors; duplicate `expectedScenarioMove` in Python |
+| Legal row pack / join-score action / soft-mask | Kotlin `AiLegalPacker` + `actions.py` / `legal_row_policy.py` | Hard-mask distractors; duplicate `expectedScenarioMove` in Python; factor MultiDiscrete remask |
 | HTTP create / step / submit / scenarios list | Kotlin `/api/ai/...` + `gridiron_ai/client.py` | Open `/events` from the harness |
 | Gym env (reset/step/reward call) | `gridiron_ai/env.py` | Own drill grading |
 | Reward margin / terminal / profile shaping / scenario coach-window ± | `gridiron_ai/reward.py` | Per-move expected-move slap/bonus (soft-mask owns that) |
@@ -77,7 +77,7 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `client.py` | REST only |
 | `obs.py` | Packed float → gym Dict |
 | `actions.py` | Pad / resolve / conditional masks |
-| `conditional_policy.py` | Pick→remask→pick (+ soft-mask bias) |
+| `legal_row_policy.py` | Join-score legal rows (+ soft-mask bias on preferred rows) |
 | `features.py` | Embeddings → MLP vector |
 | `env.py` | Gymnasium API over client |
 | `reward.py` | Step reward + profile presets |

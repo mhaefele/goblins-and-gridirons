@@ -41,8 +41,10 @@ object AiObsLayout {
      * v14: training episode end + [AiHarnessStepDto.trainingOutcome] ([AiTrainingOutcome] drill grade).
      * v15: drop faceOrder MultiDiscrete head; AttachedBonus → sugar; omit chooseBlockFaceOrder
      * from AI kinds; add playSprint (RandomD6 Sprint mid-check).
+     * v16: gym action = masked index into this step's legal rows (join-score policy);
+     * obs packing unchanged; ONNX emits one score per padded legal-row slot.
      */
-    const val SCHEMA_VERSION = 15
+    const val SCHEMA_VERSION = 16
 
     const val PLAY_WIDTH = 11
     const val PLAY_HEIGHT = 15
@@ -77,14 +79,16 @@ object AiObsLayout {
     val BOARD_TARGET_HEAD_SIZE: Int = PITCH_SQUARE_COUNT + 1
     /** Challenge slots + pad (unused axis). */
     val CHALLENGE_SLOT_HEAD_SIZE: Int = ACTIVE_CHALLENGE_SLOTS + 1
-    /** Canonical MultiDiscrete widths — must match `ai/gridiron_ai/constants.py` ACTION_HEAD_SIZES. */
+    /** Factor widths packed on each legal row — must match `ai/gridiron_ai/constants.py` ACTION_HEAD_SIZES. */
     val ACTION_HEAD_SIZES: IntArray = intArrayOf(ACTOR_KIND_HEAD_SIZE, BOARD_TARGET_HEAD_SIZE, CHALLENGE_SLOT_HEAD_SIZE)
-    val ACTION_LOGIT_WIDTH: Int = ACTION_HEAD_SIZES.sum()
+    /** Pad width for the legal-row menu (Python ``MAX_LEGAL_MOVES``). */
+    const val MAX_LEGAL_MOVES = 1024
+    /** ONNX / policy output width — one score per padded legal-row slot. */
+    const val LEGAL_ROW_SCORE_WIDTH: Int = MAX_LEGAL_MOVES
 
     const val FACTOR_ACTOR_KIND = 0
     const val FACTOR_BOARD_TARGET = 1
     const val FACTOR_CHALLENGE_SLOT = 2
-    val FACTOR_SAMPLE_ORDER: IntArray = intArrayOf(FACTOR_ACTOR_KIND, FACTOR_BOARD_TARGET, FACTOR_CHALLENGE_SLOT)
 
     /**
      * Mid-turn hand capacity for obs: end-of-turn trim keeps 3, Clean Sweep allows 3 claims in one

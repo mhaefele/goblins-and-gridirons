@@ -14,7 +14,7 @@ def test_install_legacy_pickle_aliases_noop_when_missing(tmp_path: Path) -> None
 
 def test_install_legacy_pickle_aliases_applies_mappings(tmp_path: Path) -> None:
     import gridiron_ai
-    import gridiron_ai.conditional_policy as modern_policy
+    import gridiron_ai.legal_row_policy as modern_policy
 
     props = tmp_path / "aliases.properties"
     props.write_text(
@@ -22,7 +22,7 @@ def test_install_legacy_pickle_aliases_applies_mappings(tmp_path: Path) -> None:
             [
                 "# comment",
                 "legacy_pkg_test=gridiron_ai",
-                "legacy_pkg_test.conditional_policy=gridiron_ai.conditional_policy",
+                "legacy_pkg_test.legal_row_policy=gridiron_ai.legal_row_policy",
                 "",
             ]
         ),
@@ -30,7 +30,7 @@ def test_install_legacy_pickle_aliases_applies_mappings(tmp_path: Path) -> None:
     )
     assert checkpoints.install_legacy_pickle_aliases(props) == 2
     assert sys.modules.get("legacy_pkg_test") is gridiron_ai
-    assert sys.modules.get("legacy_pkg_test.conditional_policy") is modern_policy
+    assert sys.modules.get("legacy_pkg_test.legal_row_policy") is modern_policy
 
 
 class _FakeModel:

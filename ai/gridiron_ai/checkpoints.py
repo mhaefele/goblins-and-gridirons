@@ -41,7 +41,12 @@ def install_legacy_pickle_aliases(path: Path | None = None) -> int:
         old_name, new_name = (part.strip() for part in line.split("=", 1))
         if not old_name or not new_name:
             continue
-        sys.modules.setdefault(old_name, importlib.import_module(new_name))
+        try:
+            module = importlib.import_module(new_name)
+        except ModuleNotFoundError:
+            # Stale local remap after a rename/delete — skip so import still works.
+            continue
+        sys.modules.setdefault(old_name, module)
         applied += 1
     return applied
 

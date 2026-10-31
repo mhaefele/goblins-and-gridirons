@@ -1,8 +1,8 @@
-"""Export MaskablePPO actor → ONNX (packed obs → factor logits).
+"""Export MaskablePPO actor → ONNX (packed obs + legal rows → row scores).
 
 Owner: freeze a profile checkpoint into backend ``resources/ai-opponent/`` for
-``ComputerOpponentKind.ONNX``. Conditional pick→remask stays in Kotlin — this graph
-is logits only. See ``ai/OWNERSHIP.md`` / BACKLOG AI2.6.
+``ComputerOpponentKind.ONNX``. Soft-mask bias is omitted for product play.
+See ``ai/OWNERSHIP.md`` / BACKLOG AI2.6.
 """
 
 from __future__ import annotations
@@ -22,7 +22,10 @@ from gridiron_ai.constants import (
     BOARD_SLOT_COUNT,
     BONUS_HAND_SLOTS,
     DECK_FIELD_COUNT,
+    FACTORS_PER_LEGAL_MOVE,
     HELD_CHECK_FIELD_COUNT,
+    LEGAL_ROW_SCORE_WIDTH,
+    MAX_LEGAL_MOVES,
     NUMBERS_PER_BOARD_CELL,
     OBSERVATION_VECTOR_LENGTH,
     OBS_KEY_BENCHES,
@@ -45,10 +48,10 @@ BACKEND_AI_OPPONENT_ROOT = AI_ROOT.parent / "backend" / "src" / "main" / "resour
 EXPORTED_DIR = OUTPUT_DIR / "exported"
 POLICY_ONNX_NAME = "policy.onnx"
 MANIFEST_NAME = "manifest.json"
-INPUT_NAME = "packed_obs"
-OUTPUT_NAME = "factor_logits"
+INPUT_OBS_NAME = "packed_obs"
+INPUT_LEGAL_NAME = "legal_moves"
+OUTPUT_NAME = "row_scores"
 
-# Product blurbs for MatchupSplash / GET /api/computer-opponents (written into manifest).
 PROFILE_TITLES: dict[str, str] = {
     "baseline": "Baseline",
     "general": "General",
@@ -65,21 +68,36 @@ PROFILE_DESCRIPTIONS: dict[str, str] = {
 }
 
 
-class PackedObsToFactorLogits(nn.Module):
-    """SB3 policy trunk: flat packed obs → concatenated MultiDiscrete logits."""
+class PackedObsAndLegalsToRowScores(nn.Module):
+    """SB3 legal-row policy trunk: packed obs + padded legal matrix → row scores."""
 
     def __init__(self, policy: nn.Module) -> None:
         super().__init__()
         self.features_extractor = policy.features_extractor
         self.mlp_extractor = policy.mlp_extractor
-        self.action_net = policy.action_net
+        self.actor_kind_emb = policy.actor_kind_emb
+        self.target_emb = policy.target_emb
+        self.challenge_emb = policy.challenge_emb
+        self.row_scorer = policy.row_scorer
 
-    def forward(self, packed_obs: th.Tensor) -> th.Tensor:
+    def forward(self, packed_obs: th.Tensor, legal_moves: th.Tensor) -> th.Tensor:
         # packed_obs: (N, OBSERVATION_VECTOR_LENGTH)
+        # legal_moves: (N, MAX_LEGAL_MOVES, FACTORS) — pad rows may be -1
         obs = _slice_packed_obs(packed_obs)
         features = self.features_extractor(obs)
         latent_pi, _latent_vf = self.mlp_extractor(features)
-        return self.action_net(latent_pi)
+        clamped = legal_moves.long().clamp(min=0)
+        row_emb = th.cat(
+            [
+                self.actor_kind_emb(clamped[..., 0]),
+                self.target_emb(clamped[..., 1]),
+                self.challenge_emb(clamped[..., 2]),
+            ],
+            dim=-1,
+        )
+        batch, n_rows, _ = row_emb.shape
+        lat = latent_pi.unsqueeze(1).expand(batch, n_rows, -1)
+        return self.row_scorer(th.cat([lat, row_emb], dim=-1)).squeeze(-1)
 
 
 def _slice_packed_obs(packed_obs: th.Tensor) -> dict[str, th.Tensor]:
@@ -140,23 +158,27 @@ def export_policy_onnx(
     destination.mkdir(parents=True, exist_ok=True)
     onnx_path = destination / POLICY_ONNX_NAME
 
-    module = PackedObsToFactorLogits(policy).eval()
-    dummy = th.zeros((1, OBSERVATION_VECTOR_LENGTH), dtype=th.float32)
+    module = PackedObsAndLegalsToRowScores(policy).eval()
+    dummy_obs = th.zeros((1, OBSERVATION_VECTOR_LENGTH), dtype=th.float32)
+    dummy_legal = th.zeros((1, MAX_LEGAL_MOVES, FACTORS_PER_LEGAL_MOVE), dtype=th.int64)
     with th.no_grad():
-        logits = module(dummy)
-    expected_logit_width = int(sum(ACTION_HEAD_SIZES))
-    if int(logits.shape[-1]) != expected_logit_width:
+        scores = module(dummy_obs, dummy_legal)
+    if int(scores.shape[-1]) != LEGAL_ROW_SCORE_WIDTH:
         raise RuntimeError(
-            f"action_net width {int(logits.shape[-1])} != sum(ACTION_HEAD_SIZES)={expected_logit_width}"
+            f"row score width {int(scores.shape[-1])} != LEGAL_ROW_SCORE_WIDTH={LEGAL_ROW_SCORE_WIDTH}"
         )
 
     th.onnx.export(
         module,
-        dummy,
+        (dummy_obs, dummy_legal),
         str(onnx_path),
-        input_names=[INPUT_NAME],
+        input_names=[INPUT_OBS_NAME, INPUT_LEGAL_NAME],
         output_names=[OUTPUT_NAME],
-        dynamic_axes={INPUT_NAME: {0: "batch"}, OUTPUT_NAME: {0: "batch"}},
+        dynamic_axes={
+            INPUT_OBS_NAME: {0: "batch"},
+            INPUT_LEGAL_NAME: {0: "batch"},
+            OUTPUT_NAME: {0: "batch"},
+        },
         opset_version=17,
         dynamo=False,
     )
@@ -168,14 +190,15 @@ def export_policy_onnx(
         "description": PROFILE_DESCRIPTIONS.get(profile, f"Trained policy ({profile})."),
         "checkpointKey": checkpoint_key,
         "observationVectorLength": OBSERVATION_VECTOR_LENGTH,
+        "maxLegalMoves": MAX_LEGAL_MOVES,
+        "actionFactorCount": FACTORS_PER_LEGAL_MOVE,
         "actionHeadSizes": list(ACTION_HEAD_SIZES),
-        "logitWidth": expected_logit_width,
-        "inputName": INPUT_NAME,
+        "logitWidth": LEGAL_ROW_SCORE_WIDTH,
+        "inputObsName": INPUT_OBS_NAME,
+        "inputLegalName": INPUT_LEGAL_NAME,
         "outputName": OUTPUT_NAME,
         "onnxFile": POLICY_ONNX_NAME,
     }
-    # Classpath manifest ships with policy.onnx. The training zip is gitignored, so its path
-    # stays on the scratch copy under output/exported/ only.
     (destination / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
     scratch = EXPORTED_DIR / profile
@@ -187,16 +210,20 @@ def export_policy_onnx(
 
 
 def smoke_compare_logits(policy: nn.Module, onnx_path: Path, *, rtol: float = 1e-4) -> None:
-    """Fail if ONNX logits diverge from Torch on a random packed obs."""
+    """Fail if ONNX row scores diverge from Torch on a random packed obs + legals."""
     import onnxruntime as ort
 
-    module = PackedObsToFactorLogits(policy).eval()
+    module = PackedObsAndLegalsToRowScores(policy).eval()
     packed = th.randn((2, OBSERVATION_VECTOR_LENGTH), dtype=th.float32)
+    legal = th.randint(0, 3, (2, MAX_LEGAL_MOVES, FACTORS_PER_LEGAL_MOVE), dtype=th.int64)
     with th.no_grad():
-        torch_logits = module(packed).numpy()
+        torch_scores = module(packed, legal).numpy()
 
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
-    onnx_logits = session.run(None, {INPUT_NAME: packed.numpy()})[0]
-    if not np.allclose(torch_logits, onnx_logits, rtol=rtol, atol=1e-4):
-        max_abs = float(np.max(np.abs(torch_logits - onnx_logits)))
-        raise RuntimeError(f"ONNX logits diverge from Torch (max abs {max_abs})")
+    onnx_scores = session.run(
+        None,
+        {INPUT_OBS_NAME: packed.numpy(), INPUT_LEGAL_NAME: legal.numpy()},
+    )[0]
+    if not np.allclose(torch_scores, onnx_scores, rtol=rtol, atol=1e-4):
+        max_abs = float(np.max(np.abs(torch_scores - onnx_scores)))
+        raise RuntimeError(f"ONNX row scores diverge from Torch (max abs {max_abs})")

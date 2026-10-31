@@ -1,13 +1,12 @@
-"""Packed legal rows ↔ policy MultiDiscrete factors.
+"""Packed legal rows ↔ policy action (row index) + factor helpers.
 
-Owner: pad / resolve / conditional + preferred factor masks. Server packs rows
-(``AiLegalPacker``); inventory / soft-mask policy: ``ACTION_SAMPLING.md``.
-Called by ``env`` submit and ``conditional_policy``. See ``ai/OWNERSHIP.md``.
+Owner: pad / resolve row index / preferred-row bias helpers. Server packs rows
+(``AiLegalPacker``); sampling: join-score over this step's legal menu
+(``legal_row_policy``). See ``ACTION_SAMPLING.md`` / ``ai/OWNERSHIP.md``.
 
-Schema 15+: actorKind, boardTarget, challengeSlot (joint actor×kind first).
-
-# DEVIATION (AI2.9/10): conditional sampling order matches canonical storage
-# (actorKind → target → challenge).
+Schema 16+: gym action is ``Discrete(MAX_LEGAL_MOVES)`` — an index into
+``legal_moves[:legal_move_count]``. Each packed row is still
+actorKind, boardTarget, challengeSlot.
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ from typing import Any, NamedTuple, TypeAlias
 
 import numpy as np
 
-from gridiron_ai.constants import ACTION_HEAD_SIZES, MAX_LEGAL_MOVES
+from gridiron_ai.constants import ACTION_HEAD_SIZES, LEGAL_ROW_SCORE_WIDTH, MAX_LEGAL_MOVES
 
 # Canonical index in the factor tuple.
 FACTOR_ACTOR_KIND = 0
@@ -49,8 +48,22 @@ class ResolvedAction(NamedTuple):
 
 
 def action_head_sizes() -> list[int]:
-    """How many values exist on each MultiDiscrete axis (canonical tuple order)."""
+    """Factor widths packed on each legal row (not the gym Discrete action width)."""
     return list(ACTION_HEAD_SIZES)
+
+
+def legal_row_action_n() -> int:
+    """Gym ``Discrete`` width — one slot per padded legal-row index."""
+    return LEGAL_ROW_SCORE_WIDTH
+
+
+def legal_row_action_mask(*, legal_move_count: int) -> np.ndarray:
+    """True for indices ``0 .. legal_move_count-1`` (ActionMasker / MaskablePPO)."""
+    mask = np.zeros(LEGAL_ROW_SCORE_WIDTH, dtype=np.bool_)
+    n = max(0, min(int(legal_move_count), LEGAL_ROW_SCORE_WIDTH))
+    if n:
+        mask[:n] = True
+    return mask
 
 
 def pad_legal_moves(legal_moves: EncodedLegalMoves) -> tuple[PaddedLegalMoves, int]:
@@ -126,17 +139,40 @@ def preferred_factor_values(
     return values[(values >= 0) & (values < slot_size)].astype(np.int64)
 
 
-def resolve_packed_action(
-    sampled_factors: np.ndarray | list[int] | tuple[int, ...],
+def match_legal_row_index(
+    factors: np.ndarray | list[int] | tuple[int, ...],
+    legal_moves: np.ndarray | list[list[int]],
+) -> int:
+    """Index of the unique packed row equal to ``factors``. Raises if missing/duplicate."""
+    moves = np.asarray(legal_moves, dtype=np.int64).reshape(-1, len(ACTION_HEAD_SIZES))
+    if moves.shape[0] == 0:
+        raise RuntimeError("No legal moves to match")
+    target = np.asarray(factors, dtype=np.int64).reshape(len(ACTION_HEAD_SIZES))
+    if target.size != len(ACTION_HEAD_SIZES):
+        raise RuntimeError(
+            f"Expected {len(ACTION_HEAD_SIZES)} action factors, got size={target.size} "
+            f"value={factors!r}"
+        )
+    matches = np.flatnonzero(np.all(moves == target, axis=1))
+    if matches.size == 0:
+        raise RuntimeError(
+            f"Factors {tuple(int(x) for x in target)} are not in the legal matrix "
+            f"(legal_move_count={moves.shape[0]})"
+        )
+    if matches.size > 1:
+        raise RuntimeError(
+            f"Duplicate free-factor encoding {tuple(int(x) for x in target)} at rows {matches.tolist()}"
+        )
+    return int(matches[0])
+
+
+def resolve_legal_row_index(
+    row_index: int | np.ndarray | list[int] | tuple[int, ...],
     *,
     legal_moves: np.ndarray | list[list[int]],
     legal_rows: list[dict[str, Any]],
 ) -> ResolvedAction:
-    """Map factor integers → legalActionId using the packed matrix + harness rows.
-
-    ``legal_rows[i]`` is server-provided id, flags, kind/factors/claims — do not reverse-decode
-    from the factor ints.
-    """
+    """Map a legal-row index → legalActionId using harness rows."""
     moves = np.asarray(legal_moves, dtype=np.int64).reshape(-1, len(ACTION_HEAD_SIZES))
     if moves.shape[0] != len(legal_rows):
         raise RuntimeError(
@@ -147,27 +183,12 @@ def resolve_packed_action(
             "No legal moves to resolve on a live packed step — empty legals with resultKind=null "
             "is a server/engine invariant break"
         )
-
-    target = np.asarray(sampled_factors, dtype=np.int64).reshape(len(ACTION_HEAD_SIZES))
-    if target.size != len(ACTION_HEAD_SIZES):
+    index = int(np.asarray(row_index, dtype=np.int64).reshape(-1)[0])
+    if not 0 <= index < moves.shape[0]:
         raise RuntimeError(
-            f"Expected {len(ACTION_HEAD_SIZES)} action factors, got size={target.size} "
-            f"shape={getattr(sampled_factors, 'shape', None)} type={type(sampled_factors).__name__} "
-            f"value={sampled_factors!r} — VecEnv needs (n_envs, {len(ACTION_HEAD_SIZES)}); "
-            f"raw Gym needs ({len(ACTION_HEAD_SIZES)},)"
+            f"Sampled legal-row index {index} out of range (legal_move_count={moves.shape[0]})"
         )
-    matches = np.flatnonzero(np.all(moves == target, axis=1))
-    if matches.size == 0:
-        raise RuntimeError(
-            f"Sampled factors {tuple(int(x) for x in target)} are not a legal move — conditional policy bug "
-            f"(legal_move_count={moves.shape[0]})"
-        )
-    if matches.size > 1:
-        raise RuntimeError(
-            f"Duplicate free-factor encoding {tuple(int(x) for x in target)} at rows {matches.tolist()}"
-        )
-    match_index = int(matches[0])
-    row = legal_rows[match_index]
+    row = legal_rows[index]
     kind_name = str(row.get("kind") or "other")
     legal_choice = {
         "kind": kind_name,
@@ -176,3 +197,17 @@ def resolve_packed_action(
         "potentialChallengeClaims": list(row.get("potentialChallengeClaims") or []),
     }
     return ResolvedAction(str(row["legalActionId"]), kind_name, legal_choice)
+
+
+def resolve_packed_action(
+    sampled_factors: np.ndarray | list[int] | tuple[int, ...],
+    *,
+    legal_moves: np.ndarray | list[list[int]],
+    legal_rows: list[dict[str, Any]],
+) -> ResolvedAction:
+    """Map factor integers → legalActionId (expert / diagnostics). Prefer ``resolve_legal_row_index`` for play."""
+    return resolve_legal_row_index(
+        match_legal_row_index(sampled_factors, legal_moves),
+        legal_moves=legal_moves,
+        legal_rows=legal_rows,
+    )

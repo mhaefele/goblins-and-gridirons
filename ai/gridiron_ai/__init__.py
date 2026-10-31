@@ -1,4 +1,4 @@
-"""Goblins & Gridirons AI training harness (AI2.2+ / AI2.9 conditional factors).
+"""Goblins & Gridirons AI training harness (schema 16 legal-row join scores).
 
 Thin Gymnasium / Stable-Baselines3 glue over the Kotlin `/api/ai/...` contract.
 
@@ -7,12 +7,12 @@ Call flow (who calls what):
   scripts/clone_expert.main
       → copy packed lookahead moves into the checkpoint zip   (no HTTP, no PPO learn())
   scripts/train_self_play.main
-      → MaskablePPO.learn / model.predict   (stock + ConditionalActorCriticPolicy)
+      → MaskablePPO.learn / model.predict   (stock + LegalRowActorCriticPolicy)
           → GridironFeaturesExtractor                        (features.py)
           → GridironEnv.reset / .step   (vs COMPUTER or browser human; server waits on handoff)
               → GridironClient …/step|submit/packed              (client.py)
               → slice_packed_step (obs → gym Dict)               (obs.py)
-              → resolve_packed_action (matrix + legalRows)     (actions.py)
+              → resolve_legal_row_index (menu index + legalRows) (actions.py)
               → step_reward via packed ``rewards`` JSON                 (reward.py)
           → info["bb_episode"] → aggregate_episodes (metrics.py) — train TB + eval
 

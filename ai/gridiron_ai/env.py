@@ -4,8 +4,9 @@ Owner: Gymnasium reset/step/action_masks over ``GridironClient``; wires reward +
 episode metrics. Does **not** own packing (Kotlin), curriculum, or PPO loops.
 See ``ai/OWNERSHIP.md`` / ``DESIGN.md`` (seats).
 
-MaskablePPO callbacks: Dict obs; ``action_masks()`` is dummy all-true — real masking
-is in ``ConditionalActorCriticPolicy``. Modes: ``computer`` / ``human``.
+MaskablePPO callbacks: Dict obs; ``action_masks()`` enables ``0..legal_move_count-1``.
+Policy scores legal rows joined to the board (``LegalRowActorCriticPolicy``).
+Modes: ``computer`` / ``human``.
 
 # DEVIATION: one POST /api/ai/.../submit per decision (reward frame + next obs).
 # forSeat tells the server this client plays one seat (policy_seat).
@@ -20,7 +21,12 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from gridiron_ai.actions import ResolvedAction, action_head_sizes, resolve_packed_action
+from gridiron_ai.actions import (
+    ResolvedAction,
+    legal_row_action_mask,
+    legal_row_action_n,
+    resolve_legal_row_index,
+)
 from gridiron_ai.client import GridironApiError, GridironClient, flatten_packed_submit, submit_rewards_after, submit_scoring, submit_terminal_meta
 from gridiron_ai.constants import SCHEMA_VERSION
 from gridiron_ai.eval_debug import ScenarioEvalDebug, append_scenario_draw_log
@@ -131,7 +137,7 @@ class GridironEnv(gym.Env):
         self.episode_mode = episode_mode
 
         self.observation_space = dict_observation_space()
-        self.action_space = spaces.MultiDiscrete(action_head_sizes())
+        self.action_space = spaces.Discrete(legal_row_action_n())
 
         self.match_id: str | None = None
         self._match_released = False
@@ -186,8 +192,8 @@ class GridironEnv(gym.Env):
             self._scenario_eval_debug = None
 
     def action_masks(self) -> np.ndarray:
-        """All-true flat mask for ActionMasker; ConditionalActorCriticPolicy ignores it."""
-        return np.ones(sum(action_head_sizes()), dtype=np.bool_)
+        """True for live legal-row indices this step (pad slots masked off)."""
+        return legal_row_action_mask(legal_move_count=len(self._legal_action_ids))
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
@@ -206,7 +212,7 @@ class GridironEnv(gym.Env):
         return self._build_observation(), self._get_match_metadata()
 
     def step(
-        self, chosen_action_factors: np.ndarray
+        self, chosen_row_index: np.ndarray | int
     ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
         self._ensure_match_is_active()
         self._pending_episode_summary = None
@@ -230,8 +236,8 @@ class GridironEnv(gym.Env):
                     f"episode_steps={self._episode_steps} scenario={self.scenario} "
                     f"opponent_mode={self.opponent_mode} policy_seat={self.policy_seat}"
                 )
-            resolved = resolve_packed_action(
-                chosen_action_factors,
+            resolved = resolve_legal_row_index(
+                chosen_row_index,
                 legal_moves=self._legal_moves,
                 legal_rows=self._legal_rows,
             )
@@ -239,9 +245,10 @@ class GridironEnv(gym.Env):
             self._action_stats.record(resolved.sampled_kind)
             self._action_stats.record_legal_count(len(self._legal_action_ids))
 
+            row_i = int(np.asarray(chosen_row_index, dtype=np.int64).reshape(-1)[0])
             reward, submit_error = self._submit_resolved_action(
                 resolved,
-                chosen_action_factors=chosen_action_factors,
+                chosen_row_factors=np.asarray(self._legal_moves[row_i], dtype=np.int64),
                 policy_obs=policy_obs,
             )
             if submit_error is not None:
@@ -421,7 +428,7 @@ class GridironEnv(gym.Env):
         self,
         resolved: ResolvedAction,
         *,
-        chosen_action_factors: np.ndarray | None = None,
+        chosen_row_factors: np.ndarray | None = None,
         policy_obs: dict[str, np.ndarray] | None = None,
     ) -> tuple[float, GridironApiError | None]:
         assert self.match_id is not None and self._current_step_dto is not None
@@ -472,7 +479,7 @@ class GridironEnv(gym.Env):
                 passing_legal=passing,
                 soft_mask_legal=soft_mask,
                 legal_row_meta=self._legal_row_meta,
-                chosen_factors=chosen_action_factors,
+                chosen_factors=chosen_row_factors,
             )
         self._action_stats.record_ball_gain(observation_before_move, after_obs)
         reward = step_reward(

@@ -1258,10 +1258,11 @@ def _eval_segment(
         head_pending = [new_head_agreement() for _ in range(workers)]
         while completions < games:
             actions, _states = model.predict(obs, deterministic=True)
-            # Side log. predict() already chose the submitted factors.
-            for env_index, decision in enumerate(diagnose_eval_actions(model.policy, obs, actions)):
-                if decision is not None:
-                    record_head_decision(head_pending[env_index], decision)
+            # Factor-head agreement only applies to the old MultiDiscrete remask policy.
+            if isinstance(model.action_space, gym.spaces.MultiDiscrete):
+                for env_index, decision in enumerate(diagnose_eval_actions(model.policy, obs, actions)):
+                    if decision is not None:
+                        record_head_decision(head_pending[env_index], decision)
             obs, _rewards, dones, infos = env.step(actions)
             for env_index, (info, done) in enumerate(zip(infos, dones)):
                 if not done:

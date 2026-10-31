@@ -11,8 +11,8 @@ from gridiron_ai.constants import encode_actor_kind
 def test_preferred_factor_values_empty_without_flags() -> None:
     legal = np.asarray(
         [
-            [encode_actor_kind(1, 0), 10, 3, 6],
-            [encode_actor_kind(1, 1), 11, 3, 6],
+            [encode_actor_kind(1, 0), 10, 3],
+            [encode_actor_kind(1, 1), 11, 3],
         ],
         dtype=np.int64,
     )
@@ -32,9 +32,9 @@ def test_preferred_factor_values_boosts_flagged_kind_and_target() -> None:
     bad_kind = encode_actor_kind(1, 1)
     legal = np.asarray(
         [
-            [good_kind, 10, 3, 6],
-            [bad_kind, 11, 3, 6],
-            [good_kind, 12, 3, 6],
+            [good_kind, 10, 3],
+            [bad_kind, 11, 3],
+            [good_kind, 12, 3],
         ],
         dtype=np.int64,
     )

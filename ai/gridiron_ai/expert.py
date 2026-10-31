@@ -14,6 +14,7 @@ from typing import Any, Iterator
 
 import numpy as np
 
+from gridiron_ai.actions import match_legal_row_index
 from gridiron_ai.constants import (
     FACTORS_PER_LEGAL_MOVE,
     MAX_LEGAL_MOVES,
@@ -54,7 +55,7 @@ def load_jsonl_records(path: Path) -> Iterator[dict[str, Any]]:
 
 
 def pack_record(record: dict[str, Any]) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray, np.ndarray]:
-    """One dump line → (game-state Dict, ragged legal rows, preferred flags, action factors)."""
+    """One dump line → (game-state Dict, ragged legal rows, preferred flags, chosen row index)."""
     schema = int(record.get("schemaVersion") or 0)
     if schema != SCHEMA_VERSION:
         raise ValueError(f"expert schemaVersion={schema} (harness expects {SCHEMA_VERSION})")
@@ -65,9 +66,10 @@ def pack_record(record: dict[str, Any]) -> tuple[dict[str, np.ndarray], np.ndarr
         )
     game_obs = obs_flat_to_dict(record["obs"])
     legal_rows, preferred = _ragged_legals(record)
-    action = np.asarray(record["chosenFactors"], dtype=np.int64).reshape(-1)
-    if action.size != FACTORS_PER_LEGAL_MOVE:
-        raise ValueError(f"chosenFactors length {action.size} != {FACTORS_PER_LEGAL_MOVE}")
+    factors = np.asarray(record["chosenFactors"], dtype=np.int64).reshape(-1)
+    if factors.size != FACTORS_PER_LEGAL_MOVE:
+        raise ValueError(f"chosenFactors length {factors.size} != {FACTORS_PER_LEGAL_MOVE}")
+    action = np.asarray([match_legal_row_index(factors, legal_rows)], dtype=np.int64)
     return game_obs, legal_rows, preferred, action
 
 
@@ -105,7 +107,7 @@ def records_to_arrays(jsonl_path: Path) -> dict[str, np.ndarray]:
     legal_flat = np.empty((n_rows, FACTORS_PER_LEGAL_MOVE), dtype=np.int64)
     preferred_flat = np.empty((n_rows,), dtype=np.int8)
     offsets = np.empty((n_steps + 1,), dtype=np.int64)
-    actions = np.empty((n_steps, FACTORS_PER_LEGAL_MOVE), dtype=np.int64)
+    actions = np.empty((n_steps,), dtype=np.int64)
     offsets[0] = 0
     row_cursor = 0
     for index, record in enumerate(load_jsonl_records(jsonl_path)):
@@ -119,7 +121,7 @@ def records_to_arrays(jsonl_path: Path) -> dict[str, np.ndarray]:
             preferred_flat[row_cursor:end] = preferred
         row_cursor = end
         offsets[index + 1] = row_cursor
-        actions[index] = action
+        actions[index] = int(action.reshape(-1)[0])
         if (index + 1) % 500 == 0:
             logger.info("packed %s expert steps", index + 1)
     if row_cursor != n_rows:

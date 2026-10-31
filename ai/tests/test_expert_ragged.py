@@ -54,7 +54,8 @@ def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
     jsonl_to_npz(jsonl, npz)
     arrays = load_npz(npz)
 
-    assert arrays[NPZ_KEY_ACTION].shape == (2, 3)
+    assert arrays[NPZ_KEY_ACTION].shape == (2,)
+    assert arrays[NPZ_KEY_ACTION].tolist() == [0, 0]
     assert arrays[NPZ_KEY_LEGAL_MOVES_FLAT].shape == (3, FACTORS_PER_LEGAL_MOVE)
     assert arrays[NPZ_KEY_SOFT_MASK_LEGAL_FLAT].tolist() == [1, 0, 0]
     assert arrays[NPZ_KEY_LEGAL_ROW_OFFSET].tolist() == [0, 2, 3]

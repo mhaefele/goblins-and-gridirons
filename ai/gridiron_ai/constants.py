@@ -5,7 +5,8 @@ Owner: ``SCHEMA_VERSION`` + obs/action head widths shared by ``obs`` / ``actions
 semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
-SCHEMA_VERSION = 15
+# v16: action = masked index into this step's legal rows (join-score policy); obs packing unchanged.
+SCHEMA_VERSION = 16
 
 PLAY_WIDTH = 11
 PLAY_HEIGHT = 15
@@ -31,14 +32,16 @@ ACTOR_PLAYER_INDEX_COUNT = MAX_PLAYERS_PER_TEAM + 1  # includes unused 0
 # Joint first head: actorPlayerIndex * LEGAL_ACTION_KIND_COUNT + kindIndex
 ACTOR_KIND_HEAD_SIZE = ACTOR_PLAYER_INDEX_COUNT * LEGAL_ACTION_KIND_COUNT  # 11 * 34 = 374
 
-# Canonical MultiDiscrete: joint (actor×kind), boardTarget, challengeSlot
+# Legal-row factor packing (each menu row is still actor×kind, boardTarget, challengeSlot).
 # Pad values on unused axes: boardTarget=PITCH_SQUARE_COUNT, challenge=ACTIVE_CHALLENGE_SLOTS
-# (same as Kotlin AiObsLayout).
+# (same as Kotlin AiObsLayout). Gym action is Discrete(MAX_LEGAL_MOVES), not MultiDiscrete.
 ACTION_HEAD_SIZES = [
     ACTOR_KIND_HEAD_SIZE,
     PITCH_SQUARE_COUNT + 1,
     ACTIVE_CHALLENGE_SLOTS + 1,
 ]
+# Policy / ONNX output width: one score per padded legal-row slot.
+LEGAL_ROW_SCORE_WIDTH = MAX_LEGAL_MOVES
 
 # terrain, hasBall, + 19 player fields (stats + affordances + reach bbox)
 NUMBERS_PER_BOARD_CELL = 21
