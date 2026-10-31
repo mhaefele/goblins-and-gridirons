@@ -5,7 +5,7 @@ Owner: ``SCHEMA_VERSION`` + obs/action head widths shared by ``obs`` / ``actions
 semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
-# v16: action = masked index into this step's legal rows (join-score policy); obs packing unchanged.
+# v16: Discrete legal-row join scores; pack = actor, kind, boardTarget, challengeSlot.
 SCHEMA_VERSION = 16
 
 PLAY_WIDTH = 11
@@ -28,15 +28,14 @@ MAX_LEGAL_MOVES = 1024
 
 # Actor playerIndex: 0 = unused (kind-only rows); 1..MAX_PLAYERS_PER_TEAM = roster slot + 1.
 ACTOR_PLAYER_INDEX_COUNT = MAX_PLAYERS_PER_TEAM + 1  # includes unused 0
+ACTOR_HEAD_SIZE = ACTOR_PLAYER_INDEX_COUNT  # 11
+KIND_HEAD_SIZE = LEGAL_ACTION_KIND_COUNT  # 34
 
-# Joint first head: actorPlayerIndex * LEGAL_ACTION_KIND_COUNT + kindIndex
-ACTOR_KIND_HEAD_SIZE = ACTOR_PLAYER_INDEX_COUNT * LEGAL_ACTION_KIND_COUNT  # 11 * 34 = 374
-
-# Legal-row factor packing (each menu row is still actor×kind, boardTarget, challengeSlot).
-# Pad values on unused axes: boardTarget=PITCH_SQUARE_COUNT, challenge=ACTIVE_CHALLENGE_SLOTS
-# (same as Kotlin AiObsLayout). Gym action is Discrete(MAX_LEGAL_MOVES), not MultiDiscrete.
+# Legal-row factor packing (Kotlin AiLegalPacker). Pads: actor=0, boardTarget=PITCH_SQUARE_COUNT,
+# challenge=ACTIVE_CHALLENGE_SLOTS. Gym action is Discrete(MAX_LEGAL_MOVES).
 ACTION_HEAD_SIZES = [
-    ACTOR_KIND_HEAD_SIZE,
+    ACTOR_HEAD_SIZE,
+    KIND_HEAD_SIZE,
     PITCH_SQUARE_COUNT + 1,
     ACTIVE_CHALLENGE_SLOTS + 1,
 ]
@@ -114,8 +113,8 @@ OBS_KEY_LEGAL_MOVE_COUNT = "legal_move_count"
 OBS_KEY_SOFT_MASK_LEGAL = "soft_mask_legal"
 # Parallel to legal_moves rows: 1 when server flagged passingScenarioMove (pass-grade solve; not soft-mask).
 OBS_KEY_PASSING_LEGAL = "passing_legal"
-FACTORS_PER_LEGAL_MOVE = len(ACTION_HEAD_SIZES)  # 3
-# Logit bonus on factor values that appear on soft-mask rows (soft preference, not hard mask).
+FACTORS_PER_LEGAL_MOVE = len(ACTION_HEAD_SIZES)  # 4
+# Logit bonus on preferred legal rows (soft preference, not hard mask).
 SOFT_MASK_LOGIT_BIAS = 2.5
 
 # Gym keys the feature extractor reads.
@@ -128,8 +127,3 @@ OBS_KEYS_GAME_STATE = (
     OBS_KEY_PITCH,
     OBS_KEY_BENCHES,
 )
-
-
-def encode_actor_kind(actor_player_index: int, kind_index: int) -> int:
-    """Pack free actor + kind into the joint MultiDiscrete index."""
-    return int(actor_player_index) * LEGAL_ACTION_KIND_COUNT + int(kind_index)

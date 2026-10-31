@@ -21,5 +21,5 @@ enum class ComputerOpponentKind(
     ONNX(
         title = "Trained model",
         description =
-            "MaskablePPO actor exported to ONNX: packed obs → factor logits, then Kotlin " + "conditional pick→remask over the live packed legal set(same heads as training). " + "Profiles differ only by the reward shaping used while training that checkpoint — " + "pick one below. Eval-time shaping is off; the policy weights carry the bias.",),
+            "MaskablePPO actor exported to ONNX: packed obs + legal-move matrix → row scores, " + "then Kotlin picks among currently legal rows (same join-score contract as training). " + "Profiles differ only by the reward shaping used while training that checkpoint — " + "pick one below. Eval-time shaping is off; the policy weights carry the bias.",),
 }

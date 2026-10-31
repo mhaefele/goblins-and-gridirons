@@ -15,7 +15,6 @@ from gridiron_ai.constants import (
     OBS_KEY_SOFT_MASK_LEGAL,
     OBSERVATION_VECTOR_LENGTH,
     SCHEMA_VERSION,
-    encode_actor_kind,
 )
 from gridiron_ai.expert import (
     NPZ_KEY_ACTION,
@@ -41,9 +40,9 @@ def _record(legal_rows: list[list[int]], *, preferred: list[bool] | None = None)
 
 
 def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
-    row_a = [encode_actor_kind(1, 0), 10, 3]
-    row_b = [encode_actor_kind(2, 1), 11, 3]
-    row_c = [encode_actor_kind(1, 2), 12, 4]
+    row_a = [1, 0, 10, 3]
+    row_b = [2, 1, 11, 3]
+    row_c = [1, 2, 12, 4]
     jsonl = tmp_path / "tiny.jsonl"
     lines = [
         _record([row_a, row_b], preferred=[True, False]),
@@ -66,6 +65,6 @@ def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
     assert obs[OBS_KEY_SOFT_MASK_LEGAL].shape == (2, MAX_LEGAL_MOVES)
     assert obs[OBS_KEY_LEGAL_MOVE_COUNT].tolist() == [[2], [1]]
     np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][0, :2], [row_a, row_b])
-    np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][0, 2], [-1, -1, -1])
+    np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][0, 2], [-1, -1, -1, -1])
     np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][1, :1], [row_c])
     assert obs[OBS_KEY_SOFT_MASK_LEGAL][0, 0] == 1

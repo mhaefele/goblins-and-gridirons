@@ -30,10 +30,11 @@ from gridiron_ai.constants import (
 )
 from gridiron_ai.features import GridironFeaturesExtractor
 
-_ROW_EMB_AK = 32
+_ROW_EMB_ACTOR = 16
+_ROW_EMB_KIND = 16
 _ROW_EMB_TARGET = 32
 _ROW_EMB_CHALLENGE = 16
-_ROW_EMB_DIM = _ROW_EMB_AK + _ROW_EMB_TARGET + _ROW_EMB_CHALLENGE
+_ROW_EMB_DIM = _ROW_EMB_ACTOR + _ROW_EMB_KIND + _ROW_EMB_TARGET + _ROW_EMB_CHALLENGE
 _SCORE_HIDDEN = 128
 
 
@@ -76,9 +77,10 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
                 "(one GridironFeaturesExtractor shared by actor and critic)"
             )
         # Stock action_net is Linear(latent, MAX_LEGAL) — unused; scores come from the join MLP.
-        self.actor_kind_emb = nn.Embedding(ACTION_HEAD_SIZES[0], _ROW_EMB_AK)
-        self.target_emb = nn.Embedding(ACTION_HEAD_SIZES[1], _ROW_EMB_TARGET)
-        self.challenge_emb = nn.Embedding(ACTION_HEAD_SIZES[2], _ROW_EMB_CHALLENGE)
+        self.actor_emb = nn.Embedding(ACTION_HEAD_SIZES[0], _ROW_EMB_ACTOR)
+        self.kind_emb = nn.Embedding(ACTION_HEAD_SIZES[1], _ROW_EMB_KIND)
+        self.target_emb = nn.Embedding(ACTION_HEAD_SIZES[2], _ROW_EMB_TARGET)
+        self.challenge_emb = nn.Embedding(ACTION_HEAD_SIZES[3], _ROW_EMB_CHALLENGE)
         latent_dim = int(self.mlp_extractor.latent_dim_pi)
         self.row_scorer = nn.Sequential(
             nn.Linear(latent_dim + _ROW_EMB_DIM, _SCORE_HIDDEN),
@@ -92,7 +94,7 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         deterministic: bool = False,
         action_masks: np.ndarray | None = None,
     ) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
-        # OVERRIDE: score legal rows, then masked sample (not stock action_net logits).
+        # OVERRIDE: custom row logits; pick via stock MaskableCategoricalDistribution.
         values, logits = self._board_and_row_logits(obs)
         distribution = self._masked_distribution(logits, action_masks)
         actions = distribution.get_actions(deterministic=deterministic)
@@ -165,10 +167,15 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
 
         # Pad sentinels are -1; clamp for embedding, then mask those slots out.
         clamped = legal_moves.long().clamp(min=0)
-        ak = self.actor_kind_emb(clamped[..., 0])
-        tgt = self.target_emb(clamped[..., 1])
-        ch = self.challenge_emb(clamped[..., 2])
-        row_emb = th.cat([ak, tgt, ch], dim=-1)
+        row_emb = th.cat(
+            [
+                self.actor_emb(clamped[..., 0]),
+                self.kind_emb(clamped[..., 1]),
+                self.target_emb(clamped[..., 2]),
+                self.challenge_emb(clamped[..., 3]),
+            ],
+            dim=-1,
+        )
         batch, n_rows, _ = row_emb.shape
         lat = latent_pi.unsqueeze(1).expand(batch, n_rows, -1)
         logits = self.row_scorer(th.cat([lat, row_emb], dim=-1)).squeeze(-1)

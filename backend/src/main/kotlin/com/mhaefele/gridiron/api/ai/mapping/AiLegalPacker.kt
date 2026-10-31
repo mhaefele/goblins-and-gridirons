@@ -2,7 +2,6 @@ package com.mhaefele.gridiron.api.ai.mapping
 
 import com.mhaefele.gridiron.api.ai.dto.AiFactor
 import com.mhaefele.gridiron.api.ai.dto.AiLegalChoiceDto
-import com.mhaefele.gridiron.api.ai.dto.AiLegalKind
 import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 import org.springframework.stereotype.Component
 
@@ -27,8 +26,7 @@ class AiLegalPacker {
                     is AiFactor.AttachedBonus -> error("AttachedBonus is sugar — must not appear in free factors")
                 }
             }
-            val actorKind = actor * AiLegalKind.entries.size + choice.kindIndex
-            return listOf(actorKind, boardTarget, challengeSlot)
+            return listOf(actor, choice.kindIndex, boardTarget, challengeSlot)
         }
     }
 }

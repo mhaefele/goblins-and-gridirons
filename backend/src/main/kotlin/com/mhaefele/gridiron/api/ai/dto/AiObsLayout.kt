@@ -42,7 +42,8 @@ object AiObsLayout {
      * v15: drop faceOrder MultiDiscrete head; AttachedBonus → sugar; omit chooseBlockFaceOrder
      * from AI kinds; add playSprint (RandomD6 Sprint mid-check).
      * v16: gym action = masked index into this step's legal rows (join-score policy);
-     * obs packing unchanged; ONNX emits one score per padded legal-row slot.
+     * legal-row pack = actor, kind, boardTarget, challengeSlot (separate actor/kind);
+     * ONNX emits one score per padded legal-row slot.
      */
     const val SCHEMA_VERSION = 16
 
@@ -68,27 +69,30 @@ object AiObsLayout {
     /** Pack width: kind + d6 + [MAX_HELD_BLOCK_FACES] face slots. */
     const val HELD_CHECK_FIELD_COUNT = 1 + 1 + MAX_HELD_BLOCK_FACES
 
-    /** Packed legal-row width: actor×kind, boardTarget, challengeSlot. */
-    const val ACTION_FACTOR_COUNT = 3
+    /** Packed legal-row width: actor, kind, boardTarget, challengeSlot. */
+    const val ACTION_FACTOR_COUNT = 4
 
     const val ACTIVE_CHALLENGE_SLOTS = 3
 
-    /** Joint actor×kind MultiDiscrete head — `(MAX_PLAYERS_PER_TEAM + 1) * AiLegalKind.entries`. */
-    val ACTOR_KIND_HEAD_SIZE: Int = (MAX_PLAYERS_PER_TEAM + 1) * AiLegalKind.entries.size
+    /** Free actor playerIndex pad — `0` unused, `1..MAX_PLAYERS_PER_TEAM` roster. */
+    val ACTOR_HEAD_SIZE: Int = MAX_PLAYERS_PER_TEAM + 1
+    /** [AiLegalKind.entries] — packed as ordinal on each legal row. */
+    val KIND_HEAD_SIZE: Int = AiLegalKind.entries.size
     /** Pitch squares + pad (unused axis). */
     val BOARD_TARGET_HEAD_SIZE: Int = PITCH_SQUARE_COUNT + 1
     /** Challenge slots + pad (unused axis). */
     val CHALLENGE_SLOT_HEAD_SIZE: Int = ACTIVE_CHALLENGE_SLOTS + 1
     /** Factor widths packed on each legal row — must match `ai/gridiron_ai/constants.py` ACTION_HEAD_SIZES. */
-    val ACTION_HEAD_SIZES: IntArray = intArrayOf(ACTOR_KIND_HEAD_SIZE, BOARD_TARGET_HEAD_SIZE, CHALLENGE_SLOT_HEAD_SIZE)
+    val ACTION_HEAD_SIZES: IntArray = intArrayOf(ACTOR_HEAD_SIZE, KIND_HEAD_SIZE, BOARD_TARGET_HEAD_SIZE, CHALLENGE_SLOT_HEAD_SIZE)
     /** Pad width for the legal-row menu (Python ``MAX_LEGAL_MOVES``). */
     const val MAX_LEGAL_MOVES = 1024
     /** ONNX / policy output width — one score per padded legal-row slot. */
     const val LEGAL_ROW_SCORE_WIDTH: Int = MAX_LEGAL_MOVES
 
-    const val FACTOR_ACTOR_KIND = 0
-    const val FACTOR_BOARD_TARGET = 1
-    const val FACTOR_CHALLENGE_SLOT = 2
+    const val FACTOR_ACTOR = 0
+    const val FACTOR_KIND = 1
+    const val FACTOR_BOARD_TARGET = 2
+    const val FACTOR_CHALLENGE_SLOT = 3
 
     /**
      * Mid-turn hand capacity for obs: end-of-turn trim keeps 3, Clean Sweep allows 3 claims in one

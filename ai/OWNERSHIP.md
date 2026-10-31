@@ -76,7 +76,7 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `constants.py` | Schema + head/obs sizes (must match Kotlin) |
 | `client.py` | REST only |
 | `obs.py` | Packed float → gym Dict |
-| `actions.py` | Pad / resolve / conditional masks |
+| `actions.py` | Pad / match / resolve legal-row index |
 | `legal_row_policy.py` | Join-score legal rows (+ soft-mask bias on preferred rows) |
 | `features.py` | Embeddings → MLP vector |
 | `env.py` | Gymnasium API over client |
@@ -90,5 +90,4 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `paths.py` | `output/` roots |
 | `expert.py` / `clone.py` | Dump → npz → seed zip |
 | `eval_debug.py` | Throwaway scenario-eval logging |
-| `eval_head_agreement.py` | Eval-only head agreement rates (played action unchanged; `summary.sh` prints the latest full-game rates) |
 | `scripts/train_self_play.py` | Train/eval loop entrypoint |

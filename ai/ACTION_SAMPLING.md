@@ -1,6 +1,6 @@
 # Action sampling — heads, factor maps, inventory
 
-Source of truth for **how the policy encodes and samples actions** after AI2.9’s sequential-masking baseline. Backlog stub: [AI2.11](BACKLOG.md#ai211--action-sampling--factor-space-inventory). **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md).
+Source of truth for **how the policy encodes and samples actions**. Schema 16+ scores complete legal rows ([Policy action](#policy-action-schema-16)); older factor-head inventory below is historical context for packing widths. Backlog stub: [AI2.11](BACKLOG.md#ai211--action-sampling--factor-space-inventory). **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md).
 
 Mapping truth: [`AiLegalChoiceMapping.kt`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/mapping/AiLegalChoiceMapping.kt) (+ [`AiLegalKind`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiLegalKind.kt)).
 
@@ -8,14 +8,12 @@ Mapping truth: [`AiLegalChoiceMapping.kt`](../backend/src/main/kotlin/com/mhaefe
 
 ## Inventory
 
-**Next steps to improve action representation & sampling** — the factor heads, what each index means, and how we pick them (mask → remask today; maybe condition later). Goal: make legal choices easier to learn and score correctly, not richer board obs ([AI2.8](BACKLOG.md#ai28--evaluate-obs-enrichment-vs-truncated-legals) / [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape)) or reward ([AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2)).
+**Next steps to improve action representation & sampling** — what each packed factor means, and how we pick among legal rows. Goal: make legal choices easier to learn and score correctly, not richer board obs ([AI2.8](BACKLOG.md#ai28--evaluate-obs-enrichment-vs-truncated-legals) / [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape)) or reward ([AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2)).
 
 Two levers:
 
-1. **Representation** — shrink or re-basis heads so indices mean the right thing (pitch-only targets, bonus-play identity **once**, optional path merges / roster actor).
-2. **Sampling procedure** — still sequential **masking** (legality). Soft preference bias
-   toward `expectedScenarioMove` rows (schema 12). Optional further upgrades change
-   *preferences* given prior picks (conditioning, joint heads, kind-sliced target logits).
+1. **Representation** — shrink or re-basis packed row factors so indices mean the right thing (pitch-only targets, bonus-play identity **once**, optional path merges / roster actor).
+2. **Sampling procedure** — **schema 16:** join-score each legal row given the board latent (`Discrete` + MaskablePPO). Soft preference bias toward `expectedScenarioMove` rows (schema 12, row-level under 16). Factor MultiDiscrete remask / head conditioning was removed.
 
 Schema bumps + checkpoint breaks expected for representation items. Measure before spending on sampling-procedure upgrades.
 
@@ -31,10 +29,10 @@ openings — without hard-removing distractors (hard mask already failed transfe
 
 ### Soft-mask preference
 
-**Landed (schema 12).** Gym key `preferred_legal` parallels `legal_moves` rows (`1` =
-`expectedScenarioMove`). During conditional pick → remask → pick, each head adds
-`SOFT_MASK_LOGIT_BIAS` (**2.5**) to factor values that still appear on preferred rows
-among the remaining legal set. Illegal values stay hard-masked at 0; non-preferred
+**Landed (schema 12; row-level under schema 16).** Gym key `preferred_legal` /
+`soft_mask_legal` parallels `legal_moves` rows (`1` = `expectedScenarioMove`). The
+join-score policy adds `SOFT_MASK_LOGIT_BIAS` (**2.5**) to preferred **row** logits
+before the categorical. Illegal / pad rows stay hard-masked at 0; non-preferred
 legals stay available (soft tilt, not a hard filter).
 
 Same bias on rollout sample and `evaluate_actions` replay (flags ride in obs) so
@@ -47,8 +45,8 @@ working as designed.
 
 | Mechanism | What it does | Example |
 |-----------|----------------|---------|
-| **Legality mask (hard)** | Conditional remask zeroes factor values with no remaining legal row | A square with no legal run is unavailable |
-| **Soft preference** | `preferred_legal` / `expectedScenarioMove` adds logit bias; **does not remove** other legal rows | TD_RUN: one flagged run into the EZ among distractors |
+| **Legality mask (hard)** | Only indices `0 .. legal_move_count-1` are available | A square with no legal run is not in the menu |
+| **Soft preference** | Preferred rows get a logit bias; **does not remove** other legal rows | TD_RUN: one flagged run into the EZ among distractors |
 | **Ambiguous opening (no preference)** | Server leaves all opening flags false; episode graded by outcome (TD, pickup, …) | Throw drills: many legal throw targets stay in the menu — “multi-throw” exposure is intentional |
 
 **Throws:** keep the full legal throw set (legality mask only). Do **not** hard-filter
@@ -66,11 +64,11 @@ For *this* problem (smarter action choices), almost everything collapses to two 
 | Lever | What it changes | Inventory home |
 |-------|-----------------|----------------|
 | **1. Encode moves better** | What each head/index **means**, how wide it is, deadweight removed, kinds merged | Yes-do + most Maybes (path merge, roster actor, relative target, joint heads as re-indexing) |
-| **2. Sample with more dependence** | How we **pick** among already-encoded heads — today’s remask + soft preferred bias vs true `P(next \| prior)` | Soft-mask (landed); sequential conditioning; kind-conditioned target logits |
+| **2. Sample among legal rows** | How we **pick** among packed rows — schema 16 join-score + soft preferred bias | Soft-mask (landed); further row encoders / attention are optional |
 
-**Default path:** Schema 10 (roster actor + joint actor×kind) landed → soft-mask (schema 12) → Measure first → only then spend on lever-2 conditioning if target ranking still looks weak.
+**Default path:** Schema 10 packing (roster actor) → soft-mask (schema 12) → **schema 16 legal-row join scores + separate actor/kind pack** (landed; replaces factor remask / joint index). Measure uniqueness before more representation shrinks.
 
-**Third direction (adjacent, not this checklist’s center):** stop factoring and **score the legal set directly** (pointer / attention over encoded rows, or feed legals into the net). That’s closer to [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape) than to remasking MultiDiscrete heads. Worth remembering if factoring keeps fighting you; not required to start.
+**Landed (was “third direction”):** score the legal set directly — join board latent to each encoded row (`LegalRowActorCriticPolicy` / ONNX row scores). Remaining [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape) work is whether the value net / features should see richer legal-menu summaries beyond the action head.
 
 **Not substitutes for 1–2:** held mid-check rolls (**prime [AI2.12](BACKLOG.md#ai212--held-dice--mid-check-obs--scenarios)**), other board obs ([AI2.8](BACKLOG.md#ai28--evaluate-obs-enrichment-vs-truncated-legals)), reward shaping ([AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2)), more PPO steps alone. Train-*mix* / phase gates → [`TRAINING_ROADMAP.md`](TRAINING_ROADMAP.md), not action-head geometry.
 
@@ -202,27 +200,29 @@ Baseline is schema 9 (~29M product). Remaining Maybes relative to that:
 The policy **join-scores** each live row with the board latent (`LegalRowActorCriticPolicy`):
 one preference over complete moves (not independent factor heads + remask).
 
-Each packed row is still three ints (storage / ONNX legal-matrix input):
+Each packed row is four ints (storage / ONNX legal-matrix input):
 
 | Slot | Factor | Width | Who uses it |
 |------|--------|------:|-------------|
-| 0 | actorKind | 374 | `actorPlayerIndex * 34 + kindIndex` — actor `0` when kind has no free actor |
-| 1 | boardTarget | 166 | **pitch only** `0..164` + unused |
-| 2 | challengeSlot | 4 | claim / replace |
+| 0 | actor | 11 | roster `playerIndex` — `0` when kind has no free actor |
+| 1 | kind | 34 | `AiLegalKind.ordinal` |
+| 2 | boardTarget | 166 | **pitch only** `0..164` + unused |
+| 3 | challengeSlot | 4 | claim / replace |
 
-Wire still sends `kind` + `kindIndex` + typed factors (`Actor.playerIndex`, …). Harness packs the joint index onto each legal row.
+Wire still sends `kind` + `kindIndex` + typed factors (`Actor.playerIndex`, …). Kotlin `AiLegalPacker` writes the four ints; Python only pads for the gym Dict.
 
 Unused axes on a row are pad sentinels in the harness; the Kotlin DTO **omits** unused free factors (and puts pending-fixed values + geometry `AttachedBonus` in `sugarFactors`).
 
-**Schema 16:** legal-row join scores; obs packing unchanged from 15. Soft-mask biases preferred **rows**. ONNX: packed obs + padded legal matrix → row scores (re-export required; schema-15 factor-logit artifacts will not load).
+**Schema 16:** legal-row join scores; separate actor/kind pack (was joint under MultiDiscrete); soft-mask biases preferred **rows**. ONNX: packed obs + padded legal matrix → row scores (re-export required; schema-15 factor-logit artifacts will not load).
 
-**Schema 15 (historical):** MultiDiscrete remask; faceOrder head already dropped; Enforcer order humans-only.
+**Schema 15 (historical):** MultiDiscrete remask; joint actor×kind; faceOrder head already dropped; Enforcer order humans-only.
 
 ### Factor-width audit (row packing)
 
 | Factor | Width | Vs real rule/API max | Verdict |
 |------|------:|----------------------|---------|
-| actorKind | 374 | 11 × 34 (`0..10` × kinds) | Exact product of roster pad × kinds. |
+| actor | 11 | `0..10` roster pad | Exact. |
+| kind | 34 | `AiLegalKind.entries` | Exact. |
 | boardTarget | 166 | Pitch 165 + unused | Exact pitch (+ pad). |
 | challengeSlot | 4 | 3 active challenges + unused | Exact. |
 

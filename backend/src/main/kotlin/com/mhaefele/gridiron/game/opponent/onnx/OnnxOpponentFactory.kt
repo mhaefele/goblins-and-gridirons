@@ -20,7 +20,6 @@ class OnnxOpponentFactory(
     private val legalPacker: AiLegalPacker,
     private val obsPacker: AiObsPacker,
     private val policy: OnnxPolicySession,
-    private val rowPicker: LegalRowPicker,
 ) {
     fun forProfile(profile: OnnxOpponentProfile): OpponentStrategy {
         policy.ensureLoaded(profile)
@@ -44,8 +43,7 @@ class OnnxOpponentFactory(
             check(choices.isNotEmpty()) { "AI legal choices empty after filter (gui legal=${legal.size})" }
             val packedMoves = legalPacker.legalMoves(choices).map { it.toIntArray() }
             val obs = obsPacker.pack(steps.toAiStepDto(state, legal, perspective).policy.obs)
-            val scores = policy.rowScores(profile, obs, packedMoves)
-            val row = rowPicker.pickDeterministic(packedMoves, scores)
+            val row = policy.chooseRow(profile, obs, packedMoves)
             val chosenId = choices[row].legalActionId
             return legal.firstOrNull { it.id == chosenId } ?: error("Chosen legalActionId=$chosenId not in GUI legal set")
         }

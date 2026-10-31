@@ -1,7 +1,8 @@
-"""Export MaskablePPO actor → ONNX (packed obs + legal rows → row scores).
+"""Export MaskablePPO actor → ONNX (packed obs + legal rows → chosen row index).
 
 Owner: freeze a profile checkpoint into backend ``resources/ai-opponent/`` for
 ``ComputerOpponentKind.ONNX``. Soft-mask bias is omitted for product play.
+Mirrors deterministic ``MaskableCategoricalDistribution.get_actions`` (masked argmax).
 See ``ai/OWNERSHIP.md`` / BACKLOG AI2.6.
 """
 
@@ -50,7 +51,7 @@ POLICY_ONNX_NAME = "policy.onnx"
 MANIFEST_NAME = "manifest.json"
 INPUT_OBS_NAME = "packed_obs"
 INPUT_LEGAL_NAME = "legal_moves"
-OUTPUT_NAME = "row_scores"
+OUTPUT_NAME = "action"
 
 PROFILE_TITLES: dict[str, str] = {
     "baseline": "Baseline",
@@ -68,36 +69,42 @@ PROFILE_DESCRIPTIONS: dict[str, str] = {
 }
 
 
-class PackedObsAndLegalsToRowScores(nn.Module):
-    """SB3 legal-row policy trunk: packed obs + padded legal matrix → row scores."""
+class PackedObsAndLegalsToAction(nn.Module):
+    """SB3 legal-row trunk + masked argmax → Discrete row index (deterministic predict)."""
 
     def __init__(self, policy: nn.Module) -> None:
         super().__init__()
         self.features_extractor = policy.features_extractor
         self.mlp_extractor = policy.mlp_extractor
-        self.actor_kind_emb = policy.actor_kind_emb
+        self.actor_emb = policy.actor_emb
+        self.kind_emb = policy.kind_emb
         self.target_emb = policy.target_emb
         self.challenge_emb = policy.challenge_emb
         self.row_scorer = policy.row_scorer
 
     def forward(self, packed_obs: th.Tensor, legal_moves: th.Tensor) -> th.Tensor:
         # packed_obs: (N, OBSERVATION_VECTOR_LENGTH)
-        # legal_moves: (N, MAX_LEGAL_MOVES, FACTORS) — pad rows may be -1
+        # legal_moves: (N, MAX_LEGAL_MOVES, FACTORS) — pad rows are -1
         obs = _slice_packed_obs(packed_obs)
         features = self.features_extractor(obs)
         latent_pi, _latent_vf = self.mlp_extractor(features)
         clamped = legal_moves.long().clamp(min=0)
         row_emb = th.cat(
             [
-                self.actor_kind_emb(clamped[..., 0]),
-                self.target_emb(clamped[..., 1]),
-                self.challenge_emb(clamped[..., 2]),
+                self.actor_emb(clamped[..., 0]),
+                self.kind_emb(clamped[..., 1]),
+                self.target_emb(clamped[..., 2]),
+                self.challenge_emb(clamped[..., 3]),
             ],
             dim=-1,
         )
         batch, n_rows, _ = row_emb.shape
         lat = latent_pi.unsqueeze(1).expand(batch, n_rows, -1)
-        return self.row_scorer(th.cat([lat, row_emb], dim=-1)).squeeze(-1)
+        scores = self.row_scorer(th.cat([lat, row_emb], dim=-1)).squeeze(-1)
+        # Pad rows are -1 on every factor; live rows use actor≥0 (including unused actor 0).
+        live = legal_moves[..., 0] >= 0
+        scores = scores.masked_fill(~live, -1.0e9)
+        return scores.argmax(dim=-1)
 
 
 def _slice_packed_obs(packed_obs: th.Tensor) -> dict[str, th.Tensor]:
@@ -158,15 +165,14 @@ def export_policy_onnx(
     destination.mkdir(parents=True, exist_ok=True)
     onnx_path = destination / POLICY_ONNX_NAME
 
-    module = PackedObsAndLegalsToRowScores(policy).eval()
+    module = PackedObsAndLegalsToAction(policy).eval()
     dummy_obs = th.zeros((1, OBSERVATION_VECTOR_LENGTH), dtype=th.float32)
-    dummy_legal = th.zeros((1, MAX_LEGAL_MOVES, FACTORS_PER_LEGAL_MOVE), dtype=th.int64)
+    dummy_legal = th.full((1, MAX_LEGAL_MOVES, FACTORS_PER_LEGAL_MOVE), -1, dtype=th.int64)
+    dummy_legal[0, 0] = 0
     with th.no_grad():
-        scores = module(dummy_obs, dummy_legal)
-    if int(scores.shape[-1]) != LEGAL_ROW_SCORE_WIDTH:
-        raise RuntimeError(
-            f"row score width {int(scores.shape[-1])} != LEGAL_ROW_SCORE_WIDTH={LEGAL_ROW_SCORE_WIDTH}"
-        )
+        action = module(dummy_obs, dummy_legal)
+    if action.shape != (1,):
+        raise RuntimeError(f"action shape {tuple(action.shape)} != (batch,)")
 
     th.onnx.export(
         module,
@@ -193,7 +199,7 @@ def export_policy_onnx(
         "maxLegalMoves": MAX_LEGAL_MOVES,
         "actionFactorCount": FACTORS_PER_LEGAL_MOVE,
         "actionHeadSizes": list(ACTION_HEAD_SIZES),
-        "logitWidth": LEGAL_ROW_SCORE_WIDTH,
+        "actionSpaceN": LEGAL_ROW_SCORE_WIDTH,
         "inputObsName": INPUT_OBS_NAME,
         "inputLegalName": INPUT_LEGAL_NAME,
         "outputName": OUTPUT_NAME,
@@ -209,21 +215,21 @@ def export_policy_onnx(
     return destination
 
 
-def smoke_compare_logits(policy: nn.Module, onnx_path: Path, *, rtol: float = 1e-4) -> None:
-    """Fail if ONNX row scores diverge from Torch on a random packed obs + legals."""
+def smoke_compare_action(policy: nn.Module, onnx_path: Path) -> None:
+    """Fail if ONNX chosen row diverges from Torch masked-argmax on a random batch."""
     import onnxruntime as ort
 
-    module = PackedObsAndLegalsToRowScores(policy).eval()
+    module = PackedObsAndLegalsToAction(policy).eval()
     packed = th.randn((2, OBSERVATION_VECTOR_LENGTH), dtype=th.float32)
-    legal = th.randint(0, 3, (2, MAX_LEGAL_MOVES, FACTORS_PER_LEGAL_MOVE), dtype=th.int64)
+    legal = th.full((2, MAX_LEGAL_MOVES, FACTORS_PER_LEGAL_MOVE), -1, dtype=th.int64)
+    legal[:, :5] = th.randint(0, 3, (2, 5, FACTORS_PER_LEGAL_MOVE), dtype=th.int64)
     with th.no_grad():
-        torch_scores = module(packed, legal).numpy()
+        torch_action = module(packed, legal).numpy()
 
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
-    onnx_scores = session.run(
+    onnx_action = session.run(
         None,
         {INPUT_OBS_NAME: packed.numpy(), INPUT_LEGAL_NAME: legal.numpy()},
     )[0]
-    if not np.allclose(torch_scores, onnx_scores, rtol=rtol, atol=1e-4):
-        max_abs = float(np.max(np.abs(torch_scores - onnx_scores)))
-        raise RuntimeError(f"ONNX row scores diverge from Torch (max abs {max_abs})")
+    if not np.array_equal(torch_action, onnx_action.reshape(-1)):
+        raise RuntimeError(f"ONNX action {onnx_action} != Torch action {torch_action}")

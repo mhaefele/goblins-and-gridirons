@@ -4,8 +4,8 @@ package com.mhaefele.gridiron.api.ai.dto
  * AI legal-choice kind — policy vocabulary (schema 10+), not 1:1 with every GUI
  * [com.mhaefele.gridiron.api.dto.response.LegalAction] Jackson name.
  *
- * MultiDiscrete joint head uses free actor playerIndex × [AiLegalChoiceDto.kindIndex]
- * (= [ordinal]). Kind-axis width is [AiLegalKind.entries].size (joint actor×kind head).
+ * Packed as [AiLegalChoiceDto.kindIndex] (= [ordinal]) on each legal row (schema 16+).
+ * Kind-axis width is [AiLegalKind.entries].size.
  *
  * Coarse merges (engine wire kinds stay distinct for submit):
  * - [declineOffer] — Skip / DeclineBonus / ContinueBlock / Choose*Reroll(false)

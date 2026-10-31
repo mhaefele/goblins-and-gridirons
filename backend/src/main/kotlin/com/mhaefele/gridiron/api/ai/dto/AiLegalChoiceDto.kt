@@ -6,12 +6,12 @@ import com.mhaefele.gridiron.shared.LegalActionId
 /**
  * One legal choice in AI form — [kind] + ordered free [factors] + [sugarFactors] + submit sidecar.
  *
- * ## Factors (schema 10)
+ * ## Factors (schema 10+)
  *
- * [factors] = **free choices only** (MultiDiscrete / `resolve_action` match key).
+ * [factors] = **free choices only** (packed into [AiLegalPacker] legal-row ints).
  * [sugarFactors] = pending-fixed identity (actor/target implied by continuation) — debug / docs;
  * not matched. [legalActionId] still encodes full domain identity for submit.
- * Harness joint head: free [AiFactor.Actor] playerIndex × [kindIndex] (actor `0` when omitted).
+ * Schema 16 pack: actor, [kindIndex], boardTarget, challengeSlot (pads when unused).
  *
  * | kind | free factors |
  * |------|--------------|
@@ -25,13 +25,12 @@ import com.mhaefele.gridiron.shared.LegalActionId
 data class AiLegalChoiceDto(
     /**
      * Policy kind (`run`, `declineOffer`, …) — human/debug; same as [AiLegalKind.name].
-     * Not used as the MultiDiscrete kind head (see [kindIndex]).
+     * Packed as [kindIndex] on each legal row.
      */
     val kind: AiLegalKind,
 
     /**
-     * 0-based [AiLegalKind.ordinal] — joint MultiDiscrete axis with free actor in the harness
-     * (`actorPlayerIndex * kindHeadSize + kindIndex`). Always equals [kind].ordinal.
+     * 0-based [AiLegalKind.ordinal] — packed on each legal row (schema 16+). Always equals [kind].ordinal.
      */
     val kindIndex: Int,
 

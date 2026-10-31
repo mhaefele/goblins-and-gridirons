@@ -19,7 +19,7 @@ if str(_AI_ROOT) not in sys.path:
 
 from sb3_contrib import MaskablePPO
 
-from gridiron_ai.export_onnx import export_policy_onnx, smoke_compare_logits
+from gridiron_ai.export_onnx import export_policy_onnx, smoke_compare_action
 from gridiron_ai.reward import REWARD_PROFILES
 from gridiron_ai.training_phases import freeze_exported_checkpoint, resolve_targets
 
@@ -75,8 +75,8 @@ def _export_one(profile: str, *, device: str, skip_smoke: bool) -> Path:
     print(f"Wrote {out / 'manifest.json'}", flush=True)
     freeze_exported_checkpoint(target.checkpoint_key)
     if not skip_smoke:
-        print(f"Smoke: Torch vs ONNX logits ({profile}) …", flush=True)
-        smoke_compare_logits(model.policy, onnx_path)
+        print(f"Smoke: Torch vs ONNX action ({profile}) …", flush=True)
+        smoke_compare_action(model.policy, onnx_path)
         print("Smoke OK", flush=True)
     return out
 

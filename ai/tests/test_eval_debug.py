@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
-
 from gridiron_ai.constants import PLAY_HEIGHT, PLAY_WIDTH, PITCH_SQUARE_COUNT
 from gridiron_ai.eval_debug import ScenarioEvalDebug, _format_expected_moves
 
@@ -89,22 +87,6 @@ def test_turn1_log_suffix_includes_expected_moves() -> None:
     assert "expected=47 R(7,2->7,3) R(8,3->9,2)" in many_suffix
 
 
-def test_turn1_log_suffix_includes_policy_diag() -> None:
-    suffix = ScenarioEvalDebug.turn1_log_suffix(
-        {
-            "first_turn_actions": ["Cr(0)", "R(2,3->3,4)*", "R(5,5->5,6)"],
-            "opening_mispick_diag": {
-                "chosen": "R(5,5->5,6)",
-                "chosen_actor_kind": {"actor": 1, "kind": "run", "p_plain": 0.6, "p_biased": 0.55},
-                "top_actor_kind": [{"actor": 0, "kind": "mark", "p_biased": 0.3}],
-            },
-        }
-    )
-    assert "turn1=Cr(0)" in suffix
-    assert "policy_diag=" in suffix
-    assert "p=0.550(0.600plain)" in suffix
-
-
 def test_describe_satisfied_claim_on_attached_claim() -> None:
     from gridiron_ai.eval_debug import _describe_satisfied_claim
 
@@ -141,62 +123,3 @@ def test_format_scenario_draw_log_block() -> None:
     assert "turn1=R(2,3->3,4)+" in block
     assert "claimed=Push Forward(R(2,3->3,4)+)" in block
 
-
-def test_opening_mispick_skips_replace_and_captures_first_off_pass() -> None:
-    """Replace-first openings leave expected_move_count=0; still snapshot the off-PASS run."""
-    debug = ScenarioEvalDebug()
-    cells = [_cell() for _ in range(PITCH_SQUARE_COUNT)]
-    cells[_pitch(2, 3)] = _cell(player={"teamRel": 0, "playerIndex": 0})
-    cells[_pitch(5, 5)] = _cell(player={"teamRel": 0, "playerIndex": 1})
-    obs = {"cells": cells, "turnNumber": 1}
-    debug.on_scenario_start(
-        1,
-        obs,
-        policy_seat="HOME",
-        first_action_legal_count=2,
-        legal_row_meta=[{"kind": "replaceChallenge", "factors": []}],
-        passing_legal=[False],
-    )
-    assert debug._expected_move_count == 0
-
-    policy_obs = {"dummy": np.zeros(1, dtype=np.float32)}
-    legal_moves = np.zeros((2, 8), dtype=np.int64)
-    factors = np.zeros(8, dtype=np.int64)
-
-    debug.maybe_record_action(
-        turn_number=1,
-        observation=obs,
-        legal_choice={"kind": "replaceChallenge", "factors": [{"kind": "challengeSlot", "slot": 0}]},
-        expected_move=False,
-        policy_obs=policy_obs,
-        legal_moves=legal_moves,
-        passing_legal=[False, False],
-        soft_mask_legal=[False, False],
-        legal_row_meta=[{"kind": "replaceChallenge"}, {"kind": "replaceChallenge"}],
-        chosen_factors=factors,
-    )
-    assert debug.opening_mispick_snapshot() is None
-
-    # Empty PASS/soft-mask on this menu must still capture — that is the interesting failure.
-    off_pass = {
-        "kind": "run",
-        "factors": [
-            {"kind": "actor", "playerIndex": 1},
-            {"kind": "boardTarget", "boardIndex": _pitch(5, 6)},
-        ],
-    }
-    debug.maybe_record_action(
-        turn_number=1,
-        observation=obs,
-        legal_choice=off_pass,
-        expected_move=False,
-        policy_obs=policy_obs,
-        legal_moves=legal_moves,
-        passing_legal=[False, False],
-        soft_mask_legal=[False, False],
-        legal_row_meta=[off_pass, {"kind": "run"}],
-        chosen_factors=factors,
-    )
-    snap = debug.opening_mispick_snapshot()
-    assert snap is not None
-    assert snap["chosen_label"].startswith("run(5,5->5,6)")

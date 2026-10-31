@@ -13,7 +13,8 @@ from gymnasium import spaces
 from gridiron_ai.actions import pad_legal_moves
 from gridiron_ai.constants import (
     ACTIVE_CHALLENGE_SLOTS,
-    ACTOR_KIND_HEAD_SIZE,
+    ACTOR_HEAD_SIZE,
+    KIND_HEAD_SIZE,
     BENCH_SLOTS,
     BONUS_HAND_SLOTS,
     BOARD_SLOT_COUNT,
@@ -69,7 +70,7 @@ def dict_observation_space() -> spaces.Dict:
             ),
             OBS_KEY_LEGAL_MOVES: spaces.Box(
                 low=-1,
-                high=max(ACTOR_KIND_HEAD_SIZE, PITCH_SQUARE_COUNT) + 200,
+                high=max(ACTOR_HEAD_SIZE, KIND_HEAD_SIZE, PITCH_SQUARE_COUNT) + 200,
                 shape=(MAX_LEGAL_MOVES, FACTORS_PER_LEGAL_MOVE),
                 dtype=np.int64,
             ),

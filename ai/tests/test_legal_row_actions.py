@@ -10,7 +10,7 @@ from gridiron_ai.actions import (
     match_legal_row_index,
     resolve_legal_row_index,
 )
-from gridiron_ai.constants import LEGAL_ROW_SCORE_WIDTH, encode_actor_kind
+from gridiron_ai.constants import LEGAL_ROW_SCORE_WIDTH
 
 
 def test_legal_row_action_mask_enables_prefix() -> None:
@@ -22,8 +22,8 @@ def test_legal_row_action_mask_enables_prefix() -> None:
 
 def test_resolve_legal_row_index_returns_harness_id() -> None:
     moves = [
-        [encode_actor_kind(1, 0), 10, 3],
-        [encode_actor_kind(2, 1), 11, 3],
+        [1, 0, 10, 3],
+        [2, 1, 11, 3],
     ]
     rows = [
         {"kind": "run", "legalActionId": "a", "factors": []},
@@ -37,16 +37,16 @@ def test_resolve_legal_row_index_returns_harness_id() -> None:
 def test_match_legal_row_index_finds_factors() -> None:
     moves = np.asarray(
         [
-            [encode_actor_kind(1, 0), 10, 3],
-            [encode_actor_kind(2, 1), 11, 3],
+            [1, 0, 10, 3],
+            [2, 1, 11, 3],
         ],
         dtype=np.int64,
     )
-    assert match_legal_row_index([encode_actor_kind(2, 1), 11, 3], moves) == 1
+    assert match_legal_row_index([2, 1, 11, 3], moves) == 1
 
 
 def test_resolve_rejects_out_of_range_index() -> None:
-    moves = [[encode_actor_kind(1, 0), 10, 3]]
+    moves = [[1, 0, 10, 3]]
     rows = [{"kind": "run", "legalActionId": "a", "factors": []}]
     with pytest.raises(RuntimeError, match="out of range"):
         resolve_legal_row_index(1, legal_moves=moves, legal_rows=rows)

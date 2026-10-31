@@ -27,7 +27,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [ ] [AI2.6](#ai26--onnx-export--kotlin-compute-opponent) — ONNX + Kotlin opponent
 - [x] [AI2.7](#ai27--optional-reward-shaping-day-2) — Optional reward shaping (day 2)
 - [ ] [AI2.8](#ai28--evaluate-obs-enrichment-vs-truncated-legals) — Evaluate obs enrichment vs truncated legals
-- [ ] [AI2.9](#ai29--conditional-action-heads-follow-up) — Conditional action heads (follow-up)
+- [x] [AI2.9](#ai29--conditional-action-heads-follow-up) — Conditional action heads *(superseded by schema 16 legal-row join scores)*
 - [ ] [AI2.10](#ai210--legal-move-inputs--obs-dict-shape) — Legal move inputs & obs dict shape
 - [ ] [AI2.11](#ai211--action-sampling--factor-space-inventory) — Action sampling & factor-space inventory
 - [ ] [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) — Held dice / mid-check obs + scenarios **(prime)**
@@ -138,11 +138,20 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 | Field | Detail |
 |-------|--------|
+| **Status** | **Partial.** Schema-16 Kotlin path (`OnnxPolicySession.chooseRow` / obs+`legal_moves`→action index) landed; classpath artifacts are stale until re-export. |
 | **Goal** | Freeze obs + action schema version; export trained policy to ONNX; add Kotlin libraries to load it; implement `OpponentStrategy` that builds the same obs/mask, runs the model, submits the chosen legal action. Expose as a compute-opponent option alongside heuristic/lookahead. |
 | **Depends on** | AI2.3+ with a schema worth freezing; preferably AI2.4 so quality is measured. |
 | **Files** | Export script under `ai/`; ONNX artifact convention; `backend/.../opponent/` model-backed strategy; match create / coach control wiring. |
 | **Acceptance** | A match can seat the ONNX opponent; it only ever submits currently legal actions; smoke playthrough completes; version mismatch fails loudly. |
 | **Rulebook** | n/a |
+
+**After next ONNX regen (schema 16):**
+
+- [ ] Re-export every classpath profile (`export_opponent.sh`) from a schema-16 zip; drop any leftover schema-15 factor-logit `.onnx` / manifests under `backend/.../resources/ai-opponent/`.
+- [ ] Retrain or clone+continue so resume zips are `LegalRowActorCriticPolicy` (Discrete) — schema-15 MultiDiscrete zips will not load.
+- [ ] Smoke: match create with ONNX seat + vs-lookahead/heuristic eval; confirm `schemaVersion=16` in the ONNX manifest and hard-fail on mismatch still works.
+- [ ] Drop any temporary “broken until re-export” comments once artifacts are live ([`OnnxPolicySession`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/onnx/OnnxPolicySession.kt)); manifest output is ``action`` (masked-argmax row index).
+- [ ] Revisit [AI2.20](#ai220--remove-local-sb3-pickle-aliases) after new zips are saved under current module paths (no `conditional_policy` aliases).
 
 ---
 
@@ -184,16 +193,14 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 | Field | Detail |
 |-------|--------|
-| **Status** | **Partial.** Sequential **masking** landed (`ConditionalActorCriticPolicy`, actor→kind→target… via `CONDITIONAL_SAMPLE_ORDER`). Preference conditioning and factor-space cleanups → [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) ([AI2.11](#ai211--action-sampling--factor-space-inventory)). |
-| **Goal** | After **basic factored** training works ([AI2.2](#ai22--python-gym--sb3-self-play)), optionally sample heads from the typed [`AiFactor`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiFactor.kt) list after `kind` (Actor / BoardTarget / ChallengeSlot / …) instead of a fixed MultiDiscrete pad. Same DTO rows and id sidecar. Clear `# DEVIATION` from the v1 always-on flattened factors. |
-| **Depends on** | Measurable 4-factor baseline from AI2.2+. |
-| **Files** | `ai/` conditional policy / masking; Kotlin DTO unchanged if factors already correct. |
-| **Acceptance** | Conditional-head policy can play full games; ablation vs basic 4-factor on AI2.3 eval; 4-factor remains default until conditional wins clearly. |
+| **Status** | **Done / superseded (schema 16).** Factor MultiDiscrete remask + head-agreement diagnostics removed. Policy is `Discrete(MAX_LEGAL_MOVES)` join-score over packed legal rows (`LegalRowActorCriticPolicy`); ONNX emits the chosen row index. Soft-mask remains as a **row** logit bias. Packing widths + further representation work → [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) ([AI2.11](#ai211--action-sampling--factor-space-inventory)). |
+| **Goal** | *(was)* Sample dependent factor heads instead of independent MultiDiscrete. |
+| **Depends on** | — |
+| **Files** | `legal_row_policy.py`, `actions.py`, Kotlin `OnnxPolicySession` / ONNX export. |
+| **Acceptance** | Legal-row policy trains and evals; ONNX picks among live legal rows (after regen — [AI2.6](#ai26--onnx-export--kotlin-compute-opponent)). |
 | **Rulebook** | n/a |
 
-**Intent:** learning experience + possible sample-efficiency win — not a blocker for first training loops.
-
-**Landed vs not:** one forward → seven logits + remask after each pick (legality). Not sequential **conditioning** (next-head logits recomputed given prior picks). See [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md).
+**Why superseded:** Independent factor heads (even with remask / conditioning) could not express “best complete move.” Scoring the legal menu jointly is the honest fix.
 
 ---
 
@@ -202,8 +209,8 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 | Field | Detail |
 |-------|--------|
 | **Goal** | **Evaluate (not presuppose)** how much legal-move information the policy and value nets should see beyond conditional masking alone — and whether the Dict observation should split the monolithic game-state vector into logical sections now that `legal_moves` / `legal_move_count` already ride as separate keys. Decide *what* to add (cheap scalars, per-kind summaries, encoded legal rows, something else) and *where* it lives (concat to features, separate encoder branch, etc.). Keep the wire/DTO contract stable unless a split forces a version bump. |
-| **Depends on** | [AI2.9](#ai29--conditional-action-heads-follow-up) baseline (board-only features + conditional sampling); [AI2.3](#ai23--eval-vs-computer)+ to compare ablations. |
-| **Files** | `ai/gridiron_ai/obs.py`, `env.py`, `conditional_policy.py` (features extractor); optional Kotlin packer / `schemaVersion` only if dict keys or flat layout change. |
+| **Depends on** | Schema 16 legal-row baseline (board features + join-score action); [AI2.3](#ai23--eval-vs-computer)+ to compare ablations. |
+| **Files** | `ai/gridiron_ai/obs.py`, `env.py`, `legal_row_policy.py` / `features.py`; optional Kotlin packer / `schemaVersion` only if dict keys or flat layout change. |
 | **Acceptance** | Written decision + eval evidence: either “board-only + masking is enough” or a landed approach with ablation vs the baseline on the AI2.3 suite. If splitting game state, document the new Dict keys and whether the flat 2067 vector remains for ONNX/wire compat. |
 | **Rulebook** | n/a |
 
@@ -221,8 +228,8 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 | Field | Detail |
 |-------|--------|
 | **Goal** | Next steps to improve **action representation & sampling** (factor heads + how we pick them). Checklist lives in [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#inventory). |
-| **Depends on** | [AI2.9](#ai29--conditional-action-heads-follow-up) masking baseline in use. |
-| **Files** | Checklist + factor maps + uniqueness notes: **[`ACTION_SAMPLING.md`](ACTION_SAMPLING.md)**. Implementation touches `ai/gridiron_ai/actions.py`, `constants.py`, `conditional_policy.py`; Kotlin `AiFactor` / `AiLegalKind` / mapping as needed; `schemaVersion`. |
+| **Depends on** | Schema 16 legal-row join scores in use. |
+| **Files** | Checklist + factor maps + uniqueness notes: **[`ACTION_SAMPLING.md`](ACTION_SAMPLING.md)**. Implementation touches `ai/gridiron_ai/actions.py`, `constants.py`, `legal_row_policy.py`; Kotlin `AiFactor` / `AiLegalKind` / mapping as needed; `schemaVersion`. |
 | **Acceptance** | Inventory in `ACTION_SAMPLING.md` triaged (done / won’t do / deferred with reason); any Yes-do item either shipped or explicitly deferred; eval notes for conditioning/joint-head experiments. |
 | **Rulebook** | n/a |
 

@@ -18,7 +18,7 @@ Root [`BACKLOG.md`](../BACKLOG.md) defers AI2 work to the checklist.
 | Harness | Python under [`ai/`](.) — Stable-Baselines3 (Maskable PPO). |
 | API | Dedicated `/api/ai/...` — obs/actions for learning, not GUI DTOs. |
 | Obs wire | **Kotlin packs** (`AiObsPacker` / `…/step/packed`): `obs` float vector + legal matrix. Python **slices** into the gym Dict. Nested `…/step` for curl/tests only. Binary = [AI2.opt](BACKLOG.md#ai2opt--binary-observation-wire). |
-| Python processing | Thin on facts — no invented eligibility. Gym Dict: slice packed obs; extractor embeds enums + pitch coords; joint actor×kind head; pitch-only boardTarget. `schemaVersion` versions packing + gym + heads together. |
+| Python processing | Thin on facts — no invented eligibility. Gym Dict: slice packed obs; extractor embeds enums + pitch coords; policy join-scores packed legal rows. `schemaVersion` versions packing + gym + action together. |
 | Submit | Policy picks among legal rows via typed [`AiFactor`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiFactor.kt)s + `LegalActionId` sidecar. Conditional heads: [AI2.9](BACKLOG.md#ai29--conditional-action-heads-follow-up) / [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md). |
 | Reward | Harness: Δ score margin + terminal W/L/D from consecutive game-state / scoring delta. Profile shaping = [AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2). Phases: [TRAINING_ROADMAP.md](TRAINING_ROADMAP.md). |
 | Eval | Vs built-in computer (lookahead + heuristic) early in the cycle. |
@@ -39,9 +39,9 @@ SB3 needs a **fixed** action shape; the engine’s legal set changes every step.
 | Piece | Role |
 |-------|------|
 | Observation | Fixed gym Dict from packed `obs` (Python slices) |
-| Action heads | Schema-versioned MultiDiscrete factors ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md)) |
-| Mask | Server-aligned legality; soft preferred bias on `expectedScenarioMove` |
-| Submit | Factor tuple → `legalActionId` sidecar |
+| Action | `Discrete(MAX_LEGAL_MOVES)` row index; join-score over packed legal rows ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md)) |
+| Mask | Server-aligned legality; soft preferred bias on `expectedScenarioMove` rows |
+| Submit | Row index → `legalActionId` sidecar |
 
 Design rules that still bind the API: coordinates-first factors; omit unused questions (no sentinel pad); each pending follow-up is its **own** env step; flatten nested domain on the server ([`AiObsDto`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiGameStateDto.kt) / [`AiObsLayout`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiObsLayout.kt)). Field-level truth is KDoc on those types — not a parallel markdown table.
 

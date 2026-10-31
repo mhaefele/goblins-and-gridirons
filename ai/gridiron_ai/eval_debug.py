@@ -9,8 +9,6 @@ from __future__ import annotations
 import fcntl
 from typing import Any
 
-import numpy as np
-
 from gridiron_ai.constants import BOARD_SLOT_COUNT, PITCH_SQUARE_COUNT, PLAY_WIDTH
 from gridiron_ai.paths import SCENARIO_DRAWS_LOG_PATH
 from gridiron_ai.reward import get_absolute_ball_pitch_index
@@ -46,7 +44,6 @@ class ScenarioEvalDebug:
         self._first_action_legal_count: int | None = None
         self._expected_move_count: int = 0
         self._expected_moves: list[str] = []
-        self._opening_mispick_snapshot: dict[str, Any] | None = None
         self._available_cards: str | None = None
         self._satisfied_claims: list[str] = []
 
@@ -60,7 +57,6 @@ class ScenarioEvalDebug:
         self._first_action_legal_count = None
         self._expected_move_count = 0
         self._expected_moves = []
-        self._opening_mispick_snapshot = None
         self._available_cards = None
         self._satisfied_claims = []
 
@@ -103,26 +99,7 @@ class ScenarioEvalDebug:
         scored_touchdown: bool = False,
         expected_move: bool = False,
         acquired_card: bool = False,
-        policy_obs: dict[str, np.ndarray] | None = None,
-        legal_moves: np.ndarray | None = None,
-        passing_legal: list[bool] | None = None,
-        soft_mask_legal: list[bool] | None = None,
-        legal_row_meta: list[dict[str, Any]] | None = None,
-        chosen_factors: np.ndarray | None = None,
     ) -> None:
-        if policy_obs is not None and legal_moves is not None and passing_legal is not None and soft_mask_legal is not None:
-            self._capture_opening_mispick_if_needed(
-                turn_number=turn_number,
-                observation=observation,
-                policy_obs=policy_obs,
-                legal_moves=legal_moves,
-                passing_legal=passing_legal,
-                soft_mask_legal=soft_mask_legal,
-                legal_row_meta=legal_row_meta or [],
-                chosen_factors=chosen_factors,
-                legal_choice=legal_choice,
-                was_expected=expected_move,
-            )
         if self._start_turn is not None and turn_number == self._start_turn:
             action_label = self.format_action(
                 legal_choice,
@@ -197,9 +174,6 @@ class ScenarioEvalDebug:
         if self._expected_move_count:
             fields["expected_move_count"] = self._expected_move_count
             fields["expected_moves"] = list(self._expected_moves)
-        if self._opening_mispick_snapshot is not None:
-            fields["opening_mispick"] = True
-            fields["opening_mispick_chosen"] = self._opening_mispick_snapshot.get("chosen_label")
         return fields
 
     @staticmethod
@@ -244,15 +218,6 @@ class ScenarioEvalDebug:
         claimed = summary.get("scenario_satisfied_claims") or []
         line_claimed = f"\n{indent}claimed=" + " ".join(claimed) if claimed else ""
 
-        line5 = ""
-        policy_diag = summary.get("opening_mispick_diag")
-        if policy_diag:
-            from gridiron_ai.eval_opening_diag import format_opening_mispick_diag
-
-            line5 = format_opening_mispick_diag(policy_diag)
-        elif summary.get("opening_mispick"):
-            line5 = "\n            policy_diag=pending"
-
         parts: list[str] = []
         if line1_bits:
             parts.append(" " + " ".join(line1_bits))
@@ -266,8 +231,6 @@ class ScenarioEvalDebug:
             parts.append(f"\n{line4}")
         if line_claimed:
             parts.append(line_claimed)
-        if line5:
-            parts.append(line5)
         return "".join(parts)
 
     @staticmethod
@@ -331,48 +294,6 @@ class ScenarioEvalDebug:
             body = f"{body},{','.join(extras)}"
         return f"{tag}({body}){suffix}"
 
-    def _capture_opening_mispick_if_needed(
-        self,
-        *,
-        turn_number: int,
-        observation: dict[str, Any],
-        policy_obs: dict[str, np.ndarray],
-        legal_moves: np.ndarray,
-        passing_legal: list[bool],
-        soft_mask_legal: list[bool],
-        legal_row_meta: list[dict[str, Any]],
-        chosen_factors: np.ndarray | None,
-        legal_choice: dict[str, Any],
-        was_expected: bool,
-    ) -> None:
-        """First off-PASS player action on the opening coach turn.
-
-        Do not gate on opening ``expected_move_count`` (replace menus have none) or on
-        PASS/soft-mask rows for this decision (empty is the interesting failure). Skip
-        coach-only rows (no actor factor) so a challenge-menu click is not the mispick.
-        """
-        if self._start_turn is None or turn_number != self._start_turn:
-            return
-        if was_expected or self._opening_mispick_snapshot is not None or chosen_factors is None:
-            return
-        if not _has_actor(legal_choice):
-            return
-        from gridiron_ai.eval_opening_diag import snapshot_opening_mispick
-
-        self._opening_mispick_snapshot = snapshot_opening_mispick(
-            observation=observation,
-            policy_obs=policy_obs,
-            legal_moves=legal_moves,
-            passing_legal=passing_legal,
-            soft_mask_legal=soft_mask_legal,
-            legal_row_meta=legal_row_meta,
-            chosen_factors=chosen_factors,
-            chosen_label=self.format_action(legal_choice, observation=observation),
-        )
-
-    def opening_mispick_snapshot(self) -> dict[str, Any] | None:
-        return self._opening_mispick_snapshot
-
 
 def append_scenario_draw_log(block: str, *, path: Any | None = None) -> None:
     """Append one draw block to the shared log (fcntl lock — safe under SubprocVecEnv)."""
@@ -391,14 +312,6 @@ def _factor_challenge_slot(legal_choice: dict[str, Any]) -> int | None:
         if factor.get("kind") == "challengeSlot":
             return int(factor["slot"])
     return None
-
-
-def _has_actor(legal_choice: dict[str, Any]) -> bool:
-    """Player actions carry an actor factor. Coach-only rows (replace, decline, claim) do not."""
-    for factor in list(legal_choice.get("factors") or []) + list(legal_choice.get("sugarFactors") or []):
-        if factor.get("kind") == "actor":
-            return True
-    return False
 
 
 def _describe_satisfied_claim(legal_choice: dict[str, Any], *, action_label: str) -> str | None:

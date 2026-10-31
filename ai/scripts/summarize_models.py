@@ -20,11 +20,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from gridiron_ai.eval_head_agreement import (
-    HEAD_AGREEMENT_OK_RATE,
-    HEAD_AGREEMENT_WATCH_RATE,
-    format_head_agreement,
-)
 from gridiron_ai.paths import EVAL_DIR
 from gridiron_ai.reward import FULL_GAME_ONNX_OPPONENT_PROFILES, REWARD_PROFILES, SHAPED_PROFILES
 from scripts.train_self_play import (
@@ -300,16 +295,6 @@ def _num_delta(before: float, after: float, *, digits: int = 1) -> str:
     return f"{sign}{delta:.{digits}f}"
 
 
-def _head_agreement_text(stats: dict[str, Any] | None) -> str:
-    """Latest-eval head line, or an em dash when that artifact predates the counter."""
-    if not stats:
-        return "—"
-    raw = stats.get("head_agreement")
-    if not isinstance(raw, dict) or int(raw.get("decisions") or 0) <= 0:
-        return "—"
-    return format_head_agreement(raw)
-
-
 def _fmt_eval_block(label: str, stats: dict[str, Any]) -> list[str]:
     wins = int(stats["wins"])
     losses = int(stats["losses"])
@@ -321,7 +306,7 @@ def _fmt_eval_block(label: str, stats: dict[str, Any]) -> list[str]:
             steps_bit = f"  training_steps={int(raw_steps)}"
         except (TypeError, ValueError):
             pass
-    lines = [
+    return [
         f"  vs {label}:{steps_bit}",
         (
             f"    winrate={_pct(stats['winrate'])}  wins={wins} losses={losses} draws={draws}  "
@@ -344,10 +329,6 @@ def _fmt_eval_block(label: str, stats: dict[str, Any]) -> list[str]:
             f"turns={stats['turns']:.1f} total_actions={stats['total_actions']:.1f}"
         ),
     ]
-    head = _head_agreement_text(stats)
-    if head != "—":
-        lines.append(f"    {head}")
-    return lines
 
 
 def _fmt_trend(
@@ -785,16 +766,6 @@ def _legend() -> str:
             "  trend                  eval + train deltas over last N PPO training_steps",
             "  summary steps          checkpoint max PPO timesteps per profile tree",
             "  summary scenario_b     last baseline eval before profiles split (fixed at fork)",
-            "  heads                  action-head agreement on the latest full-game eval (— until the next eval)",
-            (
-                f"  heads levels           ok ≥ {HEAD_AGREEMENT_OK_RATE:.2f}, "
-                f"watch ≥ {HEAD_AGREEMENT_WATCH_RATE:.2f}, bad below — on played_tgt and joint"
-            ),
-            "  heads played_tgt       target head's favorite square still legal for the actor that was played",
-            "  heads joint            played row is the legal row with the highest sum of raw head logits",
-            "  heads ak_tgt           unmasked actor×kind and target favorites sit on one legal row (ungraded)",
-            "  heads triple           all three unmasked favorites are one legal row (ungraded; challenge head)",
-            "  heads sm               decisions that had a soft-mask row (0 on full games)",
             "",
         ]
     )
@@ -1227,29 +1198,6 @@ def _bottom_summary_rows(targets: list[TrainTarget]) -> list[tuple[str, ...]]:
     return rows
 
 
-def _fmt_heads_table(targets: list[TrainTarget]) -> str:
-    """Lookahead and heuristic columns — the matchups the head check is for."""
-    rows: list[tuple[str, ...]] = []
-    for target in targets:
-        eval_dir = target.eval_dir()
-        cells: list[str] = []
-        for prefix in ("eval_vs-lookahead_", "eval_vs-heuristic_"):
-            _path, stats = _latest_json(eval_dir, prefix)
-            cells.append(_head_agreement_text(stats))
-        rows.append((target.reward_profile, *cells))
-    if not rows:
-        return ""
-    return _fmt_padded_table(
-        (
-            "heads (latest full-game eval — "
-            f"ok ≥ {HEAD_AGREEMENT_OK_RATE:.2f}, watch ≥ {HEAD_AGREEMENT_WATCH_RATE:.2f}, bad below; "
-            "words are on played_tgt and joint)"
-        ),
-        ("profile", "lookahead", "heuristic"),
-        rows,
-    )
-
-
 def _fmt_profiles_bottom_summary(targets: list[TrainTarget]) -> str:
     rows = _bottom_summary_rows(targets)
     if not rows:
@@ -1273,9 +1221,8 @@ def _fmt_compact_board(
     sections.append(_fmt_model_config_table())
     train = _fmt_train_health_table(targets, trend_steps=trend_steps)
     summary = _fmt_profiles_bottom_summary(targets)
-    heads = _fmt_heads_table(targets)
     la_trend = _fmt_lookahead_trend(targets)
-    tables = "\n\n".join(part for part in (train, summary, heads, la_trend) if part)
+    tables = "\n\n".join(part for part in (train, summary, la_trend) if part)
     if tables:
         sections.append(tables)
     return "\n\n".join(section for section in sections if section)

@@ -1,12 +1,12 @@
-"""Packed legal rows ↔ policy action (row index) + factor helpers.
+"""Packed legal rows ↔ policy action (row index).
 
-Owner: pad / resolve row index / preferred-row bias helpers. Server packs rows
-(``AiLegalPacker``); sampling: join-score over this step's legal menu
-(``legal_row_policy``). See ``ACTION_SAMPLING.md`` / ``ai/OWNERSHIP.md``.
+Owner: pad / resolve row index. Server packs rows (``AiLegalPacker``); sampling is
+join-score over this step's legal menu (``legal_row_policy``). See
+``ACTION_SAMPLING.md`` / ``ai/OWNERSHIP.md``.
 
 Schema 16+: gym action is ``Discrete(MAX_LEGAL_MOVES)`` — an index into
-``legal_moves[:legal_move_count]``. Each packed row is still
-actorKind, boardTarget, challengeSlot.
+``legal_moves[:legal_move_count]``. Each packed row is
+actor, kind, boardTarget, challengeSlot (Kotlin ``AiLegalPacker``).
 """
 
 from __future__ import annotations
@@ -17,20 +17,14 @@ import numpy as np
 
 from gridiron_ai.constants import ACTION_HEAD_SIZES, LEGAL_ROW_SCORE_WIDTH, MAX_LEGAL_MOVES
 
-# Canonical index in the factor tuple.
-FACTOR_ACTOR_KIND = 0
-FACTOR_BOARD_TARGET = 1
-FACTOR_CHALLENGE_SLOT = 2
+# Canonical index in the factor tuple packed on each legal row.
+FACTOR_ACTOR = 0
+FACTOR_KIND = 1
+FACTOR_BOARD_TARGET = 2
+FACTOR_CHALLENGE_SLOT = 3
 
-# Conditional pick order = canonical (joint actor×kind first).
-CONDITIONAL_SAMPLE_ORDER: tuple[int, ...] = (
-    FACTOR_ACTOR_KIND,
-    FACTOR_BOARD_TARGET,
-    FACTOR_CHALLENGE_SLOT,
-)
-
-# One legal move: three ints in canonical slot order.
-EncodedLegalMove: TypeAlias = tuple[int, int, int]
+# One legal move: four ints in canonical slot order.
+EncodedLegalMove: TypeAlias = tuple[int, int, int, int]
 
 # Legal moves this step — shape (n, 3), dtype int64 (from packed HTTP / expert).
 EncodedLegalMoves: TypeAlias = np.ndarray
@@ -86,57 +80,6 @@ def pad_legal_moves(legal_moves: EncodedLegalMoves) -> tuple[PaddedLegalMoves, i
     if legal_move_count:
         padded_legal_moves[:legal_move_count] = legal_moves
     return padded_legal_moves, legal_move_count
-
-
-def conditional_factor_mask(
-    legal_moves: EncodedLegalMoves | PaddedLegalMoves,
-    *,
-    legal_move_count: int,
-    chosen_factors: dict[int, int],
-    factor_slot: int,
-) -> np.ndarray:
-    """Which values on ``factor_slot`` are still legal given ``chosen_factors`` so far?
-
-    ``legal_moves[:legal_move_count]`` — encoded legal moves (see ``EncodedLegalMove``).
-    """
-    slot_size = ACTION_HEAD_SIZES[factor_slot]
-    mask = np.zeros(slot_size, dtype=np.bool_)
-    still_legal = legal_moves[:legal_move_count]
-    for slot, value in chosen_factors.items():
-        still_legal = still_legal[still_legal[:, slot] == value]
-    if still_legal.size == 0:
-        return mask
-    for value in np.unique(still_legal[:, factor_slot]):
-        if 0 <= int(value) < slot_size:
-            mask[int(value)] = True
-    return mask
-
-
-def preferred_factor_values(
-    legal_moves: EncodedLegalMoves | PaddedLegalMoves,
-    soft_mask_legal: np.ndarray,
-    *,
-    legal_move_count: int,
-    chosen_factors: dict[int, int],
-    factor_slot: int,
-) -> np.ndarray:
-    """Factor values on this axis that still appear on soft-mask (``softMaskScenarioMove``) rows.
-
-    Empty when no soft-mask rows remain among the still-legal set — caller skips soft bias.
-    """
-    still_legal = legal_moves[:legal_move_count]
-    soft_mask = soft_mask_legal[:legal_move_count].astype(bool)
-    if still_legal.size == 0 or not np.any(soft_mask):
-        return np.empty(0, dtype=np.int64)
-    for slot, value in chosen_factors.items():
-        keep = still_legal[:, slot] == value
-        still_legal = still_legal[keep]
-        soft_mask = soft_mask[keep]
-    if still_legal.size == 0 or not np.any(soft_mask):
-        return np.empty(0, dtype=np.int64)
-    values = np.unique(still_legal[soft_mask, factor_slot])
-    slot_size = ACTION_HEAD_SIZES[factor_slot]
-    return values[(values >= 0) & (values < slot_size)].astype(np.int64)
 
 
 def match_legal_row_index(
@@ -197,17 +140,3 @@ def resolve_legal_row_index(
         "potentialChallengeClaims": list(row.get("potentialChallengeClaims") or []),
     }
     return ResolvedAction(str(row["legalActionId"]), kind_name, legal_choice)
-
-
-def resolve_packed_action(
-    sampled_factors: np.ndarray | list[int] | tuple[int, ...],
-    *,
-    legal_moves: np.ndarray | list[list[int]],
-    legal_rows: list[dict[str, Any]],
-) -> ResolvedAction:
-    """Map factor integers → legalActionId (expert / diagnostics). Prefer ``resolve_legal_row_index`` for play."""
-    return resolve_legal_row_index(
-        match_legal_row_index(sampled_factors, legal_moves),
-        legal_moves=legal_moves,
-        legal_rows=legal_rows,
-    )
