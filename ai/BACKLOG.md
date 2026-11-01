@@ -38,7 +38,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [ ] [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) — Blind-spot remediation (from arena diagnostics)
 - [ ] [AI2.opt](#ai2opt--binary-observation-wire) — Binary observation wire (optimization)
 - [ ] [AI2.18](#ai218--one-bonus-play-action-kind-retrain) — One bonus-play action kind *(retrain; bundle with the next layout change)*
-- [ ] [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) — Fold AI action vocabulary into engine *(investigate; not next)*
+- [ ] [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) — Shared wire kind on `LegalAction` DTOs *(investigate; not next)*
 - [ ] [AI2.20](#ai220--remove-local-sb3-pickle-aliases) — Remove local SB3 pickle-alias shim *(after resume zips re-saved)*
 
 ---
@@ -429,14 +429,14 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 ---
 
-## AI2.19 — Fold AI action vocabulary (investigate)
+## AI2.19 — Shared wire kind on LegalAction DTOs (investigate)
 
 | Field | Detail |
 |-------|--------|
-| **Status** | **Open — optimize / investigate, not a next step.** Moved from root Quick TODO. |
-| **Problem** | Schema 9’s learning contract is intentionally an **AI mapping layer** ([`AiLegalChoiceMapping`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/mapping/AiLegalChoiceMapping.kt) / [`AiLegalKind`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiLegalKind.kt)): domain [`LegalAction`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) + GUI wire kinds / `LegalActionId`s stay as-is. Inventory: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md). |
-| **Goal** | Write-up that decides **per item**: engine `LegalAction` reshape vs keep dual vocabulary; GUI impact; id / submit-by-id; whether `ActionType` collapses stay. **Candidates to pull into engine (or shared wire):** coarse `declineOffer` (Skip / DeclineBonus / ContinueBlock / keep-reroll); single `reroll` vs keep instead of `Choose*Reroll(reroll: Boolean)`; one Do-Over adjust kind (pending already scopes throw/block/armour); free-vs-sugar factor story if GUI ever stops needing sugar on the id; hide/omit cancel-TT after select (force landing). **Keep AI-only unless product wants:** MultiDiscrete pads, `sugarFactors` sidecar, AI legal-set filters (e.g. drop DeclineBonus when OS/EP keep is already offered). Do not blindly unify — mapping is tidy for a reason. Pairs with [AI2.18](#ai218--one-bonus-play-action-kind-retrain). |
-| **Acceptance** | Decision doc (or `ACTION_SAMPLING.md` section) with per-candidate keep/fold; no drive-by unify without a schema-bump plan. |
+| **Status** | **Open — optimize / investigate, not a next step.** Moved from root Quick TODO. Pointer on [`AiLegalKind`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiLegalKind.kt). |
+| **Problem** | [`AiLegalKind`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiLegalKind.kt) is still an **AI-only** catalog mapped from [`LegalAction`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) ([`AiLegalChoiceMapper`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/mapping/AiLegalChoiceMapper.kt)). GUI wire uses Jackson subtype names / [`ActionType`](../backend/src/main/kotlin/com/mhaefele/gridiron/shared/ActionType.kt) collapses separately. Schema 16 unmerged most AI coarsenings. Loud leftover: [`ChooseBlockReroll`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) / `ChooseThrowReroll` pack **two choices in one subtype** via `reroll: Boolean` — the only mapper arms that branch on a field (`reroll` vs `keepOffer`). Inventory: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md). |
+| **Goal** | Promote the catalog to a **non-`Ai*` wire kind** on `LegalAction` DTOs (GUI + AI same enum / ordinals). Prefer **splitting** keep vs reroll into distinct subtypes (or drop the boolean) so kind mapping stays 1:1. Also decide vs `ActionType` collapses / Do-Over / bonus-play identity ([AI2.18](#ai218--one-bonus-play-action-kind-retrain)). Then delete the AI-only mirror + mapper arms. **Keep AI-only unless product wants:** MultiDiscrete pads, `sugarFactors`, soft-mask filters. |
+| **Acceptance** | Decision (or `ACTION_SAMPLING.md` section) + schema-bump plan before unify; no drive-by rename-only. |
 | **Rulebook** | n/a |
 
 ---

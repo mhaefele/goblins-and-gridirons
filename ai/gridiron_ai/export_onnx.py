@@ -42,6 +42,7 @@ from gridiron_ai.constants import (
     SCALAR_COUNT,
     SCHEMA_VERSION,
 )
+from gridiron_ai.features import GridironFeaturesExtractor
 from gridiron_ai.paths import AI_ROOT, OUTPUT_DIR
 
 # Backend classpath: ``resources/ai-opponent/{profile}/`` (Maven resources).
@@ -74,12 +75,13 @@ class PackedObsAndLegalsToAction(nn.Module):
 
     def __init__(self, policy: nn.Module) -> None:
         super().__init__()
+        if not isinstance(policy.features_extractor, GridironFeaturesExtractor):
+            raise TypeError(
+                "ONNX export requires GridironFeaturesExtractor "
+                f"(got {type(policy.features_extractor)})"
+            )
         self.features_extractor = policy.features_extractor
         self.mlp_extractor = policy.mlp_extractor
-        self.actor_emb = policy.actor_emb
-        self.kind_emb = policy.kind_emb
-        self.target_emb = policy.target_emb
-        self.challenge_emb = policy.challenge_emb
         self.row_scorer = policy.row_scorer
 
     def forward(self, packed_obs: th.Tensor, legal_moves: th.Tensor) -> th.Tensor:
@@ -88,16 +90,7 @@ class PackedObsAndLegalsToAction(nn.Module):
         obs = _slice_packed_obs(packed_obs)
         features = self.features_extractor(obs)
         latent_pi, _latent_vf = self.mlp_extractor(features)
-        clamped = legal_moves.long().clamp(min=0)
-        row_emb = th.cat(
-            [
-                self.actor_emb(clamped[..., 0]),
-                self.kind_emb(clamped[..., 1]),
-                self.target_emb(clamped[..., 2]),
-                self.challenge_emb(clamped[..., 3]),
-            ],
-            dim=-1,
-        )
+        row_emb = self.features_extractor.encode_legal_rows(legal_moves, obs[OBS_KEY_CHALLENGES])
         batch, n_rows, _ = row_emb.shape
         lat = latent_pi.unsqueeze(1).expand(batch, n_rows, -1)
         scores = self.row_scorer(th.cat([lat, row_emb], dim=-1)).squeeze(-1)

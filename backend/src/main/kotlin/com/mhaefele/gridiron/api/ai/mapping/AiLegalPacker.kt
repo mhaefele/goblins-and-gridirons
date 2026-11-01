@@ -6,7 +6,9 @@ import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 import org.springframework.stereotype.Component
 
 /**
- * Policy factor matrix from harness legal rows — matches Python gym ``legal_moves`` / [harnessFactorKey].
+ * Policy legal-row int matrix from harness rows — matches Python gym ``legal_moves``.
+ *
+ * Columns: actor, kind, boardTarget, challengeSlot, attachedBonus, face0, face1, face2.
  */
 @Component
 class AiLegalPacker {
@@ -18,15 +20,32 @@ class AiLegalPacker {
             var actor = AiObsLayout.UNUSED_PLAYER_INDEX
             var boardTarget = AiObsLayout.PITCH_SQUARE_COUNT
             var challengeSlot = AiObsLayout.ACTIVE_CHALLENGE_SLOTS
-            for (factor in choice.factors) {
+            var attachedBonus = AiObsLayout.ATTACHED_BONUS_UNUSED
+            val faces = IntArray(AiObsLayout.MAX_HELD_BLOCK_FACES) { AiObsLayout.BLOCK_FACE_PACK_UNUSED }
+            for (factor in choice.factors + choice.sugarFactors) {
                 when (factor) {
                     is AiFactor.Actor         -> actor = factor.playerIndex
                     is AiFactor.BoardTarget   -> boardTarget = factor.boardIndex
                     is AiFactor.ChallengeSlot -> challengeSlot = factor.slot
-                    is AiFactor.AttachedBonus -> error("AttachedBonus is sugar — must not appear in free factors")
+                    is AiFactor.AttachedBonus -> attachedBonus = factor.index
+                    is AiFactor.FaceOrder     -> {
+                        require(factor.faces.size <= AiObsLayout.MAX_HELD_BLOCK_FACES) { "FaceOrder length ${factor.faces.size} > ${AiObsLayout.MAX_HELD_BLOCK_FACES}" }
+                        for (i in factor.faces.indices) {
+                            faces[i] = factor.faces[i]
+                        }
+                    }
                 }
             }
-            return listOf(actor, choice.kindIndex, boardTarget, challengeSlot)
+            return listOf(
+                actor,
+                choice.kindIndex,
+                boardTarget,
+                challengeSlot,
+                attachedBonus,
+                faces[0],
+                faces[1],
+                faces[2],
+            )
         }
     }
 }

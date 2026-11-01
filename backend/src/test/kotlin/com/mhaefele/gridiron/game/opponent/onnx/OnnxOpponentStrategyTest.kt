@@ -25,7 +25,7 @@ class OnnxOpponentStrategyTest : BaseApiTest() {
 
     @Test
     fun `chooseAction returns a legal action from the packed set`() {
-        assumeTrue(policy.artifactsPresent(OnnxPolicySession.DEFAULT_PROFILE)) { "run ai/export_opponent.sh to populate classpath:ai-opponent/${OnnxPolicySession.DEFAULT_PROFILE.id}/" }
+        assumeTrue(policy.isSeatable(OnnxPolicySession.DEFAULT_PROFILE)) { "run ai/export_opponent.sh (compatible schema) for classpath:ai-opponent/${OnnxPolicySession.DEFAULT_PROFILE.id}/" }
 
         val scenario = GameScenario.board()
         scenario.addPlayer(Coordinate(5, 6), profile = TestProfiles.withMove(4))

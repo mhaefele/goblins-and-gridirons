@@ -75,7 +75,7 @@ class ComputerCoachApiTest : BaseApiTest() {
 
     @Test
     fun `create accepts onnx computerOpponent without changing seats`() {
-        org.junit.jupiter.api.Assumptions.assumeTrue(onnxPolicy.artifactsPresent(OnnxPolicySession.DEFAULT_PROFILE)) { "run ai/export_opponent.sh to populate classpath:ai-opponent/${OnnxPolicySession.DEFAULT_PROFILE.id}/" }
+        org.junit.jupiter.api.Assumptions.assumeTrue(onnxPolicy.isSeatable(OnnxPolicySession.DEFAULT_PROFILE)) { "run ai/export_opponent.sh (compatible schema) for classpath:ai-opponent/${OnnxPolicySession.DEFAULT_PROFILE.id}/" }
         dice.usePassThrough()
         val match = api.createAndStartMatch(
             api.defaultCreateMatchRequest().copy(

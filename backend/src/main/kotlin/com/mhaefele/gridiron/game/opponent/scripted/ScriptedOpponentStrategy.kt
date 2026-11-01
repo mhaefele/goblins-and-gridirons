@@ -14,6 +14,7 @@ import com.mhaefele.gridiron.api.dto.response.BallEncounter
 import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.game.action.utils.isAssistedBlock
 import com.mhaefele.gridiron.game.action.utils.neighbors
+import com.mhaefele.gridiron.game.dice.dto.bestEnforcerOrder
 import com.mhaefele.gridiron.game.opponent.OpponentStrategy
 import com.mhaefele.gridiron.game.opponent.lookahead.ChallengePursuit
 import org.springframework.stereotype.Component
@@ -45,6 +46,12 @@ class ScriptedOpponentStrategy : OpponentStrategy {
         ChallengePursuit.pickClaimChallenge(legal)?.let { return it }
         ChallengePursuit.pickReplaceChallenge(legal)?.let { return it }
         ChallengePursuit.pickHeldCheckReroll(state, legal)?.let { return it }
+        legal.filterIsInstance<LegalAction.ChooseBlockFaceOrder>().let { orders ->
+            if (orders.isNotEmpty()) {
+                val preferred = bestEnforcerOrder(orders.first().orderedFaces)
+                return orders.firstOrNull { it.orderedFaces == preferred } ?: orders.first()
+            }
+        }
 
         // Throw Team-mate two-step: prefer landing (not cancel); prefer selecting a teammate with the ball.
         legal.filterIsInstance<LegalAction.ThrowTeammate>().maxByOrNull { action ->

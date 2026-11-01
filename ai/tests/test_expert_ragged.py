@@ -40,9 +40,9 @@ def _record(legal_rows: list[list[int]], *, preferred: list[bool] | None = None)
 
 
 def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
-    row_a = [1, 0, 10, 3]
-    row_b = [2, 1, 11, 3]
-    row_c = [1, 2, 12, 4]
+    row_a = [1, 0, 10, 3, 5, 0, 0, 0]
+    row_b = [2, 1, 11, 3, 5, 0, 0, 0]
+    row_c = [1, 2, 12, 4, 5, 0, 0, 0]
     jsonl = tmp_path / "tiny.jsonl"
     lines = [
         _record([row_a, row_b], preferred=[True, False]),
@@ -65,6 +65,6 @@ def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
     assert obs[OBS_KEY_SOFT_MASK_LEGAL].shape == (2, MAX_LEGAL_MOVES)
     assert obs[OBS_KEY_LEGAL_MOVE_COUNT].tolist() == [[2], [1]]
     np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][0, :2], [row_a, row_b])
-    np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][0, 2], [-1, -1, -1, -1])
+    np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][0, 2], [-1] * FACTORS_PER_LEGAL_MOVE)
     np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][1, :1], [row_c])
     assert obs[OBS_KEY_SOFT_MASK_LEGAL][0, 0] == 1

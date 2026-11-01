@@ -1,7 +1,8 @@
-"""Game-state feature extractor for LegalRowActorCriticPolicy.
+"""Game-state + legal-row feature encoding for LegalRowActorCriticPolicy.
 
-Owner: gym Dict → embedding/MLP vector for the board trunk. Legal rows are scored
-in the policy (joined to this vector), not embedded here. See ``ai/OWNERSHIP.md``.
+Owner: gym Dict → embedding/MLP board trunk; same emb/coord style for each legal
+row (actor / kind / target xy / challenge condition). Policy join-scores
+board latent ⊕ row features. See ``ai/OWNERSHIP.md``.
 
 # DEVIATION: stock CombinedExtractor would Flatten each Dict Box. We embed enums,
 add pitch (x, y, dist-to-ball), keep benches as a table, then Linear-project.
@@ -20,10 +21,14 @@ from gridiron_ai.constants import (
     AI_HELD_CHECK_KIND_VOCAB,
     AI_TEAM_REL_VOCAB,
     AI_TERRAIN_VOCAB,
+    ATTACHED_BONUS_UNUSED,
     BENCH_SLOTS,
     BLOCK_DIE_FACE_VOCAB,
+    BLOCK_FACE_PACK_SIZE,
+    BLOCK_FACE_PACK_UNUSED,
     BONUS_HAND_SLOTS,
     BONUS_PLAY_VOCAB,
+    KIND_HEAD_SIZE,
     CELL_CH_ABILITY,
     CELL_CH_ARMOUR,
     CELL_CH_BLOCK_DICE,
@@ -67,14 +72,23 @@ from gridiron_ai.constants import (
     TURN_PHASE_VOCAB,
 )
 
-# Small shared width for every enum / player-index embedding.
-_EMBED_DIM = 8
+# Small shared width for every enum / player-index embedding (board + legal rows).
+EMBED_DIM = 8
 # Occupant block: terrain + playerIndex + team + status + ability + 16 scalars (stats/affordances/reach).
-_OCCUPANT_WIDTH = 5 * _EMBED_DIM + 16
+_OCCUPANT_WIDTH = 5 * EMBED_DIM + 16
 # Pitch extras: x_norm, y_norm, chebyshev-to-ball / max(H,W).
 _PITCH_EXTRA = 3
 # heldCheck: kind emb + d6/6 + 3 face embs.
-_HELD_CHECK_WIDTH = _EMBED_DIM + 1 + MAX_HELD_BLOCK_FACES * _EMBED_DIM
+_HELD_CHECK_WIDTH = EMBED_DIM + 1 + MAX_HELD_BLOCK_FACES * EMBED_DIM
+# Legal row: actor + kind + (x,y,has_tgt) + (challenge cond+pts) + attachedBonus + 3 face embs.
+LEGAL_ROW_FEATURE_DIM = (
+    EMBED_DIM  # actor
+    + EMBED_DIM  # kind
+    + 3  # target xy + gate
+    + (EMBED_DIM + 1)  # challenge condition + points
+    + EMBED_DIM  # attached bonus
+    + MAX_HELD_BLOCK_FACES * EMBED_DIM  # face0..2
+)
 _PROJECTED_FEATURES = 256
 
 
@@ -82,10 +96,10 @@ def _concat_width() -> int:
     """Flattened size before the projection Linear — keep in sync with forward()."""
     pitch = PITCH_SQUARE_COUNT * (_OCCUPANT_WIDTH + _PITCH_EXTRA)
     benches = 2 * BENCH_SLOTS * _OCCUPANT_WIDTH
-    scalars = _EMBED_DIM + (SCALAR_COUNT - 1)  # phase embedded, other scalars raw
-    challenges = ACTIVE_CHALLENGE_SLOTS * (_EMBED_DIM + 1)
-    deck = _EMBED_DIM + 2
-    hand = BONUS_HAND_SLOTS * _EMBED_DIM
+    scalars = EMBED_DIM + (SCALAR_COUNT - 1)  # phase embedded, other scalars raw
+    challenges = ACTIVE_CHALLENGE_SLOTS * (EMBED_DIM + 1)
+    deck = EMBED_DIM + 2
+    hand = BONUS_HAND_SLOTS * EMBED_DIM
     return pitch + benches + scalars + challenges + deck + hand + _HELD_CHECK_WIDTH
 
 
@@ -94,16 +108,19 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
 
     def __init__(self, observation_space: spaces.Dict, features_dim: int = _PROJECTED_FEATURES) -> None:
         super().__init__(observation_space, features_dim=features_dim)
-        self.phase_emb = nn.Embedding(TURN_PHASE_VOCAB, _EMBED_DIM)
-        self.terrain_emb = nn.Embedding(AI_TERRAIN_VOCAB, _EMBED_DIM)
-        self.player_index_emb = nn.Embedding(PLAYER_INDEX_VOCAB, _EMBED_DIM)
-        self.team_emb = nn.Embedding(AI_TEAM_REL_VOCAB, _EMBED_DIM)
-        self.status_emb = nn.Embedding(PLAYER_STATUS_VOCAB, _EMBED_DIM)
-        self.ability_emb = nn.Embedding(PLAYER_ABILITY_VOCAB, _EMBED_DIM)
-        self.challenge_emb = nn.Embedding(CHALLENGE_CONDITION_VOCAB, _EMBED_DIM)
-        self.bonus_emb = nn.Embedding(BONUS_PLAY_VOCAB, _EMBED_DIM)
-        self.held_kind_emb = nn.Embedding(AI_HELD_CHECK_KIND_VOCAB, _EMBED_DIM)
-        self.block_face_emb = nn.Embedding(BLOCK_DIE_FACE_VOCAB, _EMBED_DIM)
+        self.phase_emb = nn.Embedding(TURN_PHASE_VOCAB, EMBED_DIM)
+        self.terrain_emb = nn.Embedding(AI_TERRAIN_VOCAB, EMBED_DIM)
+        self.player_index_emb = nn.Embedding(PLAYER_INDEX_VOCAB, EMBED_DIM)
+        self.team_emb = nn.Embedding(AI_TEAM_REL_VOCAB, EMBED_DIM)
+        self.status_emb = nn.Embedding(PLAYER_STATUS_VOCAB, EMBED_DIM)
+        self.ability_emb = nn.Embedding(PLAYER_ABILITY_VOCAB, EMBED_DIM)
+        self.challenge_emb = nn.Embedding(CHALLENGE_CONDITION_VOCAB, EMBED_DIM)
+        self.bonus_emb = nn.Embedding(BONUS_PLAY_VOCAB, EMBED_DIM)
+        self.held_kind_emb = nn.Embedding(AI_HELD_CHECK_KIND_VOCAB, EMBED_DIM)
+        self.block_face_emb = nn.Embedding(BLOCK_DIE_FACE_VOCAB, EMBED_DIM)
+        # Action-menu kind / attached-bonus index — same emb width as board enums.
+        self.kind_emb = nn.Embedding(KIND_HEAD_SIZE, EMBED_DIM)
+        self.attached_bonus_emb = nn.Embedding(ATTACHED_BONUS_UNUSED + 1, EMBED_DIM)
 
         # Pitch (row, col) in 0..H-1 / 0..W-1 — buffers move with .to(device).
         # clone(): expand() aliases memory; SB3 load_state_dict cannot copy into that view.
@@ -129,6 +146,51 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
             self._encode_benches(observations[OBS_KEY_BENCHES].float()),
         ]
         return self.proj_act(self.proj(th.cat(pieces, dim=1)))
+
+    def encode_legal_rows(self, legal_moves: th.Tensor, challenges: th.Tensor) -> th.Tensor:
+        """Encode each legal-row int tuple like board channels — shared embs + pitch xy.
+
+        ``legal_moves``: (N, R, 8) actor, kind, boardTarget, challengeSlot, attachedBonus,
+        face0..2 (−1 pad rows). ``challenges``: (N, 3, 2) board challenge slots.
+        Unused axes → zeros (no pad-id embedding).
+        """
+        actors = legal_moves[..., 0].long()
+        kinds = legal_moves[..., 1].long()
+        targets = legal_moves[..., 2].long()
+        slots = legal_moves[..., 3].long()
+        bonuses = legal_moves[..., 4].long()
+        faces = legal_moves[..., 5:8].long()
+
+        actor_e = self.player_index_emb(self._enum_index(actors.clamp(min=0).float(), PLAYER_INDEX_VOCAB))
+        kind_e = self.kind_emb(kinds.clamp(min=0, max=KIND_HEAD_SIZE - 1))
+
+        has_target = (targets >= 0) & (targets < PITCH_SQUARE_COUNT)
+        safe_t = targets.clamp(0, PITCH_SQUARE_COUNT - 1)
+        y_norm = (safe_t // PLAY_WIDTH).float() / float(PLAY_HEIGHT - 1)
+        x_norm = (safe_t % PLAY_WIDTH).float() / float(PLAY_WIDTH - 1)
+        gate_t = has_target.to(dtype=x_norm.dtype)
+        target_feat = th.stack([x_norm * gate_t, y_norm * gate_t, gate_t], dim=-1)
+
+        has_challenge = (slots >= 0) & (slots < ACTIVE_CHALLENGE_SLOTS)
+        safe_s = slots.clamp(0, ACTIVE_CHALLENGE_SLOTS - 1)
+        slot_idx = safe_s.unsqueeze(-1).expand(-1, -1, 2)
+        gathered = th.gather(challenges, 1, slot_idx)
+        cond_e = self.challenge_emb(self._enum_index(gathered[..., 0], CHALLENGE_CONDITION_VOCAB))
+        points = gathered[..., 1:2]
+        gate_c = has_challenge.to(dtype=cond_e.dtype).unsqueeze(-1)
+        challenge_feat = th.cat([cond_e, points], dim=-1) * gate_c
+
+        has_bonus = (bonuses >= 0) & (bonuses < ATTACHED_BONUS_UNUSED)
+        bonus_e = self.attached_bonus_emb(bonuses.clamp(min=0, max=ATTACHED_BONUS_UNUSED))
+        bonus_feat = bonus_e * has_bonus.to(dtype=bonus_e.dtype).unsqueeze(-1)
+
+        # Face pack codes: 0 unused; 1..5 → block_face_emb rows (same vocab as held-check faces).
+        has_face = (faces > BLOCK_FACE_PACK_UNUSED) & (faces < BLOCK_FACE_PACK_SIZE)
+        face_codes = faces.clamp(min=0, max=BLOCK_DIE_FACE_VOCAB - 1)
+        face_e = self.block_face_emb(face_codes) * has_face.to(dtype=bonus_e.dtype).unsqueeze(-1)
+        face_feat = face_e.flatten(-2, -1)
+
+        return th.cat([actor_e, kind_e, target_feat, challenge_feat, bonus_feat, face_feat], dim=-1)
 
     def _encode_scalars(self, scalars: th.Tensor) -> th.Tensor:
         """scalars: (N, 17). Embed phase; keep the other 16 as numbers."""

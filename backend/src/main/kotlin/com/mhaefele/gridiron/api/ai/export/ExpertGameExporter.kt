@@ -34,17 +34,19 @@ import java.util.concurrent.atomic.AtomicInteger
  * Uses the Spring [LookaheadOpponentStrategy] / [ScriptedOpponentStrategy] singletons — same beans as
  * the computer coach. Search already allocates a fresh scripted roller per `evaluate()`,
  * so concurrent games do not share dice queues. Both seats are [CoachControl.HARNESS] (external
- * chooser — no in-process agent, Enforcer auto-sorts) so Lookahead never parks on
- * `HANDLE_ENFORCER_ORDER` and uses the 100ms AI-vs-AI think budget.
+ * chooser — no in-process agent). Lookahead / scripted settle Enforcer face-order when offered;
+ * think budget is the 100ms AI-vs-AI seat limit.
  *
  * Expert schedule repeats in blocks: [SCENARIO_PASSES_PER_BLOCK] passes of every [TrainingScenarioEnum]
  * at each difficulty 0–5, then [REGULAR_GAMES_PER_BLOCK] regular kickoff games. Each scenario type
  * gets the same drill count per block. Scale `--games` with [exportGamesPreservingLegacyBoardCoverage]
  * when the enum grows so board-drill totals match a pre-claim dump.
  * Scenario games truncate after [scenarioCoachTurnWindow] coach turns (same window as PPO training).
- * Scenario slots retry until Lookahead grades [TrainingDrillStatus.PASS] ([MAX_SCENARIO_PLAY_ATTEMPTS]
- * play attempts per scheduled game); non-PASS lines are never written. Export fails at the end if any
- * slot exhausts retries (strict). Chosen actions are always real Lookahead picks — expert advice.
+ * Slots with [AbstractTrainingScenario.lookaheadSolveEval] true retry until Lookahead grades
+ * [TrainingDrillStatus.PASS] ([MAX_SCENARIO_PLAY_ATTEMPTS] attempts); exhausting retries fails the export.
+ * Exposure-only slots (`lookaheadSolveEval=false`) write one Lookahead play regardless of drill grade
+ * — same contract as [com.mhaefele.gridiron.integration.TrainingScenarioLookaheadTest].
+ * Chosen actions are always real Lookahead picks — expert advice.
  * When Lookahead disagrees with a scenario's expected move, fix the scenario (usually wrong), not the label.
  */
 @Component
@@ -74,6 +76,7 @@ class ExpertGameExporter(
         val failures = ConcurrentLinkedQueue<Pair<Int, String>>()
         val writeLock = Any()
         val pool = Executors.newFixedThreadPool(request.threads.coerceAtMost(request.games))
+        val startedNanos = System.nanoTime()
         log.info("expert-export games={} threads={} home={} away={} block={}×({}scenario×{}diff)+{} regular out={}", request.games, request.threads, request.homeKind, request.awayKind, SCENARIO_PASSES_PER_BLOCK, TrainingScenarioEnum.entries.size, DIFFICULTY_LEVELS, REGULAR_GAMES_PER_BLOCK, request.out.toAbsolutePath())
         recorder.openWriter(request).use { out ->
             try {
@@ -85,14 +88,14 @@ class ExpertGameExporter(
                             when (val outcome = playGame(index, homeTeam, awayTeam, request.homeKind, request.awayKind, request.maxActions, slot, recorder)) {
                                 PlayGameOutcome.Skipped -> {
                                     skipped.incrementAndGet()
-                                    val scenarioTag = slot?.let { " scenario=${it.scenario.name} difficulty=${it.difficulty}" } ?: ""
+                                    val completed = done.get() + skipped.get() + failed.get()
                                     log.info(
-                                        "expert-export game {}/{} skipped {} vs {}{} (trainer roster unsupported)",
-                                        done.get() + skipped.get() + failed.get(),
+                                        "expert-export {}/{} skipped {} {} (roster) {}",
+                                        completed,
                                         request.games,
-                                        homeTeam.id,
-                                        awayTeam.id,
-                                        scenarioTag,
+                                        matchupTag(homeTeam, awayTeam),
+                                        slotTag(slot),
+                                        paceTag(startedNanos, completed, request.games),
                                     )
                                     0
                                 }
@@ -108,16 +111,16 @@ class ExpertGameExporter(
                                     }
                                     done.incrementAndGet()
                                     val nSteps = steps.addAndGet(records.size)
-                                    val scenarioTag = slot?.let { " scenario=${it.scenario.name} difficulty=${it.difficulty}" } ?: " regular"
+                                    val completed = done.get() + skipped.get() + failed.get()
                                     log.info(
-                                        "expert-export game {}/{} ok {} vs {}{} steps={} totalSteps={}",
-                                        done.get() + skipped.get() + failed.get(),
+                                        "expert-export {}/{} ok {} {} steps={}/{} {}",
+                                        completed,
                                         request.games,
-                                        homeTeam.id,
-                                        awayTeam.id,
-                                        scenarioTag,
+                                        matchupTag(homeTeam, awayTeam),
+                                        slotTag(slot),
                                         records.size,
                                         nSteps,
+                                        paceTag(startedNanos, completed, request.games),
                                     )
                                     records.size
                                 }
@@ -141,12 +144,14 @@ class ExpertGameExporter(
             }
         }
         val result = Result(gamesOk = done.get(), gamesSkipped = skipped.get(), gamesFailed = failed.get(), steps = steps.get())
+        val finished = done.get() + skipped.get() + failed.get()
         log.info(
-            "expert-export done ok={} skipped={} failed={} steps={} out={}",
+            "expert-export done ok={} skipped={} failed={} steps={} {} out={}",
             result.gamesOk,
             result.gamesSkipped,
             result.gamesFailed,
             result.steps,
+            paceTag(startedNanos, finished, request.games),
             request.out.toAbsolutePath(),
         )
         if (failures.isNotEmpty()) {
@@ -225,10 +230,12 @@ class ExpertGameExporter(
         slot: ScenarioSlot,
         recorder: ExportStepRecorder<T>,
     ): PlayGameOutcome<T> {
-        val filter = trainingScenarios.implementation(slot.scenario).trainerTeamFilter
-        if (!filter(homeTeam)) return PlayGameOutcome.Skipped
+        val script = trainingScenarios.implementation(slot.scenario)
+        if (!script.trainerTeamFilter(homeTeam)) return PlayGameOutcome.Skipped
+        val requirePass = script.lookaheadSolveEval
+        val maxAttempts = if (requirePass) MAX_SCENARIO_PLAY_ATTEMPTS else 1
         var lastDrillStatus = TrainingDrillStatus.STILL_IN_PROGRESS
-        repeat(MAX_SCENARIO_PLAY_ATTEMPTS) { attempt ->
+        repeat(maxAttempts) { attempt ->
             val state = matchGame.createScenarioMatch(
                 homeTeamId = homeTeam.id,
                 awayTeamId = awayTeam.id,
@@ -253,18 +260,16 @@ class ExpertGameExporter(
                     recorder = recorder,
                 )
                 lastDrillStatus = played.finalState.trainingEpisode!!.drillStatus
-                if (lastDrillStatus == TrainingDrillStatus.PASS) {
+                if (lastDrillStatus == TrainingDrillStatus.PASS || !requirePass) {
                     return PlayGameOutcome.Ok(played.records)
                 }
                 log.info(
-                    "expert-export game {} scenario={} difficulty={} {} vs {} play attempt {}/{} ended drillStatus={} — retry",
+                    "expert-export {} {} {} attempt {}/{} {} — retry",
                     gameIndex + 1,
-                    slot.scenario.name,
-                    slot.difficulty,
-                    homeTeam.id.value,
-                    awayTeam.id.value,
+                    matchupTag(homeTeam, awayTeam),
+                    slotTag(slot),
                     attempt + 1,
-                    MAX_SCENARIO_PLAY_ATTEMPTS,
+                    maxAttempts,
                     lastDrillStatus,
                 )
             } finally {
@@ -277,7 +282,7 @@ class ExpertGameExporter(
             slot = slot,
             homeTeam = homeTeam,
             awayTeam = awayTeam,
-            attempts = MAX_SCENARIO_PLAY_ATTEMPTS,
+            attempts = maxAttempts,
             lastDrillStatus = lastDrillStatus,
         )
     }
@@ -316,11 +321,10 @@ class ExpertGameExporter(
         }
         if (!current.isGameEnded() && (truncateAfterTurn == null || current.progress.turnNumber < truncateAfterTurn)) {
             log.warn(
-                "expert-export truncated after {} actions {} vs {}{}",
+                "expert-export truncated after {} actions {} {}",
                 maxActions,
-                homeTeam.id,
-                awayTeam.id,
-                slot?.let { " scenario=${it.scenario.name} difficulty=${it.difficulty}" }.orEmpty(),
+                matchupTag(homeTeam, awayTeam),
+                slotTag(slot),
             )
         }
         return PlayUntilDoneResult(records, current)
@@ -350,6 +354,30 @@ class ExpertGameExporter(
             }
         }
         return pairs
+    }
+
+    private fun matchupTag(home: TeamCard, away: TeamCard): String =
+        "${home.id.value}-${away.id.value}"
+
+    private fun slotTag(slot: ScenarioSlot?): String =
+        slot?.let { "${it.scenario.name}@${it.difficulty}" } ?: "regular"
+
+    /** Wall-clock pace from [startedNanos]: elapsed, ms/game (parallelism included), ETA for remaining. */
+    private fun paceTag(startedNanos: Long, completed: Int, total: Int): String {
+        val elapsedMs = ((System.nanoTime() - startedNanos) / 1_000_000L).coerceAtLeast(0L)
+        if (completed <= 0) return formatDuration(elapsedMs)
+        val msPerGame = elapsedMs / completed
+        val etaMs = msPerGame * (total - completed).coerceAtLeast(0)
+        return "${formatDuration(elapsedMs)} ${msPerGame}ms/g eta=${formatDuration(etaMs)}"
+    }
+
+    private fun formatDuration(ms: Long): String {
+        val s = (ms / 1000L).coerceAtLeast(0L)
+        if (s < 60L) return "${s}s"
+        val m = s / 60L
+        if (m < 60L) return "${m}m${s % 60L}s"
+        val h = m / 60L
+        return "${h}h${m % 60L}m"
     }
 
     companion object {

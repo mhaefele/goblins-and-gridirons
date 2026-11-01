@@ -1441,6 +1441,30 @@ def _skip_scenario_eval(args: argparse.Namespace) -> bool:
     return bool(args.skip_scenarios and args.eval_only)
 
 
+def _filter_seatable_opponent_jobs(
+    jobs: list[tuple[int, str, str, RewardProfileName | None, str]],
+    seatable: set[tuple[str, str | None]],
+    unavailable_reasons: dict[tuple[str, str | None], str],
+) -> list[tuple[int, str, str, RewardProfileName | None, str]]:
+    """Drop train/eval seats the server catalog omits (e.g. stale ONNX schema)."""
+    kept: list[tuple[int, str, str, RewardProfileName | None, str]] = []
+    for amount, mode, computer, onnx_name, key in jobs:
+        seat = (computer, onnx_name)
+        if seat not in seatable:
+            if amount > 0:
+                reason = unavailable_reasons.get(
+                    seat,
+                    "not in server seatable catalog (GET /api/computer-opponents)",
+                )
+                print(
+                    f"  skip {key}: {opponent_metrics_label(computer, onnx_name)} — {reason}",
+                    flush=True,
+                )
+            continue
+        kept.append((amount, mode, computer, onnx_name, key))
+    return kept
+
+
 def _run_one_cycle(
     model: MaskablePPO,
     args: argparse.Namespace,
@@ -1540,6 +1564,11 @@ def _run_one_cycle(
         eval_jobs.append(
             (eval_onnx, OPPONENT_COMPUTER, COMPUTER_KIND_ONNX, onnx_name, f"eval_onnx_{onnx_name}")
         )
+    catalog_client = GridironClient(args.base_url)
+    seatable = catalog_client.seatable_computer_opponents()
+    unavailable = catalog_client.unavailable_computer_opponent_reasons()
+    train_jobs = _filter_seatable_opponent_jobs(train_jobs, seatable, unavailable)
+    eval_jobs = _filter_seatable_opponent_jobs(eval_jobs, seatable, unavailable)
     trained_scenarios = False
 
     def _run_scenarios() -> None:

@@ -11,8 +11,15 @@ export type ComputerOpponentOptionDto = {
     title: string;
     description: string;
 };
+export type ComputerOpponentUnavailableDto = {
+    kind: ComputerOpponentKind;
+    onnxProfile: string | null;
+    reason: string;
+};
 export type ComputerOpponentCatalogDto = {
     opponents: ComputerOpponentOptionDto[];
+    /** Present when classpath ONNX is missing or an old schema — splash ignores these. */
+    unavailable?: ComputerOpponentUnavailableDto[];
     defaultKind: ComputerOpponentKind;
     defaultOnnxProfile: string | null;
 };

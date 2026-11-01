@@ -122,11 +122,9 @@ class ExpertExportTest : BaseApiTest() {
 
     @Test
     fun `held-check scenario exports under strict Lookahead pass gate`() {
-        // Enum schedule is difficulty-major; HELD_SS_REROLL at d0 is its ordinal. Walking
-        // games=0..held through export also hits exposure-only DENY_* (lookaheadSolveEval=false)
-        // that Lookahead is not required to PASS — those are covered by TrainingScenarioLookaheadTest.
-        // Export the solvable prefix before the first exposure-only deny, and assert the held
-        // slot is still on the schedule where export expects it.
+        // Enum schedule is difficulty-major; HELD_SS_REROLL at d0 is its ordinal. The walk also
+        // hits exposure-only DENY_* (lookaheadSolveEval=false) — export keeps those plays without
+        // requiring PASS (same as TrainingScenarioLookaheadTest).
         val heldIndex = TrainingScenarioEnum.entries.indexOf(TrainingScenarioEnum.HELD_SS_REROLL)
         val firstExposureDeny = TrainingScenarioEnum.entries.indexOf(TrainingScenarioEnum.DENY_LOCK_THEM_DOWN)
         check(firstExposureDeny in 1 until heldIndex) {
@@ -134,12 +132,15 @@ class ExpertExportTest : BaseApiTest() {
         }
         assertThat(ExpertGameExporter.scenarioSlotForGameIndex(heldIndex))
             .isEqualTo(ExpertGameExporter.ScenarioSlot(TrainingScenarioEnum.HELD_SS_REROLL, 0))
+        assertThat(ExpertGameExporter.scenarioSlotForGameIndex(firstExposureDeny))
+            .isEqualTo(ExpertGameExporter.ScenarioSlot(TrainingScenarioEnum.DENY_LOCK_THEM_DOWN, 0))
 
+        val games = heldIndex + 1
         val out = Files.createTempFile("expert-held-", ".jsonl.gz")
         try {
             val result = exporter.export(
                 ExpertExportRequest(
-                    games = firstExposureDeny,
+                    games = games,
                     threads = 1,
                     out = out,
                     homeKind = ComputerOpponentKind.LOOKAHEAD,
@@ -151,7 +152,7 @@ class ExpertExportTest : BaseApiTest() {
                 recorder,
             )
             assertThat(result.gamesFailed).isEqualTo(0)
-            assertThat(result.gamesOk).isEqualTo(firstExposureDeny)
+            assertThat(result.gamesOk).isEqualTo(games)
             assertThat(result.steps).isGreaterThan(0)
         } finally {
             Files.deleteIfExists(out)

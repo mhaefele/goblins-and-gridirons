@@ -306,7 +306,12 @@ sealed interface LegalAction {
         override val targetCoordinate: Coordinate get() = to
     }
 
-    /** Second Swing: re-roll block dice ([reroll]=true) or keep [faces] ([reroll]=false). */
+    /**
+     * Second Swing: re-roll block dice ([reroll]=true) or keep [faces] ([reroll]=false).
+     *
+     * TODO(AI2.19): boolean doubles as identity — AI maps to `reroll` / `keepOffer`. Prefer two
+     * subtypes (or drop the flag) when promoting a shared wire kind onto these DTOs.
+     */
     data class ChooseBlockReroll(
         override val playerId: PlayerId,
         val destination: Coordinate,
@@ -326,7 +331,11 @@ sealed interface LegalAction {
         override val actionType: ActionType = ActionType.CHOOSE_BLOCK_FACE_ORDER
     }
 
-    /** Pinpoint Passer: re-roll throw check ([reroll]=true) or keep [naturalRoll] ([reroll]=false). */
+    /**
+     * Pinpoint Passer: re-roll throw check ([reroll]=true) or keep [naturalRoll] ([reroll]=false).
+     *
+     * TODO(AI2.19): same boolean-as-kind smell as [ChooseBlockReroll].
+     */
     data class ChooseThrowReroll(
         override val playerId: PlayerId,
         val destination: Coordinate,

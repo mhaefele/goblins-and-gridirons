@@ -7,8 +7,7 @@ import com.mhaefele.gridiron.model.catalog.BonusPlay
  *
  * Only geometry-attached bonuses ([ActionAttachedBonuses.expandFromHand]) set
  * [com.mhaefele.gridiron.api.dto.response.LegalAction.requiredBonusCard] on path/throw actions.
- * Indices are sugar (not a MultiDiscrete head). When free keys collide, the AI mapper
- * prefers the lower index (Sprint before Weave, …).
+ * Packed on each legal row (schema 16+) so Sprint/Weave twins to the same dest stay distinct.
  */
 internal object AttachedBonusEncoding {
     private val INDEX_BY_BONUS = mapOf(

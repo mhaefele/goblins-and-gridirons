@@ -5,7 +5,7 @@ Owner: ``SCHEMA_VERSION`` + obs/action head widths shared by ``obs`` / ``actions
 semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
-# v16: Discrete legal-row join scores; pack = actor, kind, boardTarget, challengeSlot.
+# v16: Discrete legal-row join scores; pack = actor, kind, target, challenge, bonus, face0..2.
 SCHEMA_VERSION = 16
 
 PLAY_WIDTH = 11
@@ -17,11 +17,15 @@ HOME_BENCH_START = PITCH_SQUARE_COUNT  # 165
 BOARD_SLOT_COUNT = PITCH_SQUARE_COUNT + 2 * BENCH_SLOTS  # 185
 
 ACTIVE_CHALLENGE_SLOTS = 3
+ATTACHED_BONUS_COUNT = 5
+ATTACHED_BONUS_UNUSED = ATTACHED_BONUS_COUNT
+BLOCK_FACE_PACK_UNUSED = 0
+BLOCK_FACE_PACK_SIZE = 1 + 5  # unused + BlockDieFace.entries
 # Mid-turn max: ≤3 after EOT trim + up to 3 claims (Clean Sweep); pad unused with null.
 BONUS_HAND_SLOTS = 6
 MISSING_OPTIONAL_FIELD = -1
 
-LEGAL_ACTION_KIND_COUNT = 34  # AiLegalKind.entries.size (must match Kotlin)
+LEGAL_ACTION_KIND_COUNT = 41  # AiLegalKind.entries.size (must match Kotlin)
 # Pad legal row matrices in vec-env / rollout buffer. One route per destination (BFS), but
 # bonus-card twins (Sprint/Weave/…) multiply rows; live self-play has exceeded 512.
 MAX_LEGAL_MOVES = 1024
@@ -29,15 +33,18 @@ MAX_LEGAL_MOVES = 1024
 # Actor playerIndex: 0 = unused (kind-only rows); 1..MAX_PLAYERS_PER_TEAM = roster slot + 1.
 ACTOR_PLAYER_INDEX_COUNT = MAX_PLAYERS_PER_TEAM + 1  # includes unused 0
 ACTOR_HEAD_SIZE = ACTOR_PLAYER_INDEX_COUNT  # 11
-KIND_HEAD_SIZE = LEGAL_ACTION_KIND_COUNT  # 34
+KIND_HEAD_SIZE = LEGAL_ACTION_KIND_COUNT
 
-# Legal-row factor packing (Kotlin AiLegalPacker). Pads: actor=0, boardTarget=PITCH_SQUARE_COUNT,
-# challenge=ACTIVE_CHALLENGE_SLOTS. Gym action is Discrete(MAX_LEGAL_MOVES).
+# Legal-row factor packing (Kotlin AiLegalPacker). Gym action is Discrete(MAX_LEGAL_MOVES).
 ACTION_HEAD_SIZES = [
     ACTOR_HEAD_SIZE,
     KIND_HEAD_SIZE,
     PITCH_SQUARE_COUNT + 1,
     ACTIVE_CHALLENGE_SLOTS + 1,
+    ATTACHED_BONUS_UNUSED + 1,
+    BLOCK_FACE_PACK_SIZE,
+    BLOCK_FACE_PACK_SIZE,
+    BLOCK_FACE_PACK_SIZE,
 ]
 # Policy / ONNX output width: one score per padded legal-row slot.
 LEGAL_ROW_SCORE_WIDTH = MAX_LEGAL_MOVES
@@ -113,7 +120,7 @@ OBS_KEY_LEGAL_MOVE_COUNT = "legal_move_count"
 OBS_KEY_SOFT_MASK_LEGAL = "soft_mask_legal"
 # Parallel to legal_moves rows: 1 when server flagged passingScenarioMove (pass-grade solve; not soft-mask).
 OBS_KEY_PASSING_LEGAL = "passing_legal"
-FACTORS_PER_LEGAL_MOVE = len(ACTION_HEAD_SIZES)  # 4
+FACTORS_PER_LEGAL_MOVE = len(ACTION_HEAD_SIZES)  # 8
 # Logit bonus on preferred legal rows (soft preference, not hard mask).
 SOFT_MASK_LOGIT_BIAS = 2.5
 

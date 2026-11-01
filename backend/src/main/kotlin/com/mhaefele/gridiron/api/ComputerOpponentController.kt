@@ -8,10 +8,11 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * Product computer-opponent catalog for match create / MatchupSplash.
+ * Product computer-opponent catalog for match create / MatchupSplash / train harness.
  *
- * Built-in kinds always listed. ONNX rows appear only when ``ai-opponent/{profile}/`` artifacts exist —
- * titles/descriptions come from [ComputerOpponentKind] / [OnnxOpponentProfile], not a Python mirror.
+ * [ComputerOpponentCatalogDto.opponents] = seatable only (LOOKAHEAD/HEURISTIC always; ONNX when
+ * [OnnxPolicySession.isSeatable]). [ComputerOpponentCatalogDto.unavailable] explains skipped ONNX
+ * profiles (old schema, missing files, …) so clients can log a clear skip reason.
  */
 @RestController
 @RequestMapping("/api/computer-opponents")
@@ -32,8 +33,7 @@ class ComputerOpponentController(
                     )
                 }
         val onnx =
-            OnnxOpponentProfile.entries
-                .filter { onnxPolicy.artifactsPresent(it) }
+            onnxPolicy.availableProfiles()
                 .map { profile ->
                     ComputerOpponentOptionDto(
                         kind = ComputerOpponentKind.ONNX,
@@ -42,8 +42,18 @@ class ComputerOpponentController(
                         description = profile.description,
                     )
                 }
+        val unavailable =
+            OnnxOpponentProfile.entries.mapNotNull { profile ->
+                val reason = onnxPolicy.unavailabilityReason(profile) ?: return@mapNotNull null
+                ComputerOpponentUnavailableDto(
+                    kind = ComputerOpponentKind.ONNX,
+                    onnxProfile = profile.id,
+                    reason = reason,
+                )
+            }
         return ComputerOpponentCatalogDto(
             opponents = builtIn + onnx,
+            unavailable = unavailable,
             defaultKind = ComputerOpponentKind.LOOKAHEAD,
             defaultOnnxProfile = null,
         )
@@ -52,6 +62,8 @@ class ComputerOpponentController(
 
 data class ComputerOpponentCatalogDto(
     val opponents: List<ComputerOpponentOptionDto>,
+    /** Present-but-unusable (or missing) ONNX profiles with why — empty when all seatable. */
+    val unavailable: List<ComputerOpponentUnavailableDto> = emptyList(),
     val defaultKind: ComputerOpponentKind,
     val defaultOnnxProfile: String?,
 )
@@ -63,4 +75,11 @@ data class ComputerOpponentOptionDto(
     val onnxProfile: String?,
     val title: String,
     val description: String,
+)
+
+/** ONNX (or future) seat the server will refuse, with a human reason. */
+data class ComputerOpponentUnavailableDto(
+    val kind: ComputerOpponentKind,
+    val onnxProfile: String?,
+    val reason: String,
 )

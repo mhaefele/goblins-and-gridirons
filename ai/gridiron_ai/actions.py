@@ -5,8 +5,8 @@ join-score over this step's legal menu (``legal_row_policy``). See
 ``ACTION_SAMPLING.md`` / ``ai/OWNERSHIP.md``.
 
 Schema 16+: gym action is ``Discrete(MAX_LEGAL_MOVES)`` — an index into
-``legal_moves[:legal_move_count]``. Each packed row is
-actor, kind, boardTarget, challengeSlot (Kotlin ``AiLegalPacker``).
+``legal_moves[:legal_move_count]``. Each packed row is actor, kind, boardTarget,
+challengeSlot, attachedBonus, face0..2 (Kotlin ``AiLegalPacker``).
 """
 
 from __future__ import annotations
@@ -22,9 +22,13 @@ FACTOR_ACTOR = 0
 FACTOR_KIND = 1
 FACTOR_BOARD_TARGET = 2
 FACTOR_CHALLENGE_SLOT = 3
+FACTOR_ATTACHED_BONUS = 4
+FACTOR_FACE0 = 5
+FACTOR_FACE1 = 6
+FACTOR_FACE2 = 7
 
-# One legal move: four ints in canonical slot order.
-EncodedLegalMove: TypeAlias = tuple[int, int, int, int]
+# One legal move: eight ints in canonical slot order.
+EncodedLegalMove: TypeAlias = tuple[int, int, int, int, int, int, int, int]
 
 # Legal moves this step — shape (n, 3), dtype int64 (from packed HTTP / expert).
 EncodedLegalMoves: TypeAlias = np.ndarray

@@ -98,7 +98,7 @@ class EnforcerAbilityApiTest : BaseApiTest() {
     }
 
     @Test
-    fun `trainer seat auto-sorts enforcer order without prompting`() {
+    fun `harness seat is offered enforcer order like humans`() {
         lateinit var enforcer: PlacedPlayer
         lateinit var target: PlacedPlayer
         val seeded = MatchBuilder().apply {
@@ -117,7 +117,8 @@ class EnforcerAbilityApiTest : BaseApiTest() {
         dice.queueD6(6)
         playEnforcerBlock(match, enforcer.player.id)
 
-        assertThat(match.legalActions<LegalAction.ChooseBlockFaceOrder>()).isEmpty()
+        assertThat(match.legalActions<LegalAction.ChooseBlockFaceOrder>()).isNotEmpty()
+        resolveEnforcerOrderIfPrompted(match, listOf(BlockDieFace.MISS, BlockDieFace.SMASH))
         assertThat(player(match.pieces(), target.player.id).status).isEqualTo(PlayerStatus.PRONE)
         match.legalActions().assertNone(ActionType.CHOOSE_BLOCK_FACE_ORDER)
         match.legalActions().assertNone(ActionType.SKIP)

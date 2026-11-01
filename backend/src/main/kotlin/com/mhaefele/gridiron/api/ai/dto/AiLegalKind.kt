@@ -1,22 +1,22 @@
 package com.mhaefele.gridiron.api.ai.dto
 
 /**
- * AI legal-choice kind — policy vocabulary (schema 10+), not 1:1 with every GUI
+ * AI legal-choice kind — policy vocabulary (schema 16+), not 1:1 with every GUI
  * [com.mhaefele.gridiron.api.dto.response.LegalAction] Jackson name.
  *
- * Packed as [AiLegalChoiceDto.kindIndex] (= [ordinal]) on each legal row (schema 16+).
+ * Packed as [AiLegalChoiceDto.kindIndex] (= [ordinal]) on each legal row.
  * Kind-axis width is [AiLegalKind.entries].size.
  *
- * Coarse merges (engine wire kinds stay distinct for submit):
- * - [declineOffer] — Skip / DeclineBonus / ContinueBlock / Choose*Reroll(false)
- * - [reroll] — ChooseBlockReroll(true) / ChooseThrowReroll(true)
- * - [adjustByDoOver] — AdjustThrow / AdjustBlock / AdjustArmour ByDoOver
- *
- * [CancelThrowTeammate] and [ChooseBlockFaceOrder] are omitted from AI legals
- * (GUI only — Enforcer order is humans-only; HARNESS/COMPUTER auto-sort).
+ * Schema 16 drops MultiDiscrete-era coarse merges: Skip / DeclineBonus / ContinueBlock /
+ * keep-reroll and the three Do-Over adjusts are distinct kinds; [cancelThrowTeammate] and
+ * [chooseBlockFaceOrder] are included (no longer GUI-only omissions).
  *
  * `` `throw` `` / `` `reroll` `` are backticked only because they are Kotlin keywords;
  * [name] is still `"throw"` / `"reroll"`.
+ *
+ * TODO(AI2.19): promote to a shared (non-`Ai*`) wire kind on [LegalAction] DTOs — GUI + AI
+ * read the same catalog; drop this AI-only mirror once ordinals / Jackson names land on the
+ * engine wire. Still investigate per-candidate vs [ActionType] collapses (reroll/keep, …).
  */
 enum class AiLegalKind {
     run,
@@ -25,14 +25,20 @@ enum class AiLegalKind {
     `throw`,
     throwTeammateSelect,
     throwTeammate,
+    cancelThrowTeammate,
     block,
     foul,
     standUp,
     reserves,
-    declineOffer,
+    skip,
+    declineBonus,
+    continueBlock,
+    keepOffer,
     placeLooseBall,
     `reroll`,
-    adjustByDoOver,
+    adjustThrowByDoOver,
+    adjustBlockByDoOver,
+    adjustArmourByDoOver,
     quickReleaseThrow,
     declareRun,
     playGangUp,
@@ -51,6 +57,7 @@ enum class AiLegalKind {
     playDeadEye,
     playHailMary,
     playSprint,
+    chooseBlockFaceOrder,
     claimChallenge,
     replaceChallenge,
     ;

@@ -6,25 +6,24 @@ import com.mhaefele.gridiron.shared.LegalActionId
 /**
  * One legal choice in AI form — [kind] + ordered free [factors] + [sugarFactors] + submit sidecar.
  *
- * ## Factors (schema 10+)
+ * ## Factors (schema 16+)
  *
- * [factors] = **free choices only** (packed into [AiLegalPacker] legal-row ints).
- * [sugarFactors] = pending-fixed identity (actor/target implied by continuation) — debug / docs;
- * not matched. [legalActionId] still encodes full domain identity for submit.
- * Schema 16 pack: actor, [kindIndex], boardTarget, challengeSlot (pads when unused).
+ * [factors] = free choices (packed into [AiLegalPacker] legal-row ints).
+ * [sugarFactors] = pending-fixed identity / attached bonus — also packed onto the row.
+ * [legalActionId] still encodes full domain identity for submit.
+ * Pack columns: actor, kindIndex, boardTarget, challengeSlot, attachedBonus, face0..2.
  *
  * | kind | free factors |
  * |------|--------------|
  * | path / throw / block / foul / standUp / reserves / declareRun / throwTeammateSelect | `[Actor, BoardTarget]` |
  * | `throwTeammate` / `quickReleaseThrow` / `placeLooseBall` | `[BoardTarget]` (actor sugar) |
- * | `declineOffer` / `reroll` / `adjustByDoOver` / play-bonus | `[]` |
+ * | `chooseBlockFaceOrder` | `[FaceOrder]` (actor sugar) |
+ * | `skip` / `declineBonus` / `continueBlock` / `keepOffer` / `reroll` / adjust* / play-bonus / `cancelThrowTeammate` | `[]` |
  * | `claimChallenge` / `replaceChallenge` | `[ChallengeSlot]` |
- *
- * Geometry [AiFactor.AttachedBonus] rides in [sugarFactors] (schema 15+).
  */
 data class AiLegalChoiceDto(
     /**
-     * Policy kind (`run`, `declineOffer`, …) — human/debug; same as [AiLegalKind.name].
+     * Policy kind (`run`, `skip`, …) — human/debug; same as [AiLegalKind.name].
      * Packed as [kindIndex] on each legal row.
      */
     val kind: AiLegalKind,

@@ -164,7 +164,7 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
         api.play(matchId, first.harness.legalRows.first { it.passingLegal }.legalActionId)
         repeat(4) {
             val step = api.aiStep(matchId, forSeat = TeamSide.HOME)
-            val decline = step.harness.legalRows.firstOrNull { it.kind == AiLegalKind.declineOffer } ?: return@repeat
+            val decline = step.harness.legalRows.firstOrNull { it.kind == AiLegalKind.declineBonus } ?: return@repeat
             api.play(matchId, decline.legalActionId)
         }
         val second = api.aiStep(matchId, forSeat = TeamSide.HOME)
@@ -191,7 +191,7 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
             api.play(matchId, starOpening)
             repeat(4) {
                 val step = api.aiStep(matchId, forSeat = TeamSide.HOME)
-                val decline = step.harness.legalRows.firstOrNull { it.kind == AiLegalKind.declineOffer } ?: return@repeat
+                val decline = step.harness.legalRows.firstOrNull { it.kind == AiLegalKind.declineBonus } ?: return@repeat
                 api.play(matchId, decline.legalActionId)
             }
             val second = api.aiStep(matchId, forSeat = TeamSide.HOME)
@@ -322,7 +322,8 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
             } else {
                 null
             }
-            val decline = step.harness.legalRows.firstOrNull { it.kind == AiLegalKind.declineOffer }
+            val decline =
+                step.harness.legalRows.firstOrNull { it.kind == AiLegalKind.declineBonus || it.kind == AiLegalKind.skip || it.kind == AiLegalKind.keepOffer }
             when {
                 replaceSoft.isNotEmpty() -> replaceSoft.first().legalActionId
                 claim != null            -> claim.legalActionId

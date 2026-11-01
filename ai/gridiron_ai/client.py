@@ -119,6 +119,30 @@ class GridironClient:
         """GET /api/catalog/teams"""
         return list(self._get("/api/catalog/teams")["teams"])
 
+    def list_computer_opponents(self) -> dict[str, Any]:
+        """GET /api/computer-opponents — seatable ``opponents`` + ``unavailable`` with reasons."""
+        return self._get("/api/computer-opponents")
+
+    def seatable_computer_opponents(self) -> set[tuple[str, str | None]]:
+        """``(kind, onnxProfile|None)`` pairs the server will accept on match create."""
+        catalog = self.list_computer_opponents()
+        seats: set[tuple[str, str | None]] = set()
+        for row in catalog["opponents"]:
+            kind = str(row["kind"])
+            profile = row.get("onnxProfile")
+            seats.add((kind, str(profile) if profile is not None else None))
+        return seats
+
+    def unavailable_computer_opponent_reasons(self) -> dict[tuple[str, str | None], str]:
+        """``(kind, onnxProfile|None) → reason`` for seats the server will refuse."""
+        catalog = self.list_computer_opponents()
+        reasons: dict[tuple[str, str | None], str] = {}
+        for row in catalog.get("unavailable") or []:
+            kind = str(row["kind"])
+            profile = row.get("onnxProfile")
+            reasons[(kind, str(profile) if profile is not None else None)] = str(row["reason"])
+        return reasons
+
     def default_team_ids(self, *, same_team_both_seats: bool = True) -> tuple[str, str]:
         teams = self.catalog_teams()
         if not teams:

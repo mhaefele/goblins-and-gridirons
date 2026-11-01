@@ -37,9 +37,9 @@ class OnnxPolicySession(
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val sessions = ConcurrentHashMap<OnnxOpponentProfile, Loaded>()
 
-    /** Profiles that have manifest + model on the classpath. */
+    /** Profiles that are seatable now (files present + manifest matches runtime schema). */
     fun availableProfiles(): List<OnnxOpponentProfile> =
-        OnnxOpponentProfile.entries.filter { artifactsPresent(it) }
+        OnnxOpponentProfile.entries.filter { isSeatable(it) }
 
     fun artifactsPresent(profile: OnnxOpponentProfile): Boolean {
         val manifest = resourceLoader.getResource(manifestLocation(profile))
@@ -55,6 +55,30 @@ class OnnxPolicySession(
     fun artifactsPresent(profileId: String): Boolean {
         val profile = OnnxOpponentProfile.fromId(profileId) ?: return false
         return artifactsPresent(profile)
+    }
+
+    /**
+     * True when create/spawn with this profile will succeed — classpath files exist and
+     * [validateManifest] passes (schema / obs length / action width). Stale schema-15
+     * artifacts are present but not seatable.
+     */
+    fun isSeatable(profile: OnnxOpponentProfile): Boolean =
+        unavailabilityReason(profile) == null
+
+    /** Human-readable why [profile] cannot be seated, or null when seatable. */
+    fun unavailabilityReason(profile: OnnxOpponentProfile): String? {
+        if (!artifactsPresent(profile)) {
+            return "ONNX opponent '${profile.id}' files missing under $CLASSPATH_PREFIX/${profile.id}/ — run: cd ai && ./export_opponent.sh ${profile.id}"
+        }
+        return try {
+            val manifest = resourceLoader.getResource(manifestLocation(profile)).inputStream.use { jsonMapper.readTree(it) }
+            validateManifest(manifest, profile)
+            null
+        } catch (ex: IllegalArgumentException) {
+            ex.message
+        } catch (ex: IllegalStateException) {
+            ex.message
+        }
     }
 
     fun ensureLoaded(profile: OnnxOpponentProfile) {
@@ -133,15 +157,15 @@ class OnnxPolicySession(
 
     private fun validateManifest(manifest: JsonNode, expected: OnnxOpponentProfile) {
         val schemaVersion = manifest.path("schemaVersion").asInt()
-        require(schemaVersion == AiObsLayout.SCHEMA_VERSION) { "ONNX schemaVersion=$schemaVersion != runtime ${AiObsLayout.SCHEMA_VERSION} — re-export" }
+        require(schemaVersion == AiObsLayout.SCHEMA_VERSION) { "ONNX opponent '${expected.id}' file is an old version (schemaVersion=$schemaVersion) and cannot be used — runtime needs schema ${AiObsLayout.SCHEMA_VERSION}; re-export with: cd ai && ./export_opponent.sh ${expected.id}" }
         val obsLen = manifest.path("observationVectorLength").asInt()
-        require(obsLen == AiObsLayout.OBSERVATION_VECTOR_LENGTH) { "ONNX observationVectorLength=$obsLen != ${AiObsLayout.OBSERVATION_VECTOR_LENGTH}" }
+        require(obsLen == AiObsLayout.OBSERVATION_VECTOR_LENGTH) { "ONNX opponent '${expected.id}' is incompatible " + "(observationVectorLength=$obsLen, runtime needs ${AiObsLayout.OBSERVATION_VECTOR_LENGTH}) — " + "re-export with: cd ai && ./export_opponent.sh ${expected.id}" }
         val maxLegal = manifest.path("maxLegalMoves").asInt()
-        require(maxLegal == AiObsLayout.MAX_LEGAL_MOVES) { "ONNX maxLegalMoves=$maxLegal != ${AiObsLayout.MAX_LEGAL_MOVES}" }
+        require(maxLegal == AiObsLayout.MAX_LEGAL_MOVES) { "ONNX opponent '${expected.id}' is incompatible " + "(maxLegalMoves=$maxLegal, runtime needs ${AiObsLayout.MAX_LEGAL_MOVES}) — " + "re-export with: cd ai && ./export_opponent.sh ${expected.id}" }
         val actionN = manifest.path("actionSpaceN").asInt(manifest.path("logitWidth").asInt())
-        require(actionN == AiObsLayout.LEGAL_ROW_SCORE_WIDTH) { "ONNX actionSpaceN=$actionN != ${AiObsLayout.LEGAL_ROW_SCORE_WIDTH}" }
+        require(actionN == AiObsLayout.LEGAL_ROW_SCORE_WIDTH) { "ONNX opponent '${expected.id}' is incompatible " + "(actionSpaceN=$actionN, runtime needs ${AiObsLayout.LEGAL_ROW_SCORE_WIDTH}) — " + "re-export with: cd ai && ./export_opponent.sh ${expected.id}" }
         val manifestProfile = manifest.path("profile").asString(expected.id)
-        require(manifestProfile == expected.id) { "ONNX manifest profile=$manifestProfile != requested ${expected.id}" }
+        require(manifestProfile == expected.id) { "ONNX opponent folder '${expected.id}' has manifest profile=$manifestProfile — re-export with: cd ai && ./export_opponent.sh ${expected.id}" }
     }
 
     companion object {

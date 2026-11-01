@@ -23,18 +23,10 @@ class AiLegalChoiceMapper(
         perspectiveSeat: TeamSide,
         state: MatchState,
     ): List<AiLegalChoiceDto> {
-        val forAi = actions.filterNot { it is LegalAction.CancelThrowTeammate }
-            .filterNot { action ->
-                // Ability keep-row already covers “don’t spend RT + don’t reroll”; DeclineBonus would
-                // collide with Choose*Reroll(false) under declineOffer + empty free factors.
-                action is LegalAction.DeclineBonus &&
-                    actions.any { it is LegalAction.ChooseBlockReroll || it is LegalAction.ChooseThrowReroll }
-            }
-        check(actions.none { it is LegalAction.ChooseBlockFaceOrder }) { "ChooseBlockFaceOrder must not appear on AI seats(humans-only; HARNESS/COMPUTER auto-sort)" }
         // softMaskIds: null = search N/A (use heuristic); non-empty = those ids; empty = searched,
         // none solvable — still fall back to heuristic so soft-mask is not blanked.
-        val solvableIds = solvableSoftMask.softMaskIds(state, forAi)
-        val choices = forAi.map { action ->
+        val solvableIds = solvableSoftMask.softMaskIds(state, actions)
+        val choices = actions.map { action ->
             toAiLegalChoiceDto(
                 action,
                 perspectiveSeat,
@@ -46,10 +38,8 @@ class AiLegalChoiceMapper(
                 },
             )
         }
-        // AttachedBonus is sugar — two geometry cards to the same free key collapse to one row.
-        val deduped = preferUniqueHarnessKeys(choices)
-        checkDistinctHarnessFactorKeys(deduped)
-        return deduped
+        checkDistinctHarnessFactorKeys(choices)
+        return choices
     }
 
     fun toAiLegalChoiceDto(
@@ -78,27 +68,30 @@ class AiLegalChoiceMapper(
 
     private fun LegalAction.toAiLegalKind(): AiLegalKind =
         when (this) {
-            is LegalAction.Run                  -> AiLegalKind.run
-            is LegalAction.Mark                 -> AiLegalKind.mark
-            is LegalAction.Sidestep             -> AiLegalKind.sidestep
-            is LegalAction.Throw                -> AiLegalKind.`throw`
-            is LegalAction.ThrowTeammateSelect  -> AiLegalKind.throwTeammateSelect
-            is LegalAction.ThrowTeammate        -> AiLegalKind.throwTeammate
-            is LegalAction.CancelThrowTeammate  -> error("CancelThrowTeammate is excluded from AI legals")
-            is LegalAction.Block                -> AiLegalKind.block
-            is LegalAction.Foul                 -> AiLegalKind.foul
-            is LegalAction.StandUp              -> AiLegalKind.standUp
-            is LegalAction.Reserves             -> AiLegalKind.reserves
-            is LegalAction.Skip                 -> AiLegalKind.declineOffer
-            is LegalAction.DeclineBonus         -> AiLegalKind.declineOffer
-            is LegalAction.ContinueBlock        -> AiLegalKind.declineOffer
-            is LegalAction.PlaceLooseBall       -> AiLegalKind.placeLooseBall
-            is LegalAction.ChooseBlockReroll    -> if (reroll) AiLegalKind.`reroll` else AiLegalKind.declineOffer
-            is LegalAction.ChooseThrowReroll    -> if (reroll) AiLegalKind.`reroll` else AiLegalKind.declineOffer
-            is LegalAction.ChooseBlockFaceOrder -> error("ChooseBlockFaceOrder is excluded from AI legals (humans-only)")
-            is LegalAction.AdjustThrowByDoOver  -> AiLegalKind.adjustByDoOver
-            is LegalAction.AdjustBlockByDoOver  -> AiLegalKind.adjustByDoOver
-            is LegalAction.AdjustArmourByDoOver -> AiLegalKind.adjustByDoOver
+            is LegalAction.Run                 -> AiLegalKind.run
+            is LegalAction.Mark                -> AiLegalKind.mark
+            is LegalAction.Sidestep            -> AiLegalKind.sidestep
+            is LegalAction.Throw               -> AiLegalKind.`throw`
+            is LegalAction.ThrowTeammateSelect -> AiLegalKind.throwTeammateSelect
+            is LegalAction.ThrowTeammate       -> AiLegalKind.throwTeammate
+            is LegalAction.CancelThrowTeammate -> AiLegalKind.cancelThrowTeammate
+            is LegalAction.Block               -> AiLegalKind.block
+            is LegalAction.Foul                -> AiLegalKind.foul
+            is LegalAction.StandUp             -> AiLegalKind.standUp
+            is LegalAction.Reserves            -> AiLegalKind.reserves
+            is LegalAction.Skip                -> AiLegalKind.skip
+            is LegalAction.DeclineBonus        -> AiLegalKind.declineBonus
+            is LegalAction.ContinueBlock       -> AiLegalKind.continueBlock
+            is LegalAction.PlaceLooseBall      -> AiLegalKind.placeLooseBall
+            // TODO(AI2.19): Choose*Reroll(reroll: Boolean) is two choices stuffed in one subtype —
+            // only arms that branch on a field. Prefer distinct Keep / Reroll legal actions (or a
+            // shared wire kind with no boolean) so mapping is 1:1 like every other arm.
+            is LegalAction.ChooseBlockReroll    -> if (reroll) AiLegalKind.`reroll` else AiLegalKind.keepOffer
+            is LegalAction.ChooseThrowReroll    -> if (reroll) AiLegalKind.`reroll` else AiLegalKind.keepOffer
+            is LegalAction.ChooseBlockFaceOrder -> AiLegalKind.chooseBlockFaceOrder
+            is LegalAction.AdjustThrowByDoOver  -> AiLegalKind.adjustThrowByDoOver
+            is LegalAction.AdjustBlockByDoOver  -> AiLegalKind.adjustBlockByDoOver
+            is LegalAction.AdjustArmourByDoOver -> AiLegalKind.adjustArmourByDoOver
             is LegalAction.QuickReleaseThrow    -> AiLegalKind.quickReleaseThrow
             is LegalAction.DeclareRun           -> AiLegalKind.declareRun
             is LegalAction.PlayGangUp           -> AiLegalKind.playGangUp
@@ -121,7 +114,7 @@ class AiLegalChoiceMapper(
             is LegalAction.ReplaceChallenge     -> AiLegalKind.replaceChallenge
         }
 
-    /** Free factors (MultiDiscrete) + sugar (pending-fixed / attached bonus; not matched). */
+    /** Free factors (row-defining) + sugar (pending-fixed / attached bonus). */
     private fun LegalAction.toAiFreeAndSugarFactors(
         perspectiveSeat: TeamSide,
     ): Pair<List<AiFactor>, List<AiFactor>> {
@@ -134,7 +127,7 @@ class AiLegalChoiceMapper(
             is LegalAction.Throw                -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
             is LegalAction.ThrowTeammateSelect  -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
             is LegalAction.ThrowTeammate        -> listOf(pitchOf(targetCoordinate)) to listOf(actorOf(playerId))
-            is LegalAction.CancelThrowTeammate  -> error("CancelThrowTeammate is excluded from AI legals")
+            is LegalAction.CancelThrowTeammate  -> emptyList<AiFactor>() to listOf(actorOf(playerId))
             is LegalAction.Block                -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
             is LegalAction.Foul                 -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
             is LegalAction.StandUp              -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
@@ -145,7 +138,8 @@ class AiLegalChoiceMapper(
             is LegalAction.PlaceLooseBall       -> listOf(pitchOf(to)) to listOf(actorOf(playerId))
             is LegalAction.ChooseBlockReroll    -> emptyList<AiFactor>() to listOf(actorOf(playerId))
             is LegalAction.ChooseThrowReroll    -> emptyList<AiFactor>() to listOf(actorOf(playerId))
-            is LegalAction.ChooseBlockFaceOrder -> error("ChooseBlockFaceOrder is excluded from AI legals")
+            is LegalAction.ChooseBlockFaceOrder ->
+                listOf(AiFactor.FaceOrder(orderedFaces.map { it.ordinal + 1 })) to listOf(actorOf(playerId))
             is LegalAction.AdjustThrowByDoOver  -> emptyList<AiFactor>() to listOf(actorOf(playerId), pitchOf(destination))
             is LegalAction.AdjustBlockByDoOver  -> emptyList<AiFactor>() to listOf(actorOf(playerId), pitchOf(destination))
             is LegalAction.AdjustArmourByDoOver -> emptyList<AiFactor>() to listOf(actorOf(targetId))
@@ -156,35 +150,13 @@ class AiLegalChoiceMapper(
         }
     }
 
-    /**
-     * When free keys collide (e.g. Sprint + Weave unlock the same dest), keep one row.
-     * Prefer no AttachedBonus sugar, else lower [AttachedBonusEncoding] index.
-     */
-    private fun preferUniqueHarnessKeys(choices: List<AiLegalChoiceDto>): List<AiLegalChoiceDto> {
-        val best = linkedMapOf<List<Int>, AiLegalChoiceDto>()
-        for (choice in choices) {
-            val key = AiLegalPacker.harnessFactorKey(choice).toList()
-            val prior = best[key]
-            if (prior == null || attachedBonusRank(choice) < attachedBonusRank(prior)) {
-                best[key] = choice
-            }
-        }
-        return best.values.toList()
-    }
-
-    private fun attachedBonusRank(choice: AiLegalChoiceDto): Int =
-        choice.sugarFactors.filterIsInstance<AiFactor.AttachedBonus>().minOfOrNull { it.index } ?: -1
-
-    /** Harness tuple after packing free factors — must be unique within one legal set. */
+    /** Packed legal-row ints must be unique within one legal set (submit identity via legalActionId). */
     private fun checkDistinctHarnessFactorKeys(choices: List<AiLegalChoiceDto>) {
         val seen = mutableMapOf<List<Int>, AiLegalChoiceDto>()
         for (choice in choices) {
-            val key = AiLegalPacker.harnessFactorKey(choice).toList()
+            val key = AiLegalPacker.harnessFactorKey(choice)
             val prior = seen.put(key, choice)
-            if (prior != null) {
-                error(
-                    "Duplicate harness factor key $key for kinds ${prior.kind} and ${choice.kind} — " + "legalActionIds ${prior.legalActionId} vs ${choice.legalActionId}",)
-            }
+            check(prior == null) { "Duplicate legal-row pack $key for ${prior!!.kind}/${prior.legalActionId} and ${choice.kind}/${choice.legalActionId}" }
         }
     }
 }

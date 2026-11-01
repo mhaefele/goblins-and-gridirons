@@ -43,9 +43,10 @@ abstract class AbstractTrainingScenario {
     open val gatesProgress: Boolean = true
 
     /**
-     * When false, [com.mhaefele.gridiron.integration.TrainingScenarioLookaheadTest] still runs
-     * lookahead choose→submit but does **not** require [TrainingDrillStatus.PASS] (no trusted
-     * oracle yet). Default on unless [difficultyProxy] is set (proxy drills are omitted entirely).
+     * When false, [com.mhaefele.gridiron.integration.TrainingScenarioLookaheadTest] and expert
+     * export still run lookahead choose→submit but do **not** require [TrainingDrillStatus.PASS]
+     * (no trusted oracle yet). Default on unless [difficultyProxy] is set (proxy drills are
+     * omitted from the lookahead solve test entirely).
      */
     open val lookaheadSolveEval: Boolean get() = difficultyProxy == null
 

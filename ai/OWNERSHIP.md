@@ -78,7 +78,7 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `obs.py` | Packed float → gym Dict |
 | `actions.py` | Pad / match / resolve legal-row index |
 | `legal_row_policy.py` | Join-score legal rows (+ soft-mask bias on preferred rows) |
-| `features.py` | Embeddings → MLP vector |
+| `features.py` | Embeddings → MLP vector; `encode_legal_rows` reuses board embs (does not re-pack) |
 | `env.py` | Gymnasium API over client |
 | `reward.py` | Step reward + profile presets |
 | `scenarios.py` | Fetch/cache catalog (family + proxy); no hard-coded name lists |

@@ -79,11 +79,11 @@ Committed representation work. Engine wire kinds stay distinct for submit; polic
 - [x] **Pitch-only `boardTarget` head.** Landed (schema 8): target width `PITCH_SQUARE_COUNT+1` (**166**); actor was pitch+bench (**186**) until schema 10.
 - [x] **Bonus plays: encode identity once; drop `HandSlot`.** Landed (schema 8, option **A**): per-play `AiLegalKind`s; empty factors on play-bonus rows; hand MultiDiscrete axis removed.
 - [x] **Factors = free choices only; mark sugar; match on free factors.** Landed (schema 9): `AiLegalChoiceDto.factors` = free only; `sugarFactors` = pending-fixed (not MultiDiscrete-matched). `resolve_action` matches free factors → submit full `legalActionId` (sugar stays in the id).
-- [x] **`declineOffer` coarse kind.** Landed (schema 9): wire `skip` / `declineBonus` / `continueBlock` / `Choose*Reroll(false)` → `declineOffer`. When ability reroll pairs are present, AI omits redundant `DeclineBonus` (keep-row already covers “don’t RT + don’t reroll”).
-- [x] **Exclude `cancelThrowTeammate` from the policy.** Landed (schema 9): filtered out of `toAiLegalSetDto`; GUI still offers cancel.
-- [x] **Rerolls: one do-it kind + `declineOffer`, no boolean.** Landed (schema 9): `Choose*Reroll(true)` → `reroll`; keep → `declineOffer`. `AiFactor.Reroll` and the MultiDiscrete reroll head removed.
-- [x] **Combine Do-Over adjusts.** Landed (schema 9): throw / block / armour adjusts → `adjustByDoOver` (kind-only; sugar actor/target).
-- [x] **Actor by roster playerIndex + joint `(actor, kind)` head.** Landed (schema 10): actor `0` (no free actor) / `1..10` (roster slot+1); same id on [AiCellPlayerObs]; first MultiDiscrete axis is `actor×kind` (**374**); then target / challenge / face.
+- [x] **`declineOffer` coarse kind.** Landed (schema 9); **undone schema 16** — distinct `skip` / `declineBonus` / `continueBlock` / `keepOffer` again (join-score rows don’t need the MultiDiscrete merge).
+- [x] **Exclude `cancelThrowTeammate` from the policy.** Landed (schema 9); **restored schema 16** — cancel is a legal-row kind again.
+- [x] **Rerolls: one do-it kind + keep, no boolean.** Landed (schema 9): `Choose*Reroll(true)` → `reroll`; keep → `keepOffer` (was `declineOffer`). `AiFactor.Reroll` and the MultiDiscrete reroll head removed.
+- [x] **Combine Do-Over adjusts.** Landed (schema 9); **undone schema 16** — `adjustThrowByDoOver` / `adjustBlockByDoOver` / `adjustArmourByDoOver` are distinct kinds again.
+- [x] **Actor by roster playerIndex + joint `(actor, kind)` head.** Landed (schema 10); **superseded schema 16** — separate actor + kind pack columns; gym action is Discrete row index.
 ### Measure first (cheap stats → decide)
 
 Evidence for whether representation merges or sampling-procedure upgrades are worth it. Hypotheses: [Uniqueness hypotheses](#uniqueness-hypotheses-to-measure). Bucket **player `[Actor, BoardTarget]` rows** separately from card/challenge/follow-up shapes.
@@ -121,7 +121,7 @@ Optional representation shrinks and sampling-procedure upgrades — pick after M
 Three different notions — don’t mix them.
 
 1. **Naive head product** — allocate all MultiDiscrete widths as if every action used every axis (**~29M** schema 9; was ~104M in schema 8). Softmax fatness, not game size.
-2. **Structural distinct actions** — enumerate by kind using **only that kind’s free factors** (~0.5M swag with pad actor×pitch). `declineOffer` / bonus / challenge are not ×165.
+2. **Structural distinct actions** — enumerate by kind using **only that kind’s free factors** (~0.5M swag with pad actor×pitch). Kind-only declines / bonus / challenge are not ×165.
 3. **Per-step legal set size** — how many rows are legal *right now* (mask / APS). Separate question.
 
 ### 1. Naive head product (allocation size)
@@ -145,7 +145,7 @@ Notes:
 
 ### 2. Distinct actions (what “actual move space” means here)
 
-Not “max legal rows in one step.” That is a different statistic (mask width / APS). Here: **how many distinct choices exist if we enumerated only the free factors each kind actually uses** — so `declineOffer` / `playHailMary` / `claimChallenge` are **not** multiplied by 165 targets.
+Not “max legal rows in one step.” That is a different statistic (mask width / APS). Here: **how many distinct choices exist if we enumerated only the free factors each kind actually uses** — so `skip` / `playHailMary` / `claimChallenge` are **not** multiplied by 165 targets.
 
 #### Structural catalog (pad widths, unused axes omitted)
 
@@ -158,7 +158,7 @@ Sum over kinds of (product of that kind’s free factors). Still an **upper boun
 | Face-order | 6 | 6 |
 | Play-bonus (**A:** per-play kinds) | 15 × 1 | 15 |
 | Challenge claim/replace | 2 × 3 slots | 6 |
-| Kind-only (`declineOffer`, `reroll`, `adjustByDoOver`, …) | 1 each | few |
+| Kind-only (`skip`, `keepOffer`, `reroll`, adjust*, …) | 1 each | few |
 | **Structural total (order of magnitude)** | | **~0.4M** |
 
 Vs naive head product **~29M** because the product pretends every kind always has actor × target × face × ….
@@ -200,31 +200,45 @@ Baseline is schema 9 (~29M product). Remaining Maybes relative to that:
 The policy **join-scores** each live row with the board latent (`LegalRowActorCriticPolicy`):
 one preference over complete moves (not independent factor heads + remask).
 
-Each packed row is four ints (storage / ONNX legal-matrix input):
+Each packed row is **eight** ints (storage / ONNX legal-matrix input). Python
+`encode_legal_rows` embeds them the same way board channels are embedded
+(shared `player_index` / challenge / block-face embs + pitch xy) — it does **not**
+re-pack:
 
 | Slot | Factor | Width | Who uses it |
 |------|--------|------:|-------------|
 | 0 | actor | 11 | roster `playerIndex` — `0` when kind has no free actor |
-| 1 | kind | 34 | `AiLegalKind.ordinal` |
+| 1 | kind | 41 | `AiLegalKind.ordinal` |
 | 2 | boardTarget | 166 | **pitch only** `0..164` + unused |
 | 3 | challengeSlot | 4 | claim / replace |
+| 4 | attachedBonus | 6 | Sprint/Weave/… twin (`0..4` + unused) |
+| 5..7 | face0..2 | 6 each | Enforcer order pack codes (`0` unused; `1..5` = face) |
 
-Wire still sends `kind` + `kindIndex` + typed factors (`Actor.playerIndex`, …). Kotlin `AiLegalPacker` writes the four ints; Python only pads for the gym Dict.
+Wire still sends `kind` + `kindIndex` + typed factors (`Actor.playerIndex`, …).
+Kotlin `AiLegalPacker` writes the eight ints; Python only pads for the gym Dict
+and embeds.
 
-Unused axes on a row are pad sentinels in the harness; the Kotlin DTO **omits** unused free factors (and puts pending-fixed values + geometry `AttachedBonus` in `sugarFactors`).
+Unused axes on a row are unused sentinels; the Kotlin DTO **omits** unused free
+factors (pending-fixed values stay in `sugarFactors`).
 
-**Schema 16:** legal-row join scores; separate actor/kind pack (was joint under MultiDiscrete); soft-mask biases preferred **rows**. ONNX: packed obs + padded legal matrix → row scores (re-export required; schema-15 factor-logit artifacts will not load).
+**Schema 16:** legal-row join scores; 8-col pack (actor/kind/target/challenge/bonus/faces);
+unmerged decline/adjust kinds; `cancelThrowTeammate` + `chooseBlockFaceOrder` restored;
+Enforcer face-order offered to all seats when >1 perm; soft-mask biases preferred **rows**.
+ONNX: packed obs + padded legal matrix → **chosen row index** (re-export required).
 
-**Schema 15 (historical):** MultiDiscrete remask; joint actor×kind; faceOrder head already dropped; Enforcer order humans-only.
+**Schema 15 (historical):** MultiDiscrete remask; joint actor×kind; 4-col pack;
+faceOrder / cancel-TT omitted; Enforcer order humans-only.
 
 ### Factor-width audit (row packing)
 
 | Factor | Width | Vs real rule/API max | Verdict |
 |------|------:|----------------------|---------|
 | actor | 11 | `0..10` roster pad | Exact. |
-| kind | 34 | `AiLegalKind.entries` | Exact. |
+| kind | 41 | `AiLegalKind.entries` | Exact. |
 | boardTarget | 166 | Pitch 165 + unused | Exact pitch (+ pad). |
 | challengeSlot | 4 | 3 active challenges + unused | Exact. |
+| attachedBonus | 6 | 5 twins + unused | Exact. |
+| face0..2 | 6 each | unused + 5 `BlockDieFace` | Exact; pad short perms with unused. |
 
 **playerIndex:** `0` = empty / no free actor; `1..10` = roster slot + 1 (catalog max 10). Same id on the occupied cell (`AiCellPlayerObs.playerIndex`) and on `AiFactor.Actor`. Both teams reuse `1..10`; `teamRel` on the cell separates us/them.
 
@@ -266,20 +280,18 @@ Target-only free (actor sugar): `throwTeammate`, `quickReleaseThrow`, `placeLoos
 
 ## Pass / decline & related
 
-Policy kind **`declineOffer`**: decline whatever this pending offers (bonus card, free grant, quick-release, more run path, keep dice instead of ability reroll, …).
+Schema 16 keeps wire declines as **distinct kinds** (no `declineOffer` merge):
 
 | Wire kind | AI kind | Free factors | Sugar |
 |-----------|---------|--------------|-------|
-| `declineBonus` | `declineOffer` | `[]` | — |
-| `skip` | `declineOffer` | `[]` | Actor |
-| `continueBlock` | `declineOffer` | `[]` | Actor + block destination |
-| `Choose*Reroll(false)` | `declineOffer` | `[]` | Actor |
+| `declineBonus` | `declineBonus` | `[]` | — |
+| `skip` | `skip` | `[]` | Actor |
+| `continueBlock` | `continueBlock` | `[]` | Actor + block destination |
+| `Choose*Reroll(false)` | `keepOffer` | `[]` | Actor |
 | `Choose*Reroll(true)` | `reroll` | `[]` | Actor |
-| `cancelThrowTeammate` | *(omitted)* | — | GUI only |
+| `cancelThrowTeammate` | `cancelThrowTeammate` | `[]` | Actor |
 
-When Do-Over + OS/EP share a window, AI **drops** `DeclineBonus` if `Choose*Reroll` rows are present (keep-row already means “don’t RT + don’t reroll”).
-
-**Quick Release interrupt in obs?** Backend pending stage is `BlockStage.HANDLE_QUICK_RELEASE`. AI obs exposes coarse `TurnPhase` only — interrupt is implied by legal kinds (`quickReleaseThrow` + `declineOffer`). Free choice still differs from normal throw (target-only vs actor+target) — don’t merge those kinds.
+**Quick Release interrupt in obs?** Backend pending stage is `BlockStage.HANDLE_QUICK_RELEASE`. AI obs exposes coarse `TurnPhase` only — interrupt is implied by legal kinds (`quickReleaseThrow` + `skip` / keep). Free choice still differs from normal throw (target-only vs actor+target) — don’t merge those kinds.
 
 ---
 
@@ -293,9 +305,9 @@ Schema 9: free → `factors` (matched); pending-fixed → `sugarFactors` (not ma
 | `throw` / `block` / `foul` / `reserves` / `standUp` (5) | **Actor + target** | — |
 | `throwTeammateSelect` | **Actor + target** | — |
 | `quickReleaseThrow` / `throwTeammate` / `placeLooseBall` (3) | **Target** | Actor |
-| `declineOffer` / `reroll` / `adjustByDoOver` | **Kind only** (`[]`) | Actor (± target) when wire had them |
+| `skip` / `declineBonus` / `continueBlock` / `keepOffer` / `reroll` / adjust* / `cancelThrowTeammate` | **Kind only** (`[]`) | Actor (± target) when wire had them |
 | play-bonus kinds (15) | **Kind** among offered plays | — |
-| `chooseBlockFaceOrder` | **FaceOrder** | Actor |
+| `chooseBlockFaceOrder` | **FaceOrder** → pack face0..2 | Actor |
 | `claimChallenge` / `replaceChallenge` (2) | **Challenge slot** | — |
 
 **Implication:** uniqueness stats must use **free** factors only — Do-Over / decline / reroll are kind-only rows, not `actor×target` branching.
@@ -318,20 +330,22 @@ How we map today — candidates to treat as separate buckets in stats.
 
 | Kind | Sugar | Notes |
 |------|-------|--------|
-| `declineOffer` | often `[Actor]` (± target) | Pass / keep / don’t dump. |
+| `skip` / `declineBonus` / `continueBlock` / `keepOffer` | often `[Actor]` (± target) | Pass / keep / don’t dump. |
 | `reroll` | `[Actor]` | Spend OS / EP reroll. |
-| `adjustByDoOver` | `[Actor]` (± destination) | Pending picks throw/block/armour. |
+| `adjustThrowByDoOver` / `adjustBlockByDoOver` / `adjustArmourByDoOver` | `[Actor]` (± destination) | Distinct kinds (schema 16). |
+| `cancelThrowTeammate` | `[Actor]` | Abort TT select. |
 | play-bonus (15) | — | Identity in kind. |
 
 ### Other
 
 | Kind | Free | Sugar | Notes |
 |------|------|-------|--------|
-| `chooseBlockFaceOrder` | `[FaceOrder]` | `[Actor]` | ≤6 perms. |
+| `chooseBlockFaceOrder` | `[FaceOrder]` | `[Actor]` | ≤6 perms; packed into face0..2. |
 | `claimChallenge` / `replaceChallenge` | `[ChallengeSlot]` | — | Active challenge row. |
-
-`cancelThrowTeammate` is not in the AI legal set.
 
 ### Pad / unused on the wire
 
-Harness always emits **four** ints; axes a kind does not use get unused sentinels (`UNUSED_*` in `constants.py`). Conditional masks only enable values that appear on remaining legal rows. Soft-mask may further **boost** values that appear on preferred rows (never removes a legal value). Actor `0` on the joint head means “no free actor” (kind-only / target-only free rows).
+Harness always emits **eight** ints; axes a kind does not use get unused sentinels
+(`ATTACHED_BONUS_UNUSED`, `BLOCK_FACE_PACK_UNUSED`, actor `0`, …). Soft-mask may
+further **boost** preferred **rows** (never removes a legal row). Actor `0` means
+“no free actor” (kind-only / target-only free rows).

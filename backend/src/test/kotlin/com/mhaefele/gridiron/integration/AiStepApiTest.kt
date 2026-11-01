@@ -165,7 +165,7 @@ class AiStepApiTest : BaseApiTest() {
     }
 
     @Test
-    fun `Sprint and Weave twins to the same destination collapse to one AI row with Sprint sugar`() {
+    fun `Sprint and Weave twins to the same destination are distinct AI rows via attachedBonus pack`() {
         val match = match {
             homeBonus(BonusPlay.Sprint, BonusPlay.Weave)
             actionsRemaining(2)
@@ -184,12 +184,14 @@ class AiStepApiTest : BaseApiTest() {
         val weaveRun = weaveRuns.first { it.targetCoordinate == shared }
         val step = api.aiStep(match)
         val sharedChoices = step.harness.legalRows.filter { it.legalActionId == sprintRun.id || it.legalActionId == weaveRun.id }
-        assertThat(sharedChoices).hasSize(1)
-        val kept = sharedChoices.single()
-        assertThat(kept.legalActionId).isEqualTo(sprintRun.id)
-        assertThat(kept.factors.filterIsInstance<AiFactor.AttachedBonus>()).isEmpty()
-        assertThat(kept.sugarFactors.filterIsInstance<AiFactor.AttachedBonus>().single().index).isEqualTo(0)
-        assertThat(kept.factors.filterIsInstance<AiFactor.BoardTarget>()).hasSize(1)
+        assertThat(sharedChoices).hasSize(2)
+        val byId = sharedChoices.associateBy { it.legalActionId }
+        val sprintChoice = byId.getValue(sprintRun.id)
+        val weaveChoice = byId.getValue(weaveRun.id)
+        assertThat(sprintChoice.sugarFactors.filterIsInstance<AiFactor.AttachedBonus>().single().index).isEqualTo(0)
+        assertThat(weaveChoice.sugarFactors.filterIsInstance<AiFactor.AttachedBonus>().single().index).isEqualTo(1)
+        assertThat(sprintChoice.factors.filterIsInstance<AiFactor.BoardTarget>()).hasSize(1)
+        assertThat(weaveChoice.factors.filterIsInstance<AiFactor.BoardTarget>()).hasSize(1)
     }
 
     @Test

@@ -32,7 +32,6 @@ import com.mhaefele.gridiron.model.catalog.BonusPlay
 import com.mhaefele.gridiron.model.catalog.PlayerAbility
 import com.mhaefele.gridiron.model.catalog.hasAbility
 import com.mhaefele.gridiron.shared.ActionType
-import com.mhaefele.gridiron.shared.CoachControl
 import com.mhaefele.gridiron.shared.Coordinate
 import com.mhaefele.gridiron.shared.PlayerId
 import org.springframework.context.annotation.Lazy
@@ -262,11 +261,9 @@ class BlockResolver(
                     val blocker = session.board.getPlayer(ongoing.blockerId)
                     val faces = ongoing.faces!!
                     if (blocker.hasAbility(PlayerAbility.Enforcer) && faces.size > 1) {
-                        // Browser humans keep a meaningful order prompt; HARNESS / COMPUTER auto-sort.
-                        // chooseBlockFaceOrder is omitted from the AI learning contract (schema 15+).
+                        // Distinct permutations → coach picks order (humans + AI learning seats).
                         val orders = distinctFaceOrders(faces)
-                        val humanChooses = orders.size > 1 && session.config.controlledBy(session.activeCoach) == CoachControl.HUMAN
-                        if (humanChooses) {
+                        if (orders.size > 1) {
                             ongoing.offeredAbility = PlayerAbility.Enforcer
                             ongoing.offeredAbilityPlayerId = ongoing.blockerId
                             ongoing.stage = OngoingBlock.BlockStage.HANDLE_ENFORCER_ORDER

@@ -1,10 +1,12 @@
 """Join-score policy: rank this step's legal rows given the board (schema 16).
 
 Owner: one score per packed legal row = ``f(board_latent, encode(row))``.
-Gym action is ``Discrete(MAX_LEGAL_MOVES)``. Soft-mask adds a logit bias on
-preferred rows. Replaces factor MultiDiscrete + remask (``conditional_policy``).
+Row features use the same emb/coord style as the board trunk
+(``GridironFeaturesExtractor.encode_legal_rows``). Gym action is
+``Discrete(MAX_LEGAL_MOVES)``. Soft-mask adds a logit bias on preferred rows.
 
-MaskablePPO → ``forward`` (rollouts) / ``evaluate_actions`` (PPO + clone).
+MaskablePPO → ``forward`` (rollouts) / ``evaluate_actions`` (PPO + clone);
+pick via stock ``MaskableCategoricalDistribution.get_actions``.
 """
 
 from __future__ import annotations
@@ -21,20 +23,15 @@ from stable_baselines3.common.type_aliases import PyTorchObs
 from torch import nn
 
 from gridiron_ai.constants import (
-    ACTION_HEAD_SIZES,
     LEGAL_ROW_SCORE_WIDTH,
+    OBS_KEY_CHALLENGES,
     OBS_KEY_LEGAL_MOVE_COUNT,
     OBS_KEY_LEGAL_MOVES,
     OBS_KEY_SOFT_MASK_LEGAL,
     SOFT_MASK_LOGIT_BIAS,
 )
-from gridiron_ai.features import GridironFeaturesExtractor
+from gridiron_ai.features import LEGAL_ROW_FEATURE_DIM, GridironFeaturesExtractor
 
-_ROW_EMB_ACTOR = 16
-_ROW_EMB_KIND = 16
-_ROW_EMB_TARGET = 32
-_ROW_EMB_CHALLENGE = 16
-_ROW_EMB_DIM = _ROW_EMB_ACTOR + _ROW_EMB_KIND + _ROW_EMB_TARGET + _ROW_EMB_CHALLENGE
 _SCORE_HIDDEN = 128
 
 
@@ -76,14 +73,15 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
                 "LegalRowActorCriticPolicy requires share_features_extractor=True "
                 "(one GridironFeaturesExtractor shared by actor and critic)"
             )
+        if not isinstance(self.features_extractor, GridironFeaturesExtractor):
+            raise TypeError(
+                "LegalRowActorCriticPolicy requires GridironFeaturesExtractor "
+                f"(got {type(self.features_extractor)})"
+            )
         # Stock action_net is Linear(latent, MAX_LEGAL) — unused; scores come from the join MLP.
-        self.actor_emb = nn.Embedding(ACTION_HEAD_SIZES[0], _ROW_EMB_ACTOR)
-        self.kind_emb = nn.Embedding(ACTION_HEAD_SIZES[1], _ROW_EMB_KIND)
-        self.target_emb = nn.Embedding(ACTION_HEAD_SIZES[2], _ROW_EMB_TARGET)
-        self.challenge_emb = nn.Embedding(ACTION_HEAD_SIZES[3], _ROW_EMB_CHALLENGE)
         latent_dim = int(self.mlp_extractor.latent_dim_pi)
         self.row_scorer = nn.Sequential(
-            nn.Linear(latent_dim + _ROW_EMB_DIM, _SCORE_HIDDEN),
+            nn.Linear(latent_dim + LEGAL_ROW_FEATURE_DIM, _SCORE_HIDDEN),
             nn.ReLU(),
             nn.Linear(_SCORE_HIDDEN, 1),
         )
@@ -150,6 +148,7 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
             raise TypeError(f"Expected Dict observation with legal moves, got {type(obs)}")
         legal_moves = obs[OBS_KEY_LEGAL_MOVES]
         legal_count = obs[OBS_KEY_LEGAL_MOVE_COUNT]
+        challenges = obs[OBS_KEY_CHALLENGES]
         try:
             soft = obs[OBS_KEY_SOFT_MASK_LEGAL]
         except (KeyError, TypeError):
@@ -164,18 +163,14 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         else:
             legal_count = legal_count.to(device=latent_pi.device)
         legal_count = legal_count.reshape(-1).long()
+        if not isinstance(challenges, th.Tensor):
+            challenges = th.as_tensor(challenges, device=latent_pi.device)
+        else:
+            challenges = challenges.to(device=latent_pi.device)
 
-        # Pad sentinels are -1; clamp for embedding, then mask those slots out.
-        clamped = legal_moves.long().clamp(min=0)
-        row_emb = th.cat(
-            [
-                self.actor_emb(clamped[..., 0]),
-                self.kind_emb(clamped[..., 1]),
-                self.target_emb(clamped[..., 2]),
-                self.challenge_emb(clamped[..., 3]),
-            ],
-            dim=-1,
-        )
+        fe = self.features_extractor
+        assert isinstance(fe, GridironFeaturesExtractor)
+        row_emb = fe.encode_legal_rows(legal_moves, challenges.float())
         batch, n_rows, _ = row_emb.shape
         lat = latent_pi.unsqueeze(1).expand(batch, n_rows, -1)
         logits = self.row_scorer(th.cat([lat, row_emb], dim=-1)).squeeze(-1)

@@ -4,6 +4,7 @@ import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.game.dice.DiceRollerContext
 import com.mhaefele.gridiron.game.dice.ScriptedDiceRoller
 import com.mhaefele.gridiron.game.dice.dto.BlockDieFace
+import com.mhaefele.gridiron.game.dice.dto.bestEnforcerOrder
 import com.mhaefele.gridiron.game.action.pending.regular.RegularPlayerActionLegalMovesGenerator
 import com.mhaefele.gridiron.game.cards.ActionAttachedClaims
 import com.mhaefele.gridiron.game.legalmoves.ActionAttachedBallEncounters
@@ -288,7 +289,11 @@ class LookaheadSearch(
         stop: String,
         timedOut: Boolean,
     ) {
-        if (elapsedNanos < SLOW_NANOS && !timedOut) return
+        // Within a think budget, only noise when we actually hit the deadline. Absolute floor is
+        // for unbounded evaluate() calls (no deadlineNanos).
+        val overBudget = timedOut || (budgetNanos != null && elapsedNanos >= budgetNanos)
+        val noBudgetButSlow = budgetNanos == null && elapsedNanos >= SLOW_NANOS
+        if (!overBudget && !noBudgetButSlow) return
         val usPerNode = if (nodes > 0) elapsedNanos / nodes / 1_000L else 0L
         val pending = state.currentTurnState.pendingDecision?.let { deepestDelegate(it)::class.simpleName } ?: "none"
         log.warn(
@@ -452,6 +457,12 @@ class LookaheadSearch(
 
         legals.firstOrNull { it is LegalAction.DeclineBonus }?.let { return it }
         legals.firstOrNull { it is LegalAction.ContinueBlock }?.let { return it }
+        legals.filterIsInstance<LegalAction.ChooseBlockFaceOrder>().let { orders ->
+            if (orders.isNotEmpty()) {
+                val preferred = bestEnforcerOrder(orders.first().orderedFaces)
+                return orders.firstOrNull { it.orderedFaces == preferred } ?: orders.first()
+            }
+        }
         legals.filterIsInstance<LegalAction.ChooseBlockReroll>().firstOrNull { !it.reroll }?.let { return it }
         legals.filterIsInstance<LegalAction.ChooseThrowReroll>().firstOrNull { !it.reroll }?.let { return it }
         legals.filterIsInstance<LegalAction.PlaceLooseBall>().firstOrNull()?.let { return it }
@@ -763,7 +774,7 @@ class LookaheadSearch(
 
     private companion object {
         private val log = LoggerFactory.getLogger(LookaheadSearch::class.java)
-        /** Warn when a search takes at least this long, or hits its think deadline. */
-        private const val SLOW_NANOS = 50_000_000L
+        /** Absolute floor when evaluate() has no think deadline (live seats always pass one). */
+        private const val SLOW_NANOS = 200_000_000L
     }
 }

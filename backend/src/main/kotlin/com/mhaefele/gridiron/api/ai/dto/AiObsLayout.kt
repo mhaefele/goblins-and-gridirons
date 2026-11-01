@@ -42,8 +42,9 @@ object AiObsLayout {
      * v15: drop faceOrder MultiDiscrete head; AttachedBonus → sugar; omit chooseBlockFaceOrder
      * from AI kinds; add playSprint (RandomD6 Sprint mid-check).
      * v16: gym action = masked index into this step's legal rows (join-score policy);
-     * legal-row pack = actor, kind, boardTarget, challengeSlot (separate actor/kind);
-     * ONNX emits one score per padded legal-row slot.
+     * legal-row pack = actor, kind, boardTarget, challengeSlot, attachedBonus, face0..2;
+     * restore cancelThrowTeammate / chooseBlockFaceOrder; unmerge decline/adjust kinds;
+     * ONNX emits chosen row index (masked argmax).
      */
     const val SCHEMA_VERSION = 16
 
@@ -69,10 +70,18 @@ object AiObsLayout {
     /** Pack width: kind + d6 + [MAX_HELD_BLOCK_FACES] face slots. */
     const val HELD_CHECK_FIELD_COUNT = 1 + 1 + MAX_HELD_BLOCK_FACES
 
-    /** Packed legal-row width: actor, kind, boardTarget, challengeSlot. */
-    const val ACTION_FACTOR_COUNT = 4
+    /**
+     * Packed legal-row width: actor, kind, boardTarget, challengeSlot, attachedBonus, face0..2.
+     * Unused axes use pad sentinels (not MultiDiscrete heads — join-score embeds like board).
+     */
+    const val ACTION_FACTOR_COUNT = 8
 
     const val ACTIVE_CHALLENGE_SLOTS = 3
+    /** Geometry AttachedBonus indices `0..4`; pad = [ATTACHED_BONUS_UNUSED]. */
+    const val ATTACHED_BONUS_COUNT = 5
+    const val ATTACHED_BONUS_UNUSED = ATTACHED_BONUS_COUNT
+    /** Face pack: `0` unused; `1..BlockDieFace.entries` = ordinal+1. */
+    const val BLOCK_FACE_PACK_UNUSED = 0
 
     /** Free actor playerIndex pad — `0` unused, `1..MAX_PLAYERS_PER_TEAM` roster. */
     val ACTOR_HEAD_SIZE: Int = MAX_PLAYERS_PER_TEAM + 1
@@ -82,8 +91,11 @@ object AiObsLayout {
     val BOARD_TARGET_HEAD_SIZE: Int = PITCH_SQUARE_COUNT + 1
     /** Challenge slots + pad (unused axis). */
     val CHALLENGE_SLOT_HEAD_SIZE: Int = ACTIVE_CHALLENGE_SLOTS + 1
+    val ATTACHED_BONUS_HEAD_SIZE: Int = ATTACHED_BONUS_UNUSED + 1
+    /** `0` unused + one code per [com.mhaefele.gridiron.game.dice.dto.BlockDieFace]. */
+    val BLOCK_FACE_PACK_SIZE: Int = 1 + 5
     /** Factor widths packed on each legal row — must match `ai/gridiron_ai/constants.py` ACTION_HEAD_SIZES. */
-    val ACTION_HEAD_SIZES: IntArray = intArrayOf(ACTOR_HEAD_SIZE, KIND_HEAD_SIZE, BOARD_TARGET_HEAD_SIZE, CHALLENGE_SLOT_HEAD_SIZE)
+    val ACTION_HEAD_SIZES: IntArray = intArrayOf(ACTOR_HEAD_SIZE, KIND_HEAD_SIZE, BOARD_TARGET_HEAD_SIZE, CHALLENGE_SLOT_HEAD_SIZE, ATTACHED_BONUS_HEAD_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE,)
     /** Pad width for the legal-row menu (Python ``MAX_LEGAL_MOVES``). */
     const val MAX_LEGAL_MOVES = 1024
     /** ONNX / policy output width — one score per padded legal-row slot. */
@@ -93,6 +105,10 @@ object AiObsLayout {
     const val FACTOR_KIND = 1
     const val FACTOR_BOARD_TARGET = 2
     const val FACTOR_CHALLENGE_SLOT = 3
+    const val FACTOR_ATTACHED_BONUS = 4
+    const val FACTOR_FACE0 = 5
+    const val FACTOR_FACE1 = 6
+    const val FACTOR_FACE2 = 7
 
     /**
      * Mid-turn hand capacity for obs: end-of-turn trim keeps 3, Clean Sweep allows 3 claims in one
