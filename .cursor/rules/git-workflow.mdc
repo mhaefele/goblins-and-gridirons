@@ -47,6 +47,17 @@ When the user clearly asks to commit (e.g. "commit", "create a commit", diff-tab
 
 If the diff-tab prompt includes a "commit only staged" block **and** the user's message is the execute-commit action for that staged set, obey the staged list.
 
+## "Commit and then …" — commit does not cover the follow-up
+
+Compound asks like **"commit and then X"**, **"commit, then remind me / fix Y"**, **"commit. also add Z"** split into two jobs:
+
+1. **Commit** — **only what is already staged** at that moment. Do not `git add` more for this commit. Do not fold upcoming work into it.
+2. **Then X** — implement (or answer) under the normal table above. That commit request **does not** authorize a second commit for X.
+
+After X (non-frontend / mixed): **`git add` only — stop.** Frontend-only X may still auto-commit when done, unless they asked to stage / hold.
+
+Wrong (what to avoid): commit staged → do X → quietly commit X because the message also said "commit".
+
 ## "Go ahead" means implement
 
 Short approvals — "do it", "go", "go ahead", "yes", "proceed", "next", "start", "make it so" — mean **implement**, not "commit only". They do **not** override the table above: auto-commit only for frontend-only work; otherwise stage and wait.
@@ -60,5 +71,6 @@ Stage **only** X. Do not commit.
 - Commit any non-`frontend/` (or mixed) change set unless the user asked to commit.
 - Auto-commit frontend work after the user asked to stage / hold / wait to commit.
 - Treat "go" / "do it" / "next" as permission to **skip** staging non-frontend work (still stage; still no commit).
+- Treat **"commit and then X"** as permission to commit X — commit staged only; stage (or frontend-auto-commit) X separately per the table.
 - Bundle unrelated files into one commit unless the user included both in the request.
 - Push unless explicitly asked.
