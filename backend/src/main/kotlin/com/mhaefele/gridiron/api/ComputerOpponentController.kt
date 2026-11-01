@@ -11,8 +11,11 @@ import org.springframework.web.bind.annotation.RestController
  * Product computer-opponent catalog for match create / MatchupSplash / train harness.
  *
  * [ComputerOpponentCatalogDto.opponents] = seatable only (LOOKAHEAD/HEURISTIC always; ONNX when
- * [OnnxPolicySession.isSeatable]). [ComputerOpponentCatalogDto.unavailable] explains skipped ONNX
- * profiles (old schema, missing files, …) so clients can log a clear skip reason.
+ * [OnnxPolicySession.isSeatable] — schema 15 factor-logit or schema 16 legal-row).
+ * [ComputerOpponentCatalogDto.unavailable] explains skipped ONNX profiles (unsupported schema,
+ * missing files, …) so clients can log a clear skip reason.
+ *
+ * SCHEMA15_DELETE: drop “schema 15 factor-logit or” once the schema15 package is gone.
  */
 @RestController
 @RequestMapping("/api/computer-opponents")

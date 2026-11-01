@@ -4,6 +4,8 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
+import com.mhaefele.gridiron.game.opponent.onnx.schema15.Schema15Layout
+import com.mhaefele.gridiron.game.opponent.onnx.schema15.Schema15OnnxSession
 import com.mhaefele.gridiron.shared.OnnxOpponentProfile
 import jakarta.annotation.PreDestroy
 import org.springframework.core.io.ResourceLoader
@@ -15,16 +17,19 @@ import java.nio.LongBuffer
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Classpath ONNX actors under ``ai-opponent/{profile}/`` → chosen legal-row index.
+ * Classpath ONNX actors under ``ai-opponent/{profile}/`` → chosen legal-row index (schema 16).
  *
- * Loads per profile on first use. LOOKAHEAD/HEURISTIC never pay.
- * Output is masked-argmax over live rows (same as Python deterministic MaskablePPO predict).
- * Missing / stale artifacts fail hard (re-export after schema 16).
+ * Schema 15 factor-logit artifacts are seated via [Schema15OnnxSession] (deletable side package).
+ * LOOKAHEAD/HEURISTIC never pay. Missing / unsupported-schema artifacts are not seatable.
+ *
+ * SCHEMA15_DELETE: drop [schema15] ctor dep, schema-15 arm in [unavailabilityReason], and
+ * “seats schema 15 or 16” wording — schema 16 only. Grep SCHEMA15_DELETE.
  */
 @Component
 class OnnxPolicySession(
     private val jsonMapper: JsonMapper,
     private val resourceLoader: ResourceLoader,
+    private val schema15: Schema15OnnxSession, // SCHEMA15_DELETE
 ) : AutoCloseable {
     private data class Loaded(
         val session: OrtSession,
@@ -37,7 +42,7 @@ class OnnxPolicySession(
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val sessions = ConcurrentHashMap<OnnxOpponentProfile, Loaded>()
 
-    /** Profiles that are seatable now (files present + manifest matches runtime schema). */
+    /** Profiles that are seatable now (files present + manifest schema 15 or 16). SCHEMA15_DELETE: “or 15”. */
     fun availableProfiles(): List<OnnxOpponentProfile> =
         OnnxOpponentProfile.entries.filter { isSeatable(it) }
 
@@ -57,10 +62,22 @@ class OnnxPolicySession(
         return artifactsPresent(profile)
     }
 
+    /** Manifest `schemaVersion` when artifacts exist; null when missing/unreadable. */
+    fun manifestSchemaVersion(profile: OnnxOpponentProfile): Int? {
+        if (!artifactsPresent(profile)) return null
+        return try {
+            resourceLoader.getResource(manifestLocation(profile)).inputStream.use {
+                jsonMapper.readTree(it).path("schemaVersion").asInt()
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     /**
      * True when create/spawn with this profile will succeed — classpath files exist and
-     * [validateManifest] passes (schema / obs length / action width). Stale schema-15
-     * artifacts are present but not seatable.
+     * schema 15 (factor logits) or schema 16 (legal-row) validate.
+     * SCHEMA15_DELETE: drop “schema 15” from this contract.
      */
     fun isSeatable(profile: OnnxOpponentProfile): Boolean =
         unavailabilityReason(profile) == null
@@ -72,8 +89,18 @@ class OnnxPolicySession(
         }
         return try {
             val manifest = resourceLoader.getResource(manifestLocation(profile)).inputStream.use { jsonMapper.readTree(it) }
-            validateManifest(manifest, profile)
-            null
+            when (val schemaVersion = manifest.path("schemaVersion").asInt()) {
+                // SCHEMA15_DELETE: remove this arm
+                Schema15Layout.SCHEMA_VERSION -> schema15.unavailabilityReason(profile, manifest)
+                AiObsLayout.SCHEMA_VERSION    -> {
+                    validateManifest16(manifest, profile)
+                    null
+                }
+                else                          ->
+                    // SCHEMA15_DELETE: drop Schema15Layout from this message (schema 16 only)
+                    "ONNX opponent '${profile.id}' file is an old or unsupported version (schemaVersion=$schemaVersion) and cannot be used — " +
+                        "runtime seats schema ${Schema15Layout.SCHEMA_VERSION} or ${AiObsLayout.SCHEMA_VERSION}; re-export with: cd ai && ./export_opponent.sh ${profile.id}"
+            }
         } catch (ex: IllegalArgumentException) {
             ex.message
         } catch (ex: IllegalStateException) {
@@ -83,10 +110,10 @@ class OnnxPolicySession(
 
     fun ensureLoaded(profile: OnnxOpponentProfile) {
         if (sessions.containsKey(profile)) return
-        sessions.computeIfAbsent(profile) { openSession(it) }
+        sessions.computeIfAbsent(profile) { openSession16(it) }
     }
 
-    /** Deterministic legal-row index into [legalMoves] (0-based, live menu only). */
+    /** Deterministic legal-row index into [legalMoves] (0-based, live menu only). Schema 16 only. */
     fun chooseRow(profile: OnnxOpponentProfile, packedObs: FloatArray, legalMoves: List<IntArray>): Int {
         require(legalMoves.isNotEmpty()) { "No legal moves for ONNX chooseRow" }
         ensureLoaded(profile)
@@ -137,11 +164,11 @@ class OnnxPolicySession(
         sessions.clear()
     }
 
-    private fun openSession(profile: OnnxOpponentProfile): Loaded {
+    private fun openSession16(profile: OnnxOpponentProfile): Loaded {
         val manifestResource = resourceLoader.getResource(manifestLocation(profile))
         check(manifestResource.exists()) { "Missing classpath resource /$CLASSPATH_PREFIX/${profile.id}/manifest.json — run ai/export_opponent.sh ${profile.id}" }
         val manifest = manifestResource.inputStream.use { jsonMapper.readTree(it) }
-        validateManifest(manifest, profile)
+        validateManifest16(manifest, profile)
         val onnxName = manifest.path("onnxFile").asString("policy.onnx")
         val modelResource = resourceLoader.getResource(modelLocation(profile, onnxName))
         check(modelResource.exists()) { "Missing classpath resource /$CLASSPATH_PREFIX/${profile.id}/$onnxName — run ai/export_opponent.sh ${profile.id}" }
@@ -155,17 +182,33 @@ class OnnxPolicySession(
         )
     }
 
-    private fun validateManifest(manifest: JsonNode, expected: OnnxOpponentProfile) {
+    private fun validateManifest16(manifest: JsonNode, expected: OnnxOpponentProfile) {
         val schemaVersion = manifest.path("schemaVersion").asInt()
-        require(schemaVersion == AiObsLayout.SCHEMA_VERSION) { "ONNX opponent '${expected.id}' file is an old version (schemaVersion=$schemaVersion) and cannot be used — runtime needs schema ${AiObsLayout.SCHEMA_VERSION}; re-export with: cd ai && ./export_opponent.sh ${expected.id}" }
+        require(schemaVersion == AiObsLayout.SCHEMA_VERSION) {
+            "ONNX opponent '${expected.id}' is not schema ${AiObsLayout.SCHEMA_VERSION} (schemaVersion=$schemaVersion)"
+        }
         val obsLen = manifest.path("observationVectorLength").asInt()
-        require(obsLen == AiObsLayout.OBSERVATION_VECTOR_LENGTH) { "ONNX opponent '${expected.id}' is incompatible " + "(observationVectorLength=$obsLen, runtime needs ${AiObsLayout.OBSERVATION_VECTOR_LENGTH}) — " + "re-export with: cd ai && ./export_opponent.sh ${expected.id}" }
+        require(obsLen == AiObsLayout.OBSERVATION_VECTOR_LENGTH) {
+            "ONNX opponent '${expected.id}' is incompatible " +
+                "(observationVectorLength=$obsLen, runtime needs ${AiObsLayout.OBSERVATION_VECTOR_LENGTH}) — " +
+                "re-export with: cd ai && ./export_opponent.sh ${expected.id}"
+        }
         val maxLegal = manifest.path("maxLegalMoves").asInt()
-        require(maxLegal == AiObsLayout.MAX_LEGAL_MOVES) { "ONNX opponent '${expected.id}' is incompatible " + "(maxLegalMoves=$maxLegal, runtime needs ${AiObsLayout.MAX_LEGAL_MOVES}) — " + "re-export with: cd ai && ./export_opponent.sh ${expected.id}" }
+        require(maxLegal == AiObsLayout.MAX_LEGAL_MOVES) {
+            "ONNX opponent '${expected.id}' is incompatible " +
+                "(maxLegalMoves=$maxLegal, runtime needs ${AiObsLayout.MAX_LEGAL_MOVES}) — " +
+                "re-export with: cd ai && ./export_opponent.sh ${expected.id}"
+        }
         val actionN = manifest.path("actionSpaceN").asInt(manifest.path("logitWidth").asInt())
-        require(actionN == AiObsLayout.LEGAL_ROW_SCORE_WIDTH) { "ONNX opponent '${expected.id}' is incompatible " + "(actionSpaceN=$actionN, runtime needs ${AiObsLayout.LEGAL_ROW_SCORE_WIDTH}) — " + "re-export with: cd ai && ./export_opponent.sh ${expected.id}" }
+        require(actionN == AiObsLayout.LEGAL_ROW_SCORE_WIDTH) {
+            "ONNX opponent '${expected.id}' is incompatible " +
+                "(actionSpaceN=$actionN, runtime needs ${AiObsLayout.LEGAL_ROW_SCORE_WIDTH}) — " +
+                "re-export with: cd ai && ./export_opponent.sh ${expected.id}"
+        }
         val manifestProfile = manifest.path("profile").asString(expected.id)
-        require(manifestProfile == expected.id) { "ONNX opponent folder '${expected.id}' has manifest profile=$manifestProfile — re-export with: cd ai && ./export_opponent.sh ${expected.id}" }
+        require(manifestProfile == expected.id) {
+            "ONNX opponent folder '${expected.id}' has manifest profile=$manifestProfile — re-export with: cd ai && ./export_opponent.sh ${expected.id}"
+        }
     }
 
     companion object {
