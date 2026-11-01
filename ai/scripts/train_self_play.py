@@ -28,15 +28,17 @@ Keep every ``p.add_argument(...)`` on one line — do not wrap.
 from __future__ import annotations
 
 import argparse
+import builtins
 import json
 import logging
 import shutil
 import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 import gymnasium as gym
 import numpy as np
@@ -600,6 +602,38 @@ def _set_ppo_stability(model: MaskablePPO) -> None:
     model.target_kl = TARGET_KL
 
 
+@contextmanager
+def _sb3_kl_early_stop_explained() -> Iterator[None]:
+    """Rewrite MaskablePPO's stock KL early-stop print into a one-line human gloss.
+
+    SB3 trips when approx KL > 1.5×``target_kl`` and skips remaining PPO epochs for that update.
+    """
+    real_print = builtins.print
+    trip = 1.5 * TARGET_KL
+
+    def _print(*args: object, **kwargs: object) -> None:
+        if (
+            args
+            and isinstance(args[0], str)
+            and "Early stopping at step" in args[0]
+            and "reaching max kl" in args[0]
+        ):
+            gloss = (
+                f"{args[0].rstrip()} — policy shifted too far this update "
+                f"(approx KL > {trip:g} = 1.5×target_kl={TARGET_KL}); "
+                f"skipping remaining PPO epochs to stay stable."
+            )
+            real_print(gloss, *args[1:], **kwargs)
+            return
+        real_print(*args, **kwargs)
+
+    builtins.print = _print  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        builtins.print = real_print
+
+
 def _vecnormalize_path(save_stem: Path) -> Path:
     return Path(str(save_stem) + _VECNORMALIZE_SUFFIX)
 
@@ -839,12 +873,13 @@ def _train_segment(
         callbacks.append(PeriodicFinalSaveCallback(save_stem, FINAL_SAVE_FREQ))
 
     try:
-        model.learn(
-            total_timesteps=timesteps,
-            callback=CallbackList(callbacks),
-            progress_bar=False,
-            reset_num_timesteps=reset_num_timesteps,
-        )
+        with _sb3_kl_early_stop_explained():
+            model.learn(
+                total_timesteps=timesteps,
+                callback=CallbackList(callbacks),
+                progress_bar=False,
+                reset_num_timesteps=reset_num_timesteps,
+            )
     except (GridironApiError, EOFError):
         _release_segment_env(env, pool)
         raise SystemExit(1) from None
