@@ -39,9 +39,10 @@ BASE_URL="${BASE_URL:-http://localhost:${BACKEND_PORT}}"
 MVN="${MVN:-$(command -v mvnd 2>/dev/null || command -v mvn)}"
 PYTHON="${PYTHON:-$AI_ROOT/.venv/bin/python}"
 _LONG_RUNNING_STEM="maskable_ppo_selfplay_final"
-# Pre-claim dump: 31000 games × 370/block ≈ 30162 board-drill games. Enum is 22 types now (1330/block);
-# scale games so board-drill totals stay on that curve (every scenario gets the same 10 passes).
-DUMP_GAMES="${DUMP_GAMES:-111352}"
+# Pre-claim dump: 31000 games × 370/block (legacy regulars=10). Current block = scenarioSlots + 80
+# regulars (~50% BC steps from full games). Scale with frozen legacy regulars so drill passes stay
+# on the pre-claim curve: 31000 × 2180 / 370 = 182648 (35 scenarios × 6 diff × 10 passes + 80).
+DUMP_GAMES="${DUMP_GAMES:-182648}"
 DUMP_THREADS="${DUMP_THREADS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 
 # Phases in dependency order (wipe phase N also wipes everything after).
@@ -82,6 +83,9 @@ profile_names() {
 }
 
 # Shared CLI for ./train.sh, ./eval.sh, and train flags forwarded by ./start_over.sh.
+# Conceptual + phase-based only (phase / profile / scenario). Ship just what we need now —
+# never a free-form model path (asks are always “this phase’s artifact”); edit source for
+# one-offs instead of stacking escape-hatch flags.
 train_cli_usage() {
   cat <<'EOF'
 Usage (from ai/; backend must be up — ./dev.sh from repo root):
@@ -102,6 +106,8 @@ Options:
   --eval-lookahead N               eval games vs LOOKAHEAD (train: every 4 visits/profile; eval-only: each pass; 0 = skip)
   --eval-onnx N                    eval games per ONNX profile (general,defense; same cadence; 0 = skip)
   --eval-episode-mode EVAL|TRAIN   eval episodeMode (default EVAL; TRAIN = soft-mask search on multi-step claims)
+  --phase seed|scenario_a|scenario_b  eval.sh only: load the zip that phase produced (seed end =
+                                   scenario_a start; scenario_a end = scenario_b start); read-only; one pass
   --skip-scenarios                   skip scenario train; on eval.sh skip scenario eval too
   --train-scenario-learning N        PPO timesteps per drill below max difficulty
   --train-scenario-mastered N        PPO timesteps per drill at max while pack climbs
@@ -134,7 +140,7 @@ train_cli_parse() {
         TRAIN_CLI_FORWARD+=("$1")
         shift
         ;;
-      --scenario|--cycles|--train-heuristic|--train-lookahead|--train-onnx|--eval-heuristic|--eval-lookahead|--eval-onnx|--eval-episode-mode|--train-scenario-learning|--train-scenario-mastered)
+      --scenario|--cycles|--train-heuristic|--train-lookahead|--train-onnx|--eval-heuristic|--eval-lookahead|--eval-onnx|--eval-episode-mode|--train-scenario-learning|--train-scenario-mastered|--phase)
         TRAIN_CLI_FORWARD+=("$1" "${2:?missing value for $1}")
         shift 2
         ;;
@@ -202,6 +208,18 @@ step_clone_seed() {
   (
     cd "$AI_ROOT"
     "$PYTHON" -m scripts.clone_expert --in "$NPZ" --to "$SEED_ZIP"
+  )
+  # Fresh clone only (ensure_train_prereqs skips this when the zip already exists).
+  require_dev_backend
+  log "Seed health eval (--phase seed)"
+  (
+    cd "$AI_ROOT"
+    "$PYTHON" -m scripts.train_self_play \
+      --base-url "$BASE_URL" \
+      --profile baseline \
+      --eval-only \
+      --phase seed \
+      --cycles 1
   )
 }
 

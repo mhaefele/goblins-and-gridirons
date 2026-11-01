@@ -15,6 +15,7 @@ Keep this pointer tiny — **do not** inline DESIGN/BACKLOG here.
 | **Tasks** | [`ai/BACKLOG.md`](../../BACKLOG.md) | Re-litigate shipped rows |
 | **Contract / why** | [`ai/DESIGN.md`](../../DESIGN.md) + Kotlin `backend/.../api/ai/dto/` | GUI `MatchSnapshot` / `frontend/` for obs or legals |
 | **How to run** | [`ai/README.md`](../../README.md) | Invent CLI flags |
+| **Train/eval CLI** | Phase / profile / scenario concepts; edit source for one-offs | Model file paths, before/after duals, speculative knobs — asks are always phase-relative |
 | **Harness code** | `ai/gridiron_ai/`, `ai/scripts/` | Treat GUI submit/SSE as the train loop |
 | **Eval / run results** | Only paths the user named under `ai/output/` | Blind-scan `ai/output/` (cursorignored) |
 

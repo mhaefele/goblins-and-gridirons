@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Eval train-rotation profiles once — no training, no eval JSON artifacts (stdout only).
 # ``--profile all`` → baseline + general + spread (see reward.profiles_for_all); pin td/defense.
+# ``--phase seed|scenario_a|scenario_b`` → load that phase’s end zip (read-only; one pass).
 # Usage: ./eval.sh --help
 set -euo pipefail
 

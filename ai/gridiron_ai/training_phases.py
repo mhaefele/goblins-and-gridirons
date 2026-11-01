@@ -166,6 +166,22 @@ def long_running_zip(checkpoint_key: str) -> Path:
     return Path(str(long_running_stem(checkpoint_key)) + ".zip")
 
 
+# Eval pin: phase name → that phase’s end zip (scenario_a end == scenario_b start).
+# No path args — every “eval this model” ask is relative to the pipeline phases.
+EVAL_PHASE_CHOICES = ("seed", PHASE_SCENARIO_A, PHASE_SCENARIO_B)
+
+
+def eval_zip_for_phase(phase: str) -> Path:
+    """End-of-``phase`` MaskablePPO zip for ``eval.sh --phase`` (read-only)."""
+    if phase == "seed":
+        return EXPERT_SEED_ZIP
+    if phase == PHASE_SCENARIO_A:
+        return long_running_zip(PHASE_SCENARIO_A)
+    if phase == PHASE_SCENARIO_B:
+        return long_running_zip(PHASE_SCENARIO_B)
+    raise SystemExit(f"eval --phase expects one of {', '.join(EVAL_PHASE_CHOICES)}; got {phase!r}")
+
+
 def exported_freeze_zip(checkpoint_key: str) -> Path:
     """Last-exported freeze beside the rolling final zip (see ``freeze_exported_checkpoint``)."""
     return CHECKPOINT_DIR / checkpoint_key / _EXPORTED_ZIP_NAME

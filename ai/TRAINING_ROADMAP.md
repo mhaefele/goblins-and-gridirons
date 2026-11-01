@@ -63,7 +63,7 @@ phase trees. Going backwards is explicit (`./start_over.sh --phase …`).
 
 **Gate**
 
-- Clone finishes; `maskable_ppo_seed.zip` exists
+- Clone finishes; `maskable_ppo_seed.zip` exists; seed health eval ran (stdout `Eval [baseline] vs-…`)
 
 **Do not**
 

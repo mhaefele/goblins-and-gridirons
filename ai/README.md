@@ -74,11 +74,12 @@ mvn spring-boot:run -Dspring-boot.run.arguments="--export-expert --games=506 --o
 .venv/bin/python -m scripts.import_expert --in output/expert/lookahead.jsonl.gz --out output/expert/lookahead.npz
 ```
 
-**3. Clone** into the shared seed (or profile zips):
+**3. Clone** into the shared seed (or profile zips). `train.sh` / `ensure_train_prereqs` also run a seed health eval after a fresh clone (`./eval.sh --phase seed`):
 
 ```bash
 .venv/bin/python -m scripts.clone_expert --in output/expert/lookahead.npz --to output/expert/maskable_ppo_seed.zip
 .venv/bin/python -m scripts.clone_expert --in output/expert/lookahead.npz --profile all
+./eval.sh --phase seed
 ```
 
 Cycle / PPO / curriculum defaults: [TRAINING_ROADMAP.md](TRAINING_ROADMAP.md#current-defaults-implementation-pointers) (edit Python, not shell).

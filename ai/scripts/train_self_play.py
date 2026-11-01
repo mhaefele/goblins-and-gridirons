@@ -114,10 +114,12 @@ from gridiron_ai.scenario_curriculum import (
 from gridiron_ai.scenarios import refresh_catalog, require_catalog, resolve_scenario_pin
 from gridiron_ai.tb_callback import GridironMetricsCallback, PeriodicFinalSaveCallback
 from gridiron_ai.training_phases import (
+    EVAL_PHASE_CHOICES,
     PhaseName,
     TrainTarget,
     advance_pipeline,
     ensure_checkpoint_from_prior,
+    eval_zip_for_phase,
     force_promote,
     game_phase_unlocked,
     load_drill_stats_cumulative,
@@ -494,6 +496,8 @@ def make_vec_env(
 
 
 def parse_args() -> argparse.Namespace:
+    # Conceptual + phase-based only; minimal surface. Never a free-form model path — eval pins
+    # are ``--phase`` → that phase’s end zip. One-offs → edit source (common.sh train_cli_usage).
     p = argparse.ArgumentParser(
         description="Train/eval driver — invoked by ./train.sh, ./eval.sh, and ./start_over.sh (not day-to-day CLI)"
     )
@@ -515,6 +519,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval-onnx", type=int, default=DEFAULT_EVAL_ONNX, help=f"Deterministic eval games per ONNX profile ({', '.join(FULL_GAME_ONNX_OPPONENT_PROFILES)}; same cadence as heuristic/lookahead; 0 = skip)")
     p.add_argument("--eval-only", action="store_true", help="Skip all train; eval pass without eval JSON (eval.sh sets this)")
     p.add_argument("--eval-episode-mode", choices=("EVAL", "TRAIN"), default="EVAL", help="Scenario/full-game eval episodeMode (EVAL=default; TRAIN enables soft-mask search on multi-step claims)")
+    p.add_argument("--phase", choices=EVAL_PHASE_CHOICES, default=None, help="Eval-only: load the zip that phase produced (seed / scenario_a / scenario_b); read-only; one pass")
     p.add_argument("--scenario", default=None, help="One drill only — skips full-game train/eval (default: cycle all from server)")
     p.add_argument("--force-promote", action="store_true", help="Persist next phase gate without live curriculum (at profiles: sticky full-game unlock); fail if checkpoint missing")
     p.add_argument("--continue-on-submit-error", action="store_true", help=argparse.SUPPRESS)
@@ -1399,6 +1404,18 @@ def _eval_scenarios_segment(
     return row
 
 
+def _eval_phase_zip(args: argparse.Namespace) -> Path | None:
+    """Zip for ``--phase`` eval pin, or None when using the live long-running tree."""
+    if args.phase is None:
+        return None
+    if not args.eval_only:
+        raise SystemExit("--phase requires --eval-only (read-only; will not train or overwrite the zip)")
+    zip_path = eval_zip_for_phase(args.phase)
+    if not zip_path.is_file():
+        raise SystemExit(f"--phase {args.phase}: missing artifact {zip_path}")
+    return zip_path
+
+
 def _load_or_create_model(
     args: argparse.Namespace,
     *,
@@ -1433,6 +1450,25 @@ def _load_or_create_model(
                 for _ in range(DEFAULT_N_ENVS)
             ]
         )
+
+    phase_zip = _eval_phase_zip(args)
+    if phase_zip is not None:
+        if needs_train:
+            raise SystemExit("--phase requires --eval-only (read-only; will not train or overwrite the zip)")
+        # Scratch stem: curriculum sidecars empty; never write back into the phase zip.
+        save_stem = RUNS_DIR / "eval_phase" / phase_zip.stem
+        save_stem.parent.mkdir(parents=True, exist_ok=True)
+        name_prefix = STEP_CHECKPOINT_PREFIX
+        save_dir = save_stem.parent
+        session_log = tb_runs / _SESSION_LONG
+        print(f"Eval --phase {args.phase} ({phase}/{reward_profile}): {phase_zip}", flush=True)
+        model = MaskablePPO.load(str(phase_zip), device=DEFAULT_DEVICE)
+        model.verbose = 1
+        _set_learning_rate(model, _DEFAULT_LEARNING_RATE)
+        _set_ent_coef(model, reward_profile)
+        _set_vf_coef(model, reward_profile)
+        _set_ppo_stability(model)
+        return model, save_stem, save_dir, name_prefix, True, session_log
 
     # Fork from prior phase (expert → scenario_a → scenario_b → profile) when missing.
     ensure_checkpoint_from_prior(checkpoint_key, phase)
@@ -1698,9 +1734,12 @@ def _run_one_cycle(
                     update_curriculum=not args.eval_only,
                 )
             )
-    t0 = time.perf_counter()
-    atomic_model_save(model, save_stem)
-    print(f"  cycle checkpoint save: {_fmt_wall_s(time.perf_counter() - t0)}", flush=True)
+    if args.phase is None:
+        t0 = time.perf_counter()
+        atomic_model_save(model, save_stem)
+        print(f"  cycle checkpoint save: {_fmt_wall_s(time.perf_counter() - t0)}", flush=True)
+    else:
+        print(f"  skip checkpoint save (--phase {args.phase} read-only eval)", flush=True)
     if not args.eval_only:
         advanced = advance_pipeline(target)
         if advanced:
@@ -1882,12 +1921,23 @@ def main() -> None:
 
     # Resolve once for startup plan / eval-only cycle count; forever re-resolves each cycle.
     startup_targets = resolve_targets(args.profile, eval_only=args.eval_only)
+    if args.phase is not None:
+        _eval_phase_zip(args)  # fail fast if missing
+        # One zip → one pass (ignore profile rotation / forever).
+        startup_targets = startup_targets[:1]
+        args.cycles = 1
+        forever = False
+        print(
+            f"--phase {args.phase}: single eval pass with reward profile={startup_targets[0].reward_profile} "
+            f"(live key={startup_targets[0].checkpoint_key})",
+            flush=True,
+        )
     if args.eval_only:
         # Default --cycles 0 means forever; for a quick eval pass, run each target once.
         if args.cycles == 0:
             args.cycles = len(startup_targets)
             forever = False
-        if args.profile == "all":
+        if args.profile == "all" and args.phase is None:
             skipped = [
                 p
                 for p in profiles_for_all("eval")
@@ -1997,13 +2047,14 @@ def main() -> None:
             _print_scenario_perfect_summaries()
 
             if not keep_model:
-                atomic_model_save(model, save_stem)
+                if args.phase is None:
+                    atomic_model_save(model, save_stem)
                 model = None
                 save_stem = None
                 loaded_key = None
     except KeyboardInterrupt:
         print("\nInterrupted — saving and exiting.", flush=True)
-        if model is not None and save_stem is not None:
+        if model is not None and save_stem is not None and args.phase is None:
             atomic_model_save(model, save_stem)
         _print_scenario_perfect_summaries()
     finally:

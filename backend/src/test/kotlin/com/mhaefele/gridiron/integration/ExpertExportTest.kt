@@ -93,6 +93,11 @@ class ExpertExportTest : BaseApiTest() {
         assertThat(ExpertGameExporter.scenarioSlotForGameIndex(ExpertGameExporter.scenarioSlotsPerBlock)).isNull()
         assertThat(ExpertGameExporter.blockSize)
             .isEqualTo(ExpertGameExporter.scenarioSlotsPerBlock + ExpertGameExporter.REGULAR_GAMES_PER_BLOCK)
+        assertThat(ExpertGameExporter.REGULAR_GAMES_PER_BLOCK).isEqualTo(80)
+        assertThat(ExpertGameExporter.LEGACY_REGULAR_GAMES_PER_BLOCK).isEqualTo(10)
+        assertThat(ExpertGameExporter.legacyBlockSize).isEqualTo(370)
+        assertThat(ExpertGameExporter.exportGamesPreservingLegacyBoardCoverage())
+            .isEqualTo((31_000L * ExpertGameExporter.blockSize / ExpertGameExporter.legacyBlockSize).toInt())
     }
 
     @Test

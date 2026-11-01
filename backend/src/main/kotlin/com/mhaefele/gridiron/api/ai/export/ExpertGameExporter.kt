@@ -38,9 +38,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * think budget is the 100ms AI-vs-AI seat limit.
  *
  * Expert schedule repeats in blocks: [SCENARIO_PASSES_PER_BLOCK] passes of every [TrainingScenarioEnum]
- * at each difficulty 0–5, then [REGULAR_GAMES_PER_BLOCK] regular kickoff games. Each scenario type
- * gets the same drill count per block. Scale `--games` with [exportGamesPreservingLegacyBoardCoverage]
- * when the enum grows so board-drill totals match a pre-claim dump.
+ * at each difficulty 0–5, then [REGULAR_GAMES_PER_BLOCK] regular kickoff games (~half of BC steps from
+ * full games at ~6–7 steps/drill and ~150–200 steps/full game). Each scenario type gets the same
+ * drill count per block. Scale `--games` with [exportGamesPreservingLegacyBoardCoverage] when the
+ * enum grows so board-drill totals match a pre-claim dump.
  * Scenario games truncate after [scenarioCoachTurnWindow] coach turns (same window as PPO training).
  * Slots with [AbstractTrainingScenario.lookaheadSolveEval] true retry until Lookahead grades
  * [TrainingDrillStatus.PASS] ([MAX_SCENARIO_PLAY_ATTEMPTS] attempts); exhausting retries fails the export.
@@ -392,8 +393,17 @@ class ExpertGameExporter(
         /** How many times each block repeats the full scenario×difficulty set before regulars. */
         const val SCENARIO_PASSES_PER_BLOCK = 10
 
-        /** Full-game samples after [SCENARIO_PASSES_PER_BLOCK] passes of every scenario×difficulty. */
-        const val REGULAR_GAMES_PER_BLOCK = 10
+        /**
+         * Full-game samples after [SCENARIO_PASSES_PER_BLOCK] passes of every scenario×difficulty.
+         * Sized for ~50% BC steps from regulars (~6–7 steps/scenario episode, ~150–200/full game).
+         */
+        const val REGULAR_GAMES_PER_BLOCK = 80
+
+        /**
+         * Regulars per block when the pre-claim 31k dump was sized — freeze so raising
+         * [REGULAR_GAMES_PER_BLOCK] does not shrink drill scale in [exportGamesPreservingLegacyBoardCoverage].
+         */
+        const val LEGACY_REGULAR_GAMES_PER_BLOCK = 10
 
         /** Lookahead play attempts per scheduled scenario slot before strict failure. */
         const val MAX_SCENARIO_PLAY_ATTEMPTS = 16
@@ -405,7 +415,7 @@ class ExpertGameExporter(
             get() = scenarioPassSize * SCENARIO_PASSES_PER_BLOCK
 
         val legacyBlockSize: Int
-            get() = LEGACY_BOARD_SCENARIO_COUNT * DIFFICULTY_LEVELS * SCENARIO_PASSES_PER_BLOCK + REGULAR_GAMES_PER_BLOCK
+            get() = LEGACY_BOARD_SCENARIO_COUNT * DIFFICULTY_LEVELS * SCENARIO_PASSES_PER_BLOCK + LEGACY_REGULAR_GAMES_PER_BLOCK
 
         val blockSize: Int
             get() = scenarioSlotsPerBlock + REGULAR_GAMES_PER_BLOCK
