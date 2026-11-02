@@ -20,6 +20,7 @@ from gridiron_ai.scenario_curriculum import (
     full_game_train_timesteps,
     gate_failure_count,
     gating_pack_max_difficulty,
+    gating_pack_min_difficulty,
     gating_scenarios_mastered,
     get_difficulty,
     is_progress_waived,
@@ -425,33 +426,56 @@ def test_apply_after_eval_bump_without_failure() -> None:
 
 
 def test_progress_waived_after_threshold() -> None:
-    levels = {"TD_RUN": 3, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 5}
+    # Claims only — board drills never waive even past the fail threshold.
+    catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN", "CLAIM_GRAB_IT"]
+    levels = {
+        "TD_RUN": MAX_DIFFICULTY,
+        "LOOSE_BALL_RUN": MAX_DIFFICULTY,
+        "MARKED_RUN": MAX_DIFFICULTY,
+        "CLAIM_GRAB_IT": 3,
+    }
     failures: dict[str, dict[str, int]] = {}
     for _ in range(GATE_PROGRESS_WAIVE_FAILURES):
-        failures = record_gate_failure(failures, "TD_RUN", 3)
-    assert is_progress_waived(failures, "TD_RUN", levels)
-    assert not effective_gates_progress("TD_RUN", levels, failures)
-    assert gating_scenarios_mastered(levels, _CATALOG, failures)
+        failures = record_gate_failure(failures, "CLAIM_GRAB_IT", 3)
+    assert is_progress_waived(failures, "CLAIM_GRAB_IT", levels)
+    assert not effective_gates_progress("CLAIM_GRAB_IT", levels, failures)
+    assert gating_scenarios_mastered(levels, catalog, failures)
+
+
+def test_board_drills_never_progress_waived() -> None:
+    levels = {"TD_RUN": 1, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 5}
+    failures: dict[str, dict[str, int]] = {}
+    for _ in range(GATE_PROGRESS_WAIVE_FAILURES):
+        failures = record_gate_failure(failures, "TD_RUN", 1)
+    assert not is_progress_waived(failures, "TD_RUN", levels)
+    assert effective_gates_progress("TD_RUN", levels, failures)
+    assert not gating_scenarios_mastered(levels, _CATALOG, failures)
 
 
 def test_perfect_eval_restores_progress_gating() -> None:
-    levels = {"TD_RUN": MAX_DIFFICULTY, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 5}
+    catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN", "CLAIM_GRAB_IT"]
+    levels = {
+        "TD_RUN": MAX_DIFFICULTY,
+        "LOOSE_BALL_RUN": MAX_DIFFICULTY,
+        "MARKED_RUN": MAX_DIFFICULTY,
+        "CLAIM_GRAB_IT": MAX_DIFFICULTY,
+    }
     failures: dict[str, dict[str, int]] = {}
     for _ in range(GATE_PROGRESS_WAIVE_FAILURES):
-        failures = record_gate_failure(failures, "TD_RUN", MAX_DIFFICULTY)
+        failures = record_gate_failure(failures, "CLAIM_GRAB_IT", MAX_DIFFICULTY)
     # Older-level fails stay in all-time after recover.
-    failures = record_gate_failure(failures, "TD_RUN", 3)
+    failures = record_gate_failure(failures, "CLAIM_GRAB_IT", 3)
     stats = {"episodes": _EVAL, "wins": _EVAL, "losses": 0, "draws": 0}
     levels, failures, drill_stats, action = apply_after_eval_curriculum(
-        levels, failures, "TD_RUN", stats, expected_games=_EVAL
+        levels, failures, "CLAIM_GRAB_IT", stats, expected_games=_EVAL
     )
     assert action == "recover"
-    assert effective_gates_progress("TD_RUN", levels, failures)
-    assert gating_scenarios_mastered(levels, _CATALOG, failures)
-    assert gate_failure_count(failures, "TD_RUN", difficulty=MAX_DIFFICULTY) == 0
-    assert gate_failure_count(failures, "TD_RUN", difficulty=3) == 1
-    assert gate_failure_count(failures, "TD_RUN") == 1
-    assert drill_stat_count(drill_stats, "TD_RUN", "cycles") == 0
+    assert effective_gates_progress("CLAIM_GRAB_IT", levels, failures)
+    assert gating_scenarios_mastered(levels, catalog, failures)
+    assert gate_failure_count(failures, "CLAIM_GRAB_IT", difficulty=MAX_DIFFICULTY) == 0
+    assert gate_failure_count(failures, "CLAIM_GRAB_IT", difficulty=3) == 1
+    assert gate_failure_count(failures, "CLAIM_GRAB_IT") == 1
+    assert drill_stat_count(drill_stats, "CLAIM_GRAB_IT", "cycles") == 0
 
 
 def test_gating_pack_max_difficulty() -> None:
@@ -459,11 +483,21 @@ def test_gating_pack_max_difficulty() -> None:
     assert gating_pack_max_difficulty(levels, _CATALOG) == 5
 
 
+def test_gating_pack_min_difficulty() -> None:
+    levels = {"TD_RUN": 1, "LOOSE_BALL_RUN": 4, "MARKED_RUN": 0}
+    assert gating_pack_min_difficulty(levels, _CATALOG) == 0
+
+
 def test_train_timesteps_double_on_current_gate_fails() -> None:
-    levels = {"TD_RUN": 2, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 5}
+    # Flat pack at claim-unlock floor: fail-2× only (not behind, not bottleneck, not opening).
+    levels = {
+        "TD_RUN": CLAIM_UNLOCK_BOARD_DIFFICULTY,
+        "LOOSE_BALL_RUN": CLAIM_UNLOCK_BOARD_DIFFICULTY,
+        "MARKED_RUN": CLAIM_UNLOCK_BOARD_DIFFICULTY,
+    }
     assert SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER == 2
     assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG) == DEFAULT_SCENARIO_TRAIN_LEARNING
-    failures = record_gate_failure({}, "TD_RUN", 2)
+    failures = record_gate_failure({}, "TD_RUN", CLAIM_UNLOCK_BOARD_DIFFICULTY)
     assert (
         train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, gate_failures=failures)
         == DEFAULT_SCENARIO_TRAIN_LEARNING * 2
@@ -479,9 +513,9 @@ def test_train_timesteps_no_double_on_d5_gate_fails() -> None:
     )
 
 
-def test_train_timesteps_no_quadruple_when_board_not_at_d4() -> None:
+def test_train_timesteps_behind_pack_doubles_without_claim_unlock() -> None:
     levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 5}
-    assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG) == DEFAULT_SCENARIO_TRAIN_LEARNING
+    assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG) == DEFAULT_SCENARIO_TRAIN_LEARNING * 2
 
 
 def test_train_timesteps_game_phase_no_multipliers() -> None:
@@ -496,36 +530,70 @@ def test_train_timesteps_game_phase_no_multipliers() -> None:
     )
 
 
-def test_train_timesteps_double_below_pack_when_board_unlocked() -> None:
+def test_train_timesteps_double_below_pack_when_healthy() -> None:
     levels = {"TD_RUN": 5, "LOOSE_BALL_RUN": 4, "MARKED_RUN": 5}
     assert SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER == 4
     assert train_timesteps_for_scenario("LOOSE_BALL_RUN", levels, _CATALOG) == DEFAULT_SCENARIO_TRAIN_LEARNING * 2
     assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG) == DEFAULT_SCENARIO_TRAIN_MASTERED
 
 
-def test_train_timesteps_high_demotes_quadruple_only_with_current_fail() -> None:
+def test_train_timesteps_bottleneck_fail_quadruples_before_claim_unlock() -> None:
     levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 5}
-    stats = {"TD_RUN": {"d5_demotes": SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD, "cycles": 0}}
-    assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, drill_stats=stats) == DEFAULT_SCENARIO_TRAIN_LEARNING
     failures = record_gate_failure({}, "TD_RUN", 0)
     assert (
-        train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, gate_failures=failures, drill_stats=stats)
+        train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, gate_failures=failures)
         == DEFAULT_SCENARIO_TRAIN_LEARNING * 4
     )
 
 
-def test_train_timesteps_behind_and_gate_fail_take_max_multiplier() -> None:
+def test_train_timesteps_non_bottleneck_fail_stays_double() -> None:
+    levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": 4, "MARKED_RUN": 5}
+    failures = record_gate_failure({}, "LOOSE_BALL_RUN", 4)
+    assert (
+        train_timesteps_for_scenario("LOOSE_BALL_RUN", levels, _CATALOG, gate_failures=failures)
+        == DEFAULT_SCENARIO_TRAIN_LEARNING * 2
+    )
+
+
+def test_train_timesteps_opening_straggler_quadruples_with_fail() -> None:
+    # Below claim-unlock floor with fails → 4× even when not the absolute pack min.
+    levels = {"TD_RUN": 1, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 0}
+    failures = record_gate_failure({}, "TD_RUN", 1)
+    assert (
+        train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, gate_failures=failures)
+        == DEFAULT_SCENARIO_TRAIN_LEARNING * 4
+    )
+
+
+def test_train_timesteps_high_demotes_need_claim_unlock_for_quadruple() -> None:
+    levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": 4, "MARKED_RUN": 5}
+    failures = record_gate_failure({}, "LOOSE_BALL_RUN", 4)
+    stats = {"LOOSE_BALL_RUN": {"d5_demotes": SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD, "cycles": 0}}
+    assert (
+        train_timesteps_for_scenario(
+            "LOOSE_BALL_RUN", levels, _CATALOG, gate_failures=failures, drill_stats=stats
+        )
+        == DEFAULT_SCENARIO_TRAIN_LEARNING * 2
+    )
+    unlocked = {"TD_RUN": 4, "LOOSE_BALL_RUN": 4, "MARKED_RUN": 5, "CLAIM_GRAB_IT": 0}
+    catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN", "CLAIM_GRAB_IT"]
+    # Claim at d0 is the bottleneck; board demote treadmill gets 4× only via high_demotes.
+    failures = record_gate_failure({}, "LOOSE_BALL_RUN", 4)
+    assert (
+        train_timesteps_for_scenario(
+            "LOOSE_BALL_RUN", unlocked, catalog, gate_failures=failures, drill_stats=stats
+        )
+        == DEFAULT_SCENARIO_TRAIN_LEARNING * 4
+    )
+
+
+def test_train_timesteps_bottleneck_and_gate_fail_take_max_multiplier() -> None:
     levels = {"TD_RUN": 5, "LOOSE_BALL_RUN": 4, "MARKED_RUN": 5}
     failures = record_gate_failure({}, "LOOSE_BALL_RUN", 4)
     assert (
         train_timesteps_for_scenario("LOOSE_BALL_RUN", levels, _CATALOG, gate_failures=failures)
         == DEFAULT_SCENARIO_TRAIN_LEARNING * 4
     )
-
-
-def test_train_timesteps_no_double_when_only_behind_pack() -> None:
-    levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 5}
-    assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG) == DEFAULT_SCENARIO_TRAIN_LEARNING
 
 
 def test_train_timesteps_optional_no_double_on_current_fails() -> None:
@@ -548,12 +616,18 @@ def test_train_timesteps_optional_no_double_on_current_fails() -> None:
 
 
 def test_train_timesteps_waived_still_doubles_on_current_fails() -> None:
-    levels = {"TD_RUN": 4, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 5}
+    catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN", "CLAIM_GRAB_IT"]
+    levels = {
+        "TD_RUN": MAX_DIFFICULTY,
+        "LOOSE_BALL_RUN": MAX_DIFFICULTY,
+        "MARKED_RUN": MAX_DIFFICULTY,
+        "CLAIM_GRAB_IT": 4,
+    }
     failures: dict[str, dict[str, int]] = {}
     for _ in range(GATE_PROGRESS_WAIVE_FAILURES):
-        failures = record_gate_failure(failures, "TD_RUN", 4)
-    assert is_progress_waived(failures, "TD_RUN", levels)
+        failures = record_gate_failure(failures, "CLAIM_GRAB_IT", 4)
+    assert is_progress_waived(failures, "CLAIM_GRAB_IT", levels)
     assert (
-        train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, gate_failures=failures)
+        train_timesteps_for_scenario("CLAIM_GRAB_IT", levels, catalog, gate_failures=failures)
         == DEFAULT_SCENARIO_TRAIN_LEARNING * 2
     )

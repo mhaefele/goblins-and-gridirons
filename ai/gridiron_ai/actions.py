@@ -4,9 +4,9 @@ Owner: pad / resolve row index. Server packs rows (``AiLegalPacker``); sampling 
 join-score over this step's legal menu (``legal_row_policy``). See
 ``ACTION_SAMPLING.md`` / ``ai/OWNERSHIP.md``.
 
-Schema 16+: gym action is ``Discrete(MAX_LEGAL_MOVES)`` — an index into
-``legal_moves[:legal_move_count]``. Each packed row is actor, kind, boardTarget,
-challengeSlot, attachedBonus, face0..2 (Kotlin ``AiLegalPacker``).
+Schema 17+: gym action is ``Discrete(MAX_LEGAL_MOVES)`` — an index into
+``legal_moves[:legal_move_count]``. Each packed row is identity factors then
+metadata (Kotlin ``AiLegalPacker``) — see factor-slot comments below.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ import numpy as np
 from gridiron_ai.constants import ACTION_HEAD_SIZES, LEGAL_ROW_SCORE_WIDTH, MAX_LEGAL_MOVES
 
 # Canonical index in the factor tuple packed on each legal row.
+# Slots 0..7 = row identity (kind + free/sugar that distinguish the legal choice).
+# Who-id is roster Actor (playerIndex), not board coordinate — same id as cell occupant.
 FACTOR_ACTOR = 0
 FACTOR_KIND = 1
 FACTOR_BOARD_TARGET = 2
@@ -26,9 +28,12 @@ FACTOR_ATTACHED_BONUS = 4
 FACTOR_FACE0 = 5
 FACTOR_FACE1 = 6
 FACTOR_FACE2 = 7
+# Metadata only (always last): actor's current square for from→to geometry in the
+# row encoder. Not part of legal-choice identity — identity who = FACTOR_ACTOR.
+FACTOR_SOURCE_SQUARE = 8
 
-# One legal move: eight ints in canonical slot order.
-EncodedLegalMove: TypeAlias = tuple[int, int, int, int, int, int, int, int]
+# One legal move: nine ints in canonical slot order (identity…, then metadata).
+EncodedLegalMove: TypeAlias = tuple[int, int, int, int, int, int, int, int, int]
 
 # Legal moves this step — shape (n, 3), dtype int64 (from packed HTTP / expert).
 EncodedLegalMoves: TypeAlias = np.ndarray

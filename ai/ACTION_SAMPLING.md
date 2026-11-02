@@ -66,7 +66,7 @@ For *this* problem (smarter action choices), almost everything collapses to two 
 | **1. Encode moves better** | What each head/index **means**, how wide it is, deadweight removed, kinds merged | Yes-do + most Maybes (path merge, roster actor, relative target, joint heads as re-indexing) |
 | **2. Sample among legal rows** | How we **pick** among packed rows — schema 16 join-score + soft preferred bias | Soft-mask (landed); further row encoders / attention are optional |
 
-**Default path:** Schema 10 packing (roster actor) → soft-mask (schema 12) → **schema 16 legal-row join scores + separate actor/kind pack** (landed; replaces factor remask / joint index). Measure uniqueness before more representation shrinks.
+**Default path:** Schema 10 packing (roster actor) → soft-mask (schema 12) → **schema 17 legal-row join scores** (sourceSquare + shuffled menu; replaces factor remask / joint index). Measure uniqueness before more representation shrinks.
 
 **Landed (was “third direction”):** score the legal set directly — join board latent to each encoded row (`LegalRowActorCriticPolicy` / ONNX row scores). Remaining [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape) work is whether the value net / features should see richer legal-menu summaries beyond the action head.
 
@@ -194,40 +194,72 @@ Baseline is schema 9 (~29M product). Remaining Maybes relative to that:
 
 ---
 
-## Policy action (schema 16)
+## Policy action (schema 17)
 
 **Gym action:** `Discrete(MAX_LEGAL_MOVES)` — index into this step’s packed `legal_moves` menu.
 The policy **join-scores** each live row with the board latent (`LegalRowActorCriticPolicy`):
 one preference over complete moves (not independent factor heads + remask).
 
-Each packed row is **eight** ints (storage / ONNX legal-matrix input). Python
-`encode_legal_rows` embeds them the same way board channels are embedded
-(shared `player_index` / challenge / block-face embs + pitch xy) — it does **not**
-re-pack:
+**Menu order:** Kotlin `AiLegalChoiceMapper.toLegalChoices` **shuffles** the live set each
+step. Packed `legalMoves`, harness `legalRows` (incl. soft-mask / passing flags), expert
+`chosenFactors`, and the Discrete/ONNX **row index** all refer to that same shuffled order —
+no separate remap table. Prevents latching onto catalog / generation order.
 
-| Slot | Factor | Width | Who uses it |
-|------|--------|------:|-------------|
-| 0 | actor | 11 | roster `playerIndex` — `0` when kind has no free actor |
-| 1 | kind | 41 | `AiLegalKind.ordinal` |
-| 2 | boardTarget | 166 | **pitch only** `0..164` + unused |
-| 3 | challengeSlot | 4 | claim / replace |
-| 4 | attachedBonus | 6 | Sprint/Weave/… twin (`0..4` + unused) |
-| 5..7 | face0..2 | 6 each | Enforcer order pack codes (`0` unused; `1..5` = face) |
+Each packed row is **nine** ints (storage / ONNX legal-matrix input). Python
+`encode_legal_rows` embeds them the same way board channels are embedded
+(shared `player_index` / challenge / block-face embs + pitch xy for target **and** source)
+— it does **not** re-pack:
+
+| Slot | Factor | Role | Width | Who uses it |
+|------|--------|------|------:|-------------|
+| 0 | actor | **identity (who)** | 11 | roster `playerIndex` — same id as cell occupant; `0` when kind has no free actor |
+| 1 | kind | identity | 41 | `AiLegalKind.ordinal` |
+| 2 | boardTarget | identity (dest) | 166 | **pitch only** `0..164` + unused |
+| 3 | challengeSlot | identity | 4 | claim / replace |
+| 4 | attachedBonus | identity | 6 | Sprint/Weave/… twin (`0..4` + unused) |
+| 5..7 | face0..2 | identity | 6 each | Enforcer order pack codes (`0` unused; `1..5` = face) |
+| 8 | sourceSquare | **metadata** (tail) | 186 | actor’s current pitch/dugout — geometry hint only; not who-id |
 
 Wire still sends `kind` + `kindIndex` + typed factors (`Actor.playerIndex`, …).
-Kotlin `AiLegalPacker` writes the eight ints; Python only pads for the gym Dict
-and embeds.
+Kotlin `AiLegalPacker` writes the nine ints; Python only pads for the gym Dict
+and embeds. Source xy is gated to **pitch** in the encoder (dugout sources keep roster
+actor, xy gate off). **Who** on a path/throw/block row is always roster `actor`, never
+`sourceSquare`.
 
 Unused axes on a row are unused sentinels; the Kotlin DTO **omits** unused free
-factors (pending-fixed values stay in `sugarFactors`).
+factors (pending-fixed / source metadata stay in `sugarFactors`).
 
-**Schema 16:** legal-row join scores; 8-col pack (actor/kind/target/challenge/bonus/faces);
-unmerged decline/adjust kinds; `cancelThrowTeammate` + `chooseBlockFaceOrder` restored;
-Enforcer face-order offered to all seats when >1 perm; soft-mask biases preferred **rows**.
-ONNX: packed obs + padded legal matrix → **chosen row index** (re-export required).
+**Schema 17:** schema-16 join-score + `sourceSquare` column + per-step menu shuffle.
+Schema 15 remains the only dual-path ONNX fork — bump/mutate 16+ freely (re-export ONNX).
+
+**Schema 16 (historical):** 8-col pack (no sourceSquare); catalog menu order.
 
 **Schema 15 (historical):** MultiDiscrete remask; joint actor×kind; 4-col pack;
 faceOrder / cancel-TT omitted; Enforcer order humans-only.
+
+### Legal-move information: available vs exposed
+
+What the engine/GUI `LegalAction` (and AI harness sidecars) know, vs what the **join-score
+row** / **board obs** actually see. Soft-mask is sampling bias, not a row feature.
+
+| Signal | Where it lives | On packed legal row? | Elsewhere in model input? |
+|--------|----------------|----------------------|---------------------------|
+| Action kind (`run` / `throw` / …) | `LegalAction` / `AiLegalKind` | **Yes** — kind column | — |
+| Acting player identity | `playerId` | **Yes** — roster `Actor` | Cell `playerIndex` |
+| Destination square | path end / `targetCoordinate` | **Yes** — `boardTarget` (pitch) | Pitch terrain / occupants |
+| Source square (actor now) | board position of actor | **Yes (v17)** — `sourceSquare` **metadata** (not who-id) | Same cell via `playerIndex` |
+| Attached geometry bonus (Sprint/…) | `requiredBonusCard` | **Yes** — `attachedBonus` | — |
+| Challenge claim / replace slot | claim/replace actions | **Yes** — `challengeSlot` | Challenges tensor |
+| Enforcer face order | `ChooseBlockFaceOrder` | **Yes** — `face0..2` | `held_check` faces |
+| Soft-mask preferred row | training opening flag | **No** (parallel `soft_mask_legal`) | Logit bias only |
+| Passing / PASS-grade flag | training sidecar | **No** (harness / eval only) | — |
+| Potential challenge claims | `potentialChallengeClaims` | **No** | Player affordance might/certain claim |
+| Ball encounter (pickup/…) | `ballEncounter` on path | **No** | Affordance `canPickupBall`; cell `hasBall` |
+| Full path squares | `path` | **No** (end only as target) | — |
+| Throw range / hand-off | throw DTOs | **No** | — |
+| Available bonus cards (prompt set) | `availableBonusCards` | **No** | Hand tensor |
+| “This run scores a TD” | derived (carrier + EZ dest) | **No** | Affordance `canScoreTouchdown` on **player**; scoring EZ terrain + `hasBall` |
+| Submit id | `legalActionId` | **No** (sidecar) | Resolve after Discrete index |
 
 ### Factor-width audit (row packing)
 
@@ -239,6 +271,7 @@ faceOrder / cancel-TT omitted; Enforcer order humans-only.
 | challengeSlot | 4 | 3 active challenges + unused | Exact. |
 | attachedBonus | 6 | 5 twins + unused | Exact. |
 | face0..2 | 6 each | unused + 5 `BlockDieFace` | Exact; pad short perms with unused. |
+| sourceSquare | 186 | Board 185 + unused | Pitch + both dugouts (+ pad). |
 
 **playerIndex:** `0` = empty / no free actor; `1..10` = roster slot + 1 (catalog max 10). Same id on the occupied cell (`AiCellPlayerObs.playerIndex`) and on `AiFactor.Actor`. Both teams reuse `1..10`; `teamRel` on the cell separates us/them.
 

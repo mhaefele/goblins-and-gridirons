@@ -1,7 +1,7 @@
 """Game-state + legal-row feature encoding for LegalRowActorCriticPolicy.
 
 Owner: gym Dict → embedding/MLP board trunk; same emb/coord style for each legal
-row (actor / kind / target xy / challenge condition). Policy join-scores
+row (actor / kind / target xy / source xy / challenge condition). Policy join-scores
 board latent ⊕ row features. See ``ai/OWNERSHIP.md``.
 
 # DEVIATION: stock CombinedExtractor would Flatten each Dict Box. We embed enums,
@@ -80,11 +80,12 @@ _OCCUPANT_WIDTH = 5 * EMBED_DIM + 16
 _PITCH_EXTRA = 3
 # heldCheck: kind emb + d6/6 + 3 face embs.
 _HELD_CHECK_WIDTH = EMBED_DIM + 1 + MAX_HELD_BLOCK_FACES * EMBED_DIM
-# Legal row: actor + kind + (x,y,has_tgt) + (challenge cond+pts) + attachedBonus + 3 face embs.
+# Legal row: actor + kind + (x,y,has_tgt) + (x,y,has_src) + challenge + bonus + faces.
 LEGAL_ROW_FEATURE_DIM = (
     EMBED_DIM  # actor
     + EMBED_DIM  # kind
     + 3  # target xy + gate
+    + 3  # source xy + gate (pitch only; dugout sources gate off)
     + (EMBED_DIM + 1)  # challenge condition + points
     + EMBED_DIM  # attached bonus
     + MAX_HELD_BLOCK_FACES * EMBED_DIM  # face0..2
@@ -150,8 +151,8 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
     def encode_legal_rows(self, legal_moves: th.Tensor, challenges: th.Tensor) -> th.Tensor:
         """Encode each legal-row int tuple like board channels — shared embs + pitch xy.
 
-        ``legal_moves``: (N, R, 8) actor, kind, boardTarget, challengeSlot, attachedBonus,
-        face0..2 (−1 pad rows). ``challenges``: (N, 3, 2) board challenge slots.
+        ``legal_moves``: (N, R, 9) actor, kind, boardTarget, challengeSlot, attachedBonus,
+        face0..2, sourceSquare (−1 pad rows). ``challenges``: (N, 3, 2) board challenge slots.
         Unused axes → zeros (no pad-id embedding).
         """
         actors = legal_moves[..., 0].long()
@@ -160,6 +161,7 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         slots = legal_moves[..., 3].long()
         bonuses = legal_moves[..., 4].long()
         faces = legal_moves[..., 5:8].long()
+        sources = legal_moves[..., 8].long()
 
         actor_e = self.player_index_emb(self._enum_index(actors.clamp(min=0).float(), PLAYER_INDEX_VOCAB))
         kind_e = self.kind_emb(kinds.clamp(min=0, max=KIND_HEAD_SIZE - 1))
@@ -170,6 +172,15 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         x_norm = (safe_t % PLAY_WIDTH).float() / float(PLAY_WIDTH - 1)
         gate_t = has_target.to(dtype=x_norm.dtype)
         target_feat = th.stack([x_norm * gate_t, y_norm * gate_t, gate_t], dim=-1)
+
+        # Metadata geometry (pack tail): pitch sources get xy; dugout gate off.
+        # Who-id remains roster actor — sourceSquare does not identify the legal choice.
+        has_source = (sources >= 0) & (sources < PITCH_SQUARE_COUNT)
+        safe_src = sources.clamp(0, PITCH_SQUARE_COUNT - 1)
+        src_y = (safe_src // PLAY_WIDTH).float() / float(PLAY_HEIGHT - 1)
+        src_x = (safe_src % PLAY_WIDTH).float() / float(PLAY_WIDTH - 1)
+        gate_src = has_source.to(dtype=src_x.dtype)
+        source_feat = th.stack([src_x * gate_src, src_y * gate_src, gate_src], dim=-1)
 
         has_challenge = (slots >= 0) & (slots < ACTIVE_CHALLENGE_SLOTS)
         safe_s = slots.clamp(0, ACTIVE_CHALLENGE_SLOTS - 1)
@@ -190,7 +201,10 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         face_e = self.block_face_emb(face_codes) * has_face.to(dtype=bonus_e.dtype).unsqueeze(-1)
         face_feat = face_e.flatten(-2, -1)
 
-        return th.cat([actor_e, kind_e, target_feat, challenge_feat, bonus_feat, face_feat], dim=-1)
+        return th.cat(
+            [actor_e, kind_e, target_feat, source_feat, challenge_feat, bonus_feat, face_feat],
+            dim=-1,
+        )
 
     def _encode_scalars(self, scalars: th.Tensor) -> th.Tensor:
         """scalars: (N, 17). Embed phase; keep the other 16 as numbers."""

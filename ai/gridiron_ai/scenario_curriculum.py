@@ -17,13 +17,16 @@ use ``training_phases.load_drill_stats_cumulative`` (scenario_a → … → curr
 Phases (scenario_a board→d4 / scenario_b all→d5 / profiles games): ``training_phases``.
 Drills with fails at their **current** difficulty get ``SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER``×
 train budget below d5 (gating drills only — ``gatesProgress=false`` never multiplies; d5 gate
-fails do not double). Once every gating board drill is d4+, gating drills below the pack max
-get at most ``SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER``× until they fail at their current level;
-with a current-level fail, below-pack or ``d5_demotes`` ≥ ``SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD``
-raises that to ``SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER``×.
+fails do not double). Gating drills below the pack max (not waived) get the same 2× with no
+current-level fail — no claim-unlock door, so stuck openings catch up while the pack is ahead.
+``SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER``× requires a current-level fail plus either being at
+the pack **min** (bottleneck), still below claim-unlock difficulty while boards are not yet
+d4+, or ``d5_demotes`` ≥ ``SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD`` after every gating board is
+d4+ (demote grinding must not outspend unfinished openings).
 After ``GATE_PROGRESS_WAIVE_FAILURES`` imperfect after-evals at the current level,
-a catalog gating drill stops blocking progress (still trains); a perfect after-eval at that
-level clears **current-level** fails and restores gating (historical levels kept).
+a gating **claim** drill stops blocking progress (still trains); board drills never waive.
+A perfect after-eval at that level clears **current-level** fails and restores gating
+(historical levels kept).
 Proxy drills (catalog ``difficultyProxy``) train but skip scenario-specific after-eval;
 difficulty tracks the proxy target and ``gatesProgress`` is always false. Other drills with
 ``gatesProgress=false`` still eval and climb d0→d5 on perfect eval, but do not affect claim
@@ -54,7 +57,7 @@ CLAIM_UNLOCK_BOARD_DIFFICULTY = 4
 # No heuristic/lookahead full-game train until every catalog drill is at MAX (scenario_b gate).
 # Alias kept so callers/docs can say "full-game unlock == all mastered".
 FULL_GAME_UNLOCK_DIFFICULTY = MAX_DIFFICULTY
-# Imperfect after-evals at the current level before a gating drill stops blocking progress.
+# Imperfect after-evals at the current level before a gating claim stops blocking progress.
 GATE_PROGRESS_WAIVE_FAILURES = 20
 # Scenario after-eval batch size (train → after-eval).
 SCENARIO_EVAL_GAMES = 10
@@ -64,9 +67,9 @@ SCENARIO_EVAL_PASS_MIN_WINS = 9
 DEMOTE_FROM_MAX_MAX_WINS = 7
 # Extra train when the drill has imperfect after-evals at its current difficulty.
 SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER = 2
-# After gating board d4+: gating drills below pack max (not waived) train with this multiplier.
+# Current-level fail at pack min / below-d4 opening / high demotes after board d4+.
 SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER = 4
-# d5_demotes at or above this → 4× only together with a current-level gate fail.
+# d5_demotes at or above this → 4× with a current-level fail only once boards are d4+.
 SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD = 5
 _SUFFIX = ".scenario_difficulty.json"
 _GATE_FAILURES_SUFFIX = ".scenario_gate_failures.json"
@@ -310,9 +313,13 @@ def is_progress_waived(
     scenario: str,
     levels: dict[str, int],
 ) -> bool:
-    """True when a catalog gating drill has hit the failure threshold at its current level."""
+    """True when a gating **claim** has hit the failure threshold at its current level.
+
+    Board drills never waive — a stuck opening must keep blocking claim unlock / phase gates.
+    ``gatesProgress=false`` drills are already non-gating (optional), so they never waive either.
+    """
     catalog = require_catalog()
-    if not catalog.gates_progress(scenario):
+    if not catalog.gates_progress(scenario) or not catalog.is_claim(scenario):
         return False
     difficulty = get_difficulty(levels, scenario)
     return gate_failure_count(gate_failures, scenario, difficulty=difficulty) >= GATE_PROGRESS_WAIVE_FAILURES
@@ -400,21 +407,41 @@ def scenario_max_coach_turns(difficulty: int) -> int:
     return 1 if difficulty <= 3 else 3
 
 
+def _gating_active_names(
+    levels: dict[str, int],
+    scenario_names: list[str],
+    gate_failures: dict[str, dict[str, int]] | None = None,
+) -> list[str]:
+    failures = gate_failures if gate_failures is not None else {}
+    return [
+        name
+        for name in active_scenario_catalog(levels, scenario_names, gate_failures)
+        if effective_gates_progress(name, levels, failures)
+    ]
+
+
 def gating_pack_max_difficulty(
     levels: dict[str, int],
     scenario_names: list[str],
     gate_failures: dict[str, dict[str, int]] | None = None,
 ) -> int | None:
     """Highest stored level among effective gating drills in the active catalog, or None."""
-    failures = gate_failures if gate_failures is not None else {}
-    gating = [
-        name
-        for name in active_scenario_catalog(levels, scenario_names, gate_failures)
-        if effective_gates_progress(name, levels, failures)
-    ]
+    gating = _gating_active_names(levels, scenario_names, gate_failures)
     if not gating:
         return None
     return max(get_difficulty(levels, name) for name in gating)
+
+
+def gating_pack_min_difficulty(
+    levels: dict[str, int],
+    scenario_names: list[str],
+    gate_failures: dict[str, dict[str, int]] | None = None,
+) -> int | None:
+    """Lowest stored level among effective gating drills in the active catalog, or None."""
+    gating = _gating_active_names(levels, scenario_names, gate_failures)
+    if not gating:
+        return None
+    return min(get_difficulty(levels, name) for name in gating)
 
 
 def gating_board_at_claim_unlock(
@@ -448,21 +475,32 @@ def scenario_train_multiplier(
     ) > 0
     if has_current_fail:
         multiplier = max(multiplier, SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER)
-    behind_pack = False
-    if not is_progress_waived(gate_failures, scenario, levels):
-        if gating_board_at_claim_unlock(levels, scenario_names, gate_failures):
-            pack_max = gating_pack_max_difficulty(levels, scenario_names, gate_failures)
-            if pack_max is not None and difficulty < pack_max:
-                behind_pack = True
+    if is_progress_waived(gate_failures, scenario, levels):
+        return multiplier
+    pack_max = gating_pack_max_difficulty(levels, scenario_names, gate_failures)
+    pack_min = gating_pack_min_difficulty(levels, scenario_names, gate_failures)
+    behind_pack = pack_max is not None and difficulty < pack_max
+    # Pack min only counts as a bottleneck when someone is ahead (else every fail would 4×).
+    at_bottleneck = (
+        pack_min is not None
+        and pack_max is not None
+        and pack_min < pack_max
+        and difficulty == pack_min
+    )
+    boards_ready = gating_board_at_claim_unlock(levels, scenario_names, gate_failures)
+    # While openings still block claim unlock, every below-d4 failing drill gets 4× — not only the min.
+    opening_straggler = (
+        not boards_ready and difficulty < CLAIM_UNLOCK_BOARD_DIFFICULTY
+    )
+    if behind_pack and not has_current_fail:
+        multiplier = max(multiplier, SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER)
     stats = drill_stats if drill_stats is not None else {}
     high_demotes = (
         drill_stat_count(stats, scenario, "d5_demotes") >= SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD
+        and boards_ready
     )
-    if behind_pack or high_demotes:
-        if has_current_fail:
-            multiplier = max(multiplier, SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER)
-        elif behind_pack:
-            multiplier = max(multiplier, SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER)
+    if has_current_fail and (at_bottleneck or opening_straggler or high_demotes):
+        multiplier = max(multiplier, SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER)
     return multiplier
 
 

@@ -30,6 +30,7 @@ class AiLegalChoiceMapper(
             toAiLegalChoiceDto(
                 action,
                 perspectiveSeat,
+                state,
                 passingLegal = trainingScenarios.isPassingScenarioMove(action, state),
                 softMaskLegal = when {
                     solvableIds == null      -> trainingScenarios.isSoftMaskScenarioMove(action, state)
@@ -39,12 +40,16 @@ class AiLegalChoiceMapper(
             )
         }
         checkDistinctHarnessFactorKeys(choices)
-        return choices
+        // Shuffle so join-score / soft-mask cannot latch onto catalog order. Packed legalMoves,
+        // harness legalRows, soft-mask flags, and the chosen row index all share this order —
+        // resolve by index into the shuffled menu (ONNX + Python env).
+        return choices.shuffled()
     }
 
     fun toAiLegalChoiceDto(
         action: LegalAction,
         perspectiveSeat: TeamSide,
+        state: MatchState,
         passingLegal: Boolean = false,
         softMaskLegal: Boolean = false,
     ): AiLegalChoiceDto {
@@ -53,6 +58,9 @@ class AiLegalChoiceMapper(
         val sugarWithBonus = buildList {
             addAll(sugar)
             action.requiredBonusCard?.let { add(AiFactor.AttachedBonus(AttachedBonusEncoding.indexFor(it))) }
+            playerIdOrNull(action)?.let { playerId ->
+                add(AiFactor.SourceSquare(gameState.perspectiveBoardIndexOf(state.board, playerId, perspectiveSeat)))
+            }
         }
         return AiLegalChoiceDto(
             kind = kind,
@@ -65,6 +73,12 @@ class AiLegalChoiceMapper(
             softMaskLegal = softMaskLegal,
         )
     }
+
+    private fun playerIdOrNull(action: LegalAction): PlayerId? =
+        when (action) {
+            is LegalAction.PlayerLegalAction -> action.playerId
+            else                             -> null
+        }
 
     private fun LegalAction.toAiLegalKind(): AiLegalKind =
         when (this) {

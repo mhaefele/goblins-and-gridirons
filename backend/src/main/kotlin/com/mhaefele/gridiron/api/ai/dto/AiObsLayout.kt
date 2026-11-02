@@ -45,8 +45,13 @@ object AiObsLayout {
      * legal-row pack = actor, kind, boardTarget, challengeSlot, attachedBonus, face0..2;
      * restore cancelThrowTeammate / chooseBlockFaceOrder; unmerge decline/adjust kinds;
      * ONNX emits chosen row index (masked argmax).
+     * v17: legal-row pack appends sourceSquare (actor’s current pitch/dugout index) so
+     * join-score rows see from→to geometry while keeping roster Actor identity;
+     * [AiLegalChoiceMapper] shuffles the live menu each step (packed rows + harness rows
+     * share that order; chosen index maps into it). Schema 15 remains the only dual-path
+     * ONNX fork — mutate 16+ in place / bump freely.
      */
-    const val SCHEMA_VERSION = 16
+    const val SCHEMA_VERSION = 17
 
     const val PLAY_WIDTH = 11
     const val PLAY_HEIGHT = 15
@@ -71,10 +76,11 @@ object AiObsLayout {
     const val HELD_CHECK_FIELD_COUNT = 1 + 1 + MAX_HELD_BLOCK_FACES
 
     /**
-     * Packed legal-row width: actor, kind, boardTarget, challengeSlot, attachedBonus, face0..2.
+     * Packed legal-row width: identity (actor, kind, boardTarget, challengeSlot, attachedBonus,
+     * face0..2) then metadata (sourceSquare). Who-id = roster actor, not source coordinate.
      * Unused axes use pad sentinels (not MultiDiscrete heads — join-score embeds like board).
      */
-    const val ACTION_FACTOR_COUNT = 8
+    const val ACTION_FACTOR_COUNT = 9
 
     const val ACTIVE_CHALLENGE_SLOTS = 3
     /** Geometry AttachedBonus indices `0..4`; pad = [ATTACHED_BONUS_UNUSED]. */
@@ -89,18 +95,23 @@ object AiObsLayout {
     val KIND_HEAD_SIZE: Int = AiLegalKind.entries.size
     /** Pitch squares + pad (unused axis). */
     val BOARD_TARGET_HEAD_SIZE: Int = PITCH_SQUARE_COUNT + 1
+    /** Pitch + both dugouts + pad (unused axis) — actor’s current square. */
+    val SOURCE_SQUARE_HEAD_SIZE: Int = BOARD_SLOT_COUNT + 1
+    /** Pack pad when the row has no player actor (kind-only / claim rows). */
+    const val SOURCE_SQUARE_UNUSED: Int = BOARD_SLOT_COUNT
     /** Challenge slots + pad (unused axis). */
     val CHALLENGE_SLOT_HEAD_SIZE: Int = ACTIVE_CHALLENGE_SLOTS + 1
     val ATTACHED_BONUS_HEAD_SIZE: Int = ATTACHED_BONUS_UNUSED + 1
     /** `0` unused + one code per [com.mhaefele.gridiron.game.dice.dto.BlockDieFace]. */
     val BLOCK_FACE_PACK_SIZE: Int = 1 + 5
     /** Factor widths packed on each legal row — must match `ai/gridiron_ai/constants.py` ACTION_HEAD_SIZES. */
-    val ACTION_HEAD_SIZES: IntArray = intArrayOf(ACTOR_HEAD_SIZE, KIND_HEAD_SIZE, BOARD_TARGET_HEAD_SIZE, CHALLENGE_SLOT_HEAD_SIZE, ATTACHED_BONUS_HEAD_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE,)
+    val ACTION_HEAD_SIZES: IntArray = intArrayOf(ACTOR_HEAD_SIZE, KIND_HEAD_SIZE, BOARD_TARGET_HEAD_SIZE, CHALLENGE_SLOT_HEAD_SIZE, ATTACHED_BONUS_HEAD_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, SOURCE_SQUARE_HEAD_SIZE,)
     /** Pad width for the legal-row menu (Python ``MAX_LEGAL_MOVES``). */
     const val MAX_LEGAL_MOVES = 1024
     /** ONNX / policy output width — one score per padded legal-row slot. */
     const val LEGAL_ROW_SCORE_WIDTH: Int = MAX_LEGAL_MOVES
 
+    /** Identity — roster playerIndex (same id on the occupied cell). */
     const val FACTOR_ACTOR = 0
     const val FACTOR_KIND = 1
     const val FACTOR_BOARD_TARGET = 2
@@ -109,6 +120,8 @@ object AiObsLayout {
     const val FACTOR_FACE0 = 5
     const val FACTOR_FACE1 = 6
     const val FACTOR_FACE2 = 7
+    /** Metadata only (pack tail) — actor’s current square; not legal-choice identity. */
+    const val FACTOR_SOURCE_SQUARE = 8
 
     /**
      * Mid-turn hand capacity for obs: end-of-turn trim keeps 3, Clean Sweep allows 3 claims in one

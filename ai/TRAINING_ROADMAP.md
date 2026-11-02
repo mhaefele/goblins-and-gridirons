@@ -218,8 +218,8 @@ Ask before merging:
 | Claim unlock board d4 | `scenario_curriculum.CLAIM_UNLOCK_BOARD_DIFFICULTY` | scenario_a → scenario_b |
 | Full-game unlock d5 | `scenario_curriculum.FULL_GAME_UNLOCK_DIFFICULTY` | After all drills mastered |
 | Gate-fail double run | `scenario_curriculum.SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER` | 2× when gating drill has current-difficulty `gate_fails` > 0 below d5; optional drills never multiply; d5 fails excluded |
-| Behind-pack / high-demote run | `SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER` / `SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD` | 2× when gating board d4+ and drill below pack max (not waived) with no current-level fail; 4× only with a current-level fail plus below-pack or `d5_demotes` ≥ 5 |
-| Progress waive / recover | `scenario_curriculum.GATE_PROGRESS_WAIVE_FAILURES` (20) | Stop blocking gates; perfect at level clears current fails only |
+| Behind-pack / bottleneck / demote run | `SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER` / `SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD` | 2× below pack max (no claim-unlock door) or current-level fail; 4× current fail at pack **min**, or below-d4 while boards are not yet d4+, or + `d5_demotes` ≥ 5 once boards are d4+ |
+| Progress waive / recover | `scenario_curriculum.GATE_PROGRESS_WAIVE_FAILURES` (20) | Gating **claims** only — stop blocking gates; boards never waive; perfect at level clears current fails only |
 | Scenario eval games | `scenario_curriculum.SCENARIO_EVAL_GAMES` | 10 games per drill after-eval; `n_envs` = game count |
 | Scenario pass / demote | `SCENARIO_EVAL_PASS_MIN_WINS` (9) / `DEMOTE_FROM_MAX_MAX_WINS` (7) | Pass 9–10/10 to bump; ≤7/10 at d5 demotes; 8/10 is gate-fail only |
 | d5 demotion / gate failures | `DEMOTE_FROM_MAX_MAX_WINS` + `.scenario_gate_failures.json` / `.scenario_drill_stats.json` | ≤7 wins/10 at d5 demotes on train sandwich after-eval; per-level fails kept (all-time sum); per-phase `cycles` files; summary sums scenario_a→current; `--eval-only` does not mutate curriculum |

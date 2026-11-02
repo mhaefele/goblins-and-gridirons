@@ -121,11 +121,16 @@ def test_summary_marks_optional_and_waived_gate_exclusions(monkeypatch, tmp_path
     eval_root.mkdir()
     runs_root.mkdir()
 
-    levels = {"TD_RUN": 2, "HELD_SS_REROLL": 1}
+    levels = {"TD_RUN": 2, "HELD_SS_REROLL": 1, "CLAIM_GRAB_IT": 2}
     _plant(ckpt_root, PHASE_SCENARIO_A, levels, steps=10_000)
     failures_path = path_for_gate_failures(ckpt_root / PHASE_SCENARIO_A / _STEM)
     failures_path.write_text(
-        json.dumps({"TD_RUN": {"2": GATE_PROGRESS_WAIVE_FAILURES}}),
+        json.dumps(
+            {
+                "TD_RUN": {"2": GATE_PROGRESS_WAIVE_FAILURES},
+                "CLAIM_GRAB_IT": {"2": GATE_PROGRESS_WAIVE_FAILURES},
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -134,7 +139,7 @@ def test_summary_marks_optional_and_waived_gate_exclusions(monkeypatch, tmp_path
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", eval_root)
 
     # Direct target — avoid phase routing promoting scenario_a when the only gating
-    # board drill is waived.
+    # claim is waived (boards never waive even past the fail threshold).
     target = TrainTarget(
         phase=PHASE_SCENARIO_A,
         checkpoint_key=PHASE_SCENARIO_A,
@@ -146,7 +151,8 @@ def test_summary_marks_optional_and_waived_gate_exclusions(monkeypatch, tmp_path
         install_fixture_catalog()
 
     assert "held_ss_reroll" in text and "(optional)" in text
-    assert "td_run" in text and "(waived)" in text
+    assert "td_run" in text and "(waived)" not in text.split("td_run", 1)[1].split("\n", 1)[0]
+    assert "claim_grab_it" in text and "(waived)" in text
     assert "gate_fails=" in text
     drill_section = text.split("scenario drills (curriculum d · latest eval @d; --scenario N or name):\n", 1)[1]
     board_lines = drill_section.split("\n\n", 1)[0].splitlines()
@@ -155,14 +161,15 @@ def test_summary_marks_optional_and_waived_gate_exclusions(monkeypatch, tmp_path
 
 
 def test_train_boost_lines_lists_2x_and_4x_drills() -> None:
-    levels = {name: CLAIM_UNLOCK_BOARD_DIFFICULTY for name in FULL_NAMES}
-    failures = record_gate_failure({}, "THROW_OPEN_RECEIVER", CLAIM_UNLOCK_BOARD_DIFFICULTY)
-    failures = record_gate_failure(failures, "TD_RUN", CLAIM_UNLOCK_BOARD_DIFFICULTY)
-    stats = {"TD_RUN": {"d5_demotes": 5, "cycles": 0}}
-    lines = _train_boost_lines(levels, FULL_NAMES, failures, stats, game_phase=False)
+    levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
+    levels["TD_RUN"] = 3
+    levels["THROW_OPEN_RECEIVER"] = 4
+    failures = record_gate_failure({}, "THROW_OPEN_RECEIVER", 4)
+    failures = record_gate_failure(failures, "TD_RUN", 3)
+    lines = _train_boost_lines(levels, FULL_NAMES, failures, {}, game_phase=False)
     joined = "\n".join(lines)
     assert "train multipliers (next cycle):" in joined
-    assert "    4× current fail and (below pack max or d5_demotes≥5)" in joined
+    assert "4× current fail at pack min" in joined
     assert "train 2×: throw_open_receiver" in joined
     assert "td_run" in joined.split("train 4×:")[1]
     assert "throw_open_receiver" not in joined.split("train 4×:")[1]

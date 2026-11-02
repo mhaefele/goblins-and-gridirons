@@ -5,8 +5,9 @@ Owner: ``SCHEMA_VERSION`` + obs/action head widths shared by ``obs`` / ``actions
 semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
-# v16: Discrete legal-row join scores; pack = actor, kind, target, challenge, bonus, face0..2.
-SCHEMA_VERSION = 16
+# v17: Discrete legal-row join scores; pack = actor, kind, target, challenge, bonus, face0..2,
+# sourceSquare (actor's current pitch/dugout). Schema 15 is the only dual-path ONNX fork.
+SCHEMA_VERSION = 17
 
 PLAY_WIDTH = 11
 PLAY_HEIGHT = 15
@@ -15,6 +16,7 @@ MAX_PLAYERS_PER_TEAM = 10  # catalog max roster; actor / cell playerIndex upper 
 BENCH_SLOTS = MAX_PLAYERS_PER_TEAM
 HOME_BENCH_START = PITCH_SQUARE_COUNT  # 165
 BOARD_SLOT_COUNT = PITCH_SQUARE_COUNT + 2 * BENCH_SLOTS  # 185
+SOURCE_SQUARE_UNUSED = BOARD_SLOT_COUNT  # pad when row has no player actor
 
 ACTIVE_CHALLENGE_SLOTS = 3
 ATTACHED_BONUS_COUNT = 5
@@ -45,6 +47,7 @@ ACTION_HEAD_SIZES = [
     BLOCK_FACE_PACK_SIZE,
     BLOCK_FACE_PACK_SIZE,
     BLOCK_FACE_PACK_SIZE,
+    BOARD_SLOT_COUNT + 1,  # sourceSquare metadata (pitch + dugouts + unused); who-id = actor
 ]
 # Policy / ONNX output width: one score per padded legal-row slot.
 LEGAL_ROW_SCORE_WIDTH = MAX_LEGAL_MOVES
@@ -120,7 +123,7 @@ OBS_KEY_LEGAL_MOVE_COUNT = "legal_move_count"
 OBS_KEY_SOFT_MASK_LEGAL = "soft_mask_legal"
 # Parallel to legal_moves rows: 1 when server flagged passingScenarioMove (pass-grade solve; not soft-mask).
 OBS_KEY_PASSING_LEGAL = "passing_legal"
-FACTORS_PER_LEGAL_MOVE = len(ACTION_HEAD_SIZES)  # 8
+FACTORS_PER_LEGAL_MOVE = len(ACTION_HEAD_SIZES)  # 9
 # Logit bonus on preferred legal rows (soft preference, not hard mask).
 SOFT_MASK_LOGIT_BIAS = 2.5
 

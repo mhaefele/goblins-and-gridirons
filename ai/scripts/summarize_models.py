@@ -752,10 +752,10 @@ def _legend() -> str:
             "  W/L/D on drill rows      decided scenario episodes (DISTRACTED → D)",
             "  d0–d5                 curriculum level (active phase checkpoint)",
             "  (optional)             gatesProgress=false — trained/eval'd, not a curriculum gate (oracle or placement not trusted yet)",
-            "  (waived)               gate_fails threshold — temporarily excluded from gates",
+            "  (waived)               claim gate_fails threshold — temporarily excluded from gates (boards never waive)",
             "  gate_fails             current-difficulty / all-time imperfect after-evals",
             f"  train 1×/2×/4×         next-cycle PPO budget multiplier (gating drills; see criteria under drill lists)",
-            "  cycles                 train sandwich units cumulative (scenario_a→current; 2× gate fails below d5 or behind pack; 4× current fail + behind pack or ≥5 demotes)",
+            "  cycles                 train sandwich units cumulative (scenario_a→current; 2× gate fails / behind pack; 4× fail at pack min / below-d4 opening / ≥5 demotes after board d4+)",
             "  d5_demotes             times this drill was demoted from d5",
             "  policy_entropy         −train/entropy_loss — high = exploratory, low = peaked policy",
             "  entropy                entropy_loss plus trend over the train window",
@@ -791,12 +791,14 @@ def _train_boost_criteria_lines() -> list[str]:
         "  train multipliers (next cycle):",
         "    1× default PPO budget (optional drills never boost; d5 gate fails do not double)",
         (
-            f"    2× gate_fails at current d (below d{MAX_DIFFICULTY}); or below pack max once "
-            f"every gating board drill is d{CLAIM_UNLOCK_BOARD_DIFFICULTY}+ (not waived) with no current fail"
+            f"    2× gate_fails at current d (below d{MAX_DIFFICULTY}); or below pack max "
+            f"(not waived) with no current fail"
         ),
         (
-            f"    4× current fail and (below pack max or d5_demotes≥"
-            f"{SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD})"
+            f"    4× current fail at pack min; or below d{CLAIM_UNLOCK_BOARD_DIFFICULTY} "
+            f"while boards are not yet d{CLAIM_UNLOCK_BOARD_DIFFICULTY}+; or current fail + "
+            f"d5_demotes≥{SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD} once boards are "
+            f"d{CLAIM_UNLOCK_BOARD_DIFFICULTY}+"
         ),
     ]
 
