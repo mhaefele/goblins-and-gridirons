@@ -26,7 +26,7 @@ class ExpertExportStepRecorder(
 
     override fun recordStep(state: MatchState, legal: List<LegalAction>, chosen: LegalAction, acting: TeamSide, events: List<StoredDomainEvent>): ExpertStepRecord {
         val step = steps.toAiStepDto(state, legal, perspectiveSeat = acting)
-        val chosenIndex = step.harness.legalRows.indexOfFirst { it.legalActionId == chosen.id }
+        val chosenIndex = step.harness.legalRows.indexOfFirst { it.action.id == chosen.id }
         check(chosenIndex >= 0) { "chosen ${chosen.id.value} missing from legalRows" }
         return ExpertStepRecord(
             policy = packed.pack(step).policy,

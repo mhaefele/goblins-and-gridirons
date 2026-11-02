@@ -29,7 +29,7 @@ class TrainingEpisodeEndApiTest : BaseApiTest() {
             assertThat(opening.harness.trainingOutcome).isNull()
 
             val passing = opening.harness.legalRows.first { it.passingLegal }
-            api.aiSubmit(created.matchId, passing.legalActionId, forSeat = TeamSide.HOME)
+            api.aiSubmit(created.matchId, passing.action.id, forSeat = TeamSide.HOME)
 
             // Coach window is one turn at difficulty 0 — keep acting until the server ends the episode.
             var guard = 0
@@ -40,7 +40,7 @@ class TrainingEpisodeEndApiTest : BaseApiTest() {
                     assertThat(step.harness.trainingOutcome).isEqualTo(AiTrainingOutcome.US)
                     return@withRandomDiceRetries
                 }
-                val pick = step.harness.legalRows.first().legalActionId
+                val pick = step.harness.legalRows.first().action.id
                 val result = api.aiSubmit(created.matchId, pick, forSeat = TeamSide.HOME)
                 if (result.next.isEpisodeEnded()) {
                     assertThat(result.next.harness.legalRows).isEmpty()

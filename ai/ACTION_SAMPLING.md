@@ -239,18 +239,19 @@ Each packed row is **eleven** ints (storage / ONNX legal-matrix input). Python
 | 9 | sourceX | **metadata** (tail) | 12 | 0-based pitch x from Kotlin (`0..10` + unused) |
 | 10 | sourceY | **metadata** (tail) | 16 | 0-based pitch y from Kotlin (`0..14` + unused) |
 
-Wire sends `kind` + `kindIndex` + non-pitch factors (`Actor`, `ChallengeSlot`, …) plus
-`target` / `source` as `{x,y}` ([`AiPitchSquare`]) — not factor subtypes.
-Kotlin `AiLegalPacker` writes the eleven ints; Python only pads for the gym Dict
-and embeds. Dest and source x/y are shipped as coords (normalize only); dugout /
-no-actor → unused pads. **Who** on a path/throw/block row is always roster `actor`,
-never source coords. Obs `cells[]` still uses linear pitch indices — that is board
-layout packing, not the legal-row dest encoding.
+Harness `legalRows` nest engine `LegalAction` (absolute coords) + AI flags only.
+Kotlin `AiLegalPacker` maps action + perspective → the eleven pack ints; Python only
+pads for the gym Dict and embeds. Dest / source x/y in the pack are perspective
+0-based; dugout / no-actor → unused pads. **Who** on a path/throw/block row is
+always roster `actor`, never source coords. Obs `cells[]` still uses linear pitch
+indices — board layout packing, not the legal-row dest encoding. Harness reward
+board facts are `rewards.players` + single `ballCoordinate` (null if none on pitch).
 
-Unused axes on a row are unused sentinels; the Kotlin DTO **omits** unused free
-factors (pending-fixed / source metadata stay in `sugarFactors`).
+Unused axes on a packed row use unused sentinels; the packer maps from `LegalAction`.
 
-**Schema 19:** schema-18 + dest as pitch `(x,y)` (drop linear `boardTarget` index).
+**Schema 21:** harness rewards = `players` + `ballCoordinate`; legal rows lean.
+**Schema 20:** harness rows wrap `LegalAction` + flags; pack still perspective xy.
+**Schema 19 (historical):** dest as pitch `(x,y)` on harness (drop linear index).
 Schema 15 remains the only dual-path ONNX fork — bump/mutate 16+ freely (re-export ONNX).
 
 **Schema 18 (historical):** source `(x,y)` metadata; dest still linear pitch index.

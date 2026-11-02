@@ -25,10 +25,12 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 | Obs packing / `schemaVersion` / cell layout | Kotlin `AiObsPacker`, `AiObsLayout`, `AiObsDto` | Re-encode eligibility or channel order in Python |
 | Gym Dict slice + spaces | `gridiron_ai/obs.py`, `constants.py` | Invent new obs facts client-side |
 | Feature extract (embed / pitch coords) | `gridiron_ai/features.py` | Put legality into features |
-| Legal row pack / join-score action / soft-mask | Kotlin `AiLegalPacker` + `actions.py` / `legal_row_policy.py` | Hard-mask distractors; duplicate `expectedScenarioMove` in Python; factor MultiDiscrete remask |
+| Legal row pack / join-score action / soft-mask | Kotlin `AiLegalPacker` + `actions.py` / `legal_row_policy.py` | Hard-mask distractors; duplicate `expectedScenarioMove` in Python; factor MultiDiscrete remask; use packed ints for reward/business logic |
+| Harness reward snapshot (`players` + `ballCoordinate`) | Kotlin `HarnessRewardSnapshotDto` / `AiGameStateMapper` | HxW cells; `hasBall` on every player; jam board facts onto legal rows |
+| Harness legal rows | Kotlin `AiLegalChoiceDto` (LegalAction + curriculum flags) | Actor / ball-carrier sidecars; scrape packed ints for reward |
 | HTTP create / step / submit / scenarios list | Kotlin `/api/ai/...` + `gridiron_ai/client.py` | Open `/events` from the harness |
 | Gym env (reset/step/reward call) | `gridiron_ai/env.py` | Own drill grading |
-| Reward margin / terminal / profile shaping / scenario coach-window ± | `gridiron_ai/reward.py` | Per-move expected-move slap/bonus (soft-mask owns that) |
+| Reward margin / terminal / profile shaping / scenario coach-window ± | `gridiron_ai/reward.py` (LegalAction + `rewards.players` / `ballCoordinate`) | Per-move expected-move slap/bonus (soft-mask owns that); packed-row business logic |
 | Episode metrics / TB aggregates | `gridiron_ai/metrics.py`, `tb_callback.py` | — |
 | **Drill board / expected moves / coach window** | Kotlin `api/ai/training/**` + `TrainingScenarioEnum`; semantics in [`backend/TRAINING_SCENARIOS.md`](../backend/TRAINING_SCENARIOS.md) | Script boards in Python |
 | Scenario catalog (name / family / difficultyProxy) | Kotlin `GET /api/ai/training/scenarios` → cached `output/scenario_catalog.json` via `scenarios.py` | Hard-code name lists in Python or frontend |

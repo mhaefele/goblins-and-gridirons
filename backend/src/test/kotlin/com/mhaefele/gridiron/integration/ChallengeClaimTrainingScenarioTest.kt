@@ -1,6 +1,7 @@
 package com.mhaefele.gridiron.integration
 
 import com.mhaefele.gridiron.api.ai.dto.AiLegalKind
+import com.mhaefele.gridiron.api.ai.mapping.AiLegalPacker
 import com.mhaefele.gridiron.api.ai.dto.nested.AiNestedStepDto
 import com.mhaefele.gridiron.api.ai.training.TrainingScenarios
 import com.mhaefele.gridiron.api.ai.training.claim.ChallengeClaimTableau
@@ -149,7 +150,7 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
         assertThat(titles.count { it in ClaimCleanSweepTrainingScenario.TRIO }).isEqualTo(2)
         assertThat(titles.count { it !in ClaimCleanSweepTrainingScenario.TRIO }).isEqualTo(1)
         val step = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
-        assertThat(step.harness.legalRows.filter { it.softMaskLegal && it.kind == AiLegalKind.replaceChallenge })
+        assertThat(step.harness.legalRows.filter { it.softMaskLegal && AiLegalPacker.packKind(it.action) == AiLegalKind.replaceChallenge })
             .isNotEmpty()
         assertThat(step.harness.legalRows.filter { it.passingLegal }).isEmpty()
     }
@@ -161,15 +162,15 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
         playThroughForcedReplaceToPlayerAction(matchId)
         val first = api.aiStep(matchId, forSeat = TeamSide.HOME)
         assertThat(first.harness.legalRows.filter { it.passingLegal }).isNotEmpty()
-        api.play(matchId, first.harness.legalRows.first { it.passingLegal }.legalActionId)
+        api.play(matchId, first.harness.legalRows.first { it.passingLegal }.action.id)
         repeat(4) {
             val step = api.aiStep(matchId, forSeat = TeamSide.HOME)
-            val decline = step.harness.legalRows.firstOrNull { it.kind == AiLegalKind.declineBonus } ?: return@repeat
-            api.play(matchId, decline.legalActionId)
+            val decline = step.harness.legalRows.firstOrNull { AiLegalPacker.packKind(it.action) == AiLegalKind.declineBonus } ?: return@repeat
+            api.play(matchId, decline.action.id)
         }
         val second = api.aiStep(matchId, forSeat = TeamSide.HOME)
         assertThat(loadMatch(matchId).progress.homeChallengeCards).isZero()
-        assertThat(second.harness.legalRows.filter { it.passingLegal && it.kind == AiLegalKind.run })
+        assertThat(second.harness.legalRows.filter { it.passingLegal && AiLegalPacker.packKind(it.action) == AiLegalKind.run })
             .isNotEmpty()
     }
 
@@ -185,14 +186,14 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
             assertThat(openingSoft)
                 .withFailMessage("Show Them How: opening soft-mask flags solvable star moves")
                 .isNotEmpty()
-            assertThat(openingSoft.map { it.legalActionId })
-                .allMatch { id -> openingPass.any { it.legalActionId == id } }
+            assertThat(openingSoft.map { it.action.id })
+                .allMatch { id -> openingPass.any { it.action.id == id } }
             val starOpening = starOpeningChoice(opening, loadMatch(matchId))
             api.play(matchId, starOpening)
             repeat(4) {
                 val step = api.aiStep(matchId, forSeat = TeamSide.HOME)
-                val decline = step.harness.legalRows.firstOrNull { it.kind == AiLegalKind.declineBonus } ?: return@repeat
-                api.play(matchId, decline.legalActionId)
+                val decline = step.harness.legalRows.firstOrNull { AiLegalPacker.packKind(it.action) == AiLegalKind.declineBonus } ?: return@repeat
+                api.play(matchId, decline.action.id)
             }
             val second = api.aiStep(matchId, forSeat = TeamSide.HOME)
             val secondSoft = second.harness.legalRows.filter { it.softMaskLegal }
@@ -200,8 +201,8 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
             assertThat(secondSoft)
                 .withFailMessage("Show Them How: follow-up soft-mask keeps flagging solvable star moves")
                 .isNotEmpty()
-            assertThat(secondSoft.map { it.legalActionId })
-                .allMatch { id -> secondPass.any { it.legalActionId == id } }
+            assertThat(secondSoft.map { it.action.id })
+                .allMatch { id -> secondPass.any { it.action.id == id } }
         }
     }
 
@@ -210,7 +211,7 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
 
     private fun starOpeningChoice(step: AiNestedStepDto, state: MatchState): LegalActionId {
         val starId = state.trainingEpisode!!.starTurnStarId ?: error("Show Them How: starTurnStarId required")
-        val passingIds = step.harness.legalRows.filter { it.passingLegal }.map { it.legalActionId }.toSet()
+        val passingIds = step.harness.legalRows.filter { it.passingLegal }.map { it.action.id }.toSet()
         val starLegals = legalMovesGenerator.forActingCoach(state)
             .filterIsInstance<PlayerLegalAction>()
             .filter { it.playerId == starId }
@@ -219,7 +220,7 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
             ?: starLegals.firstOrNull { action ->
                 action !is PathMovement || !state.board.squareAt(action.path.squares.last()).isTrapdoor()
             } ?: error("Show Them How: no usable opening legal for focus star $starId (passing=${passingIds.size}, starLegals=${starLegals.size})")
-        return step.harness.legalRows.firstOrNull { it.legalActionId == pick.id }?.legalActionId ?: error("Show Them How: star legal ${pick.id} missing from ai step choices")
+        return step.harness.legalRows.firstOrNull { it.action.id == pick.id }?.action?.id ?: error("Show Them How: star legal ${pick.id} missing from ai step choices")
     }
 
     private fun assertClaimScenarioOpensWithExpectedMoves(scenario: TrainingScenarioEnum, difficulty: Int) {
@@ -239,7 +240,7 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
         assertThat(softMask)
             .withFailMessage("$scenario d$difficulty: expected soft-mask bait ReplaceChallenge")
             .isNotEmpty()
-        assertThat(softMask).allMatch { it.kind == AiLegalKind.replaceChallenge }
+        assertThat(softMask).allMatch { AiLegalPacker.packKind(it.action) == AiLegalKind.replaceChallenge }
         assertThat(passing)
             .withFailMessage("$scenario d$difficulty: replace step must not PASS (claim comes after)")
             .isEmpty()
@@ -272,8 +273,8 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
     /** Soft-mask bait replace; claim episodes suppress ER so the next decision is PLAYER_ACTION. */
     private fun playThroughForcedReplaceToPlayerAction(matchId: MatchId) {
         val step = api.aiStep(matchId, forSeat = TeamSide.HOME)
-        val bait = step.harness.legalRows.firstOrNull { it.kind == AiLegalKind.replaceChallenge && it.softMaskLegal } ?: error("claim replace: no soft-mask bait\n${getDomainEventsString(matchId)}")
-        api.play(matchId, bait.legalActionId)
+        val bait = step.harness.legalRows.firstOrNull { AiLegalPacker.packKind(it.action) == AiLegalKind.replaceChallenge && it.softMaskLegal } ?: error("claim replace: no soft-mask bait\n${getDomainEventsString(matchId)}")
+        api.play(matchId, bait.action.id)
         val state = loadMatch(matchId)
         val pending = state.currentTurnState.pendingDecision
         check(state.currentTurnState.phase == TurnPhase.PLAYER_ACTION && pending is RegularPlayerAction && pending.delegate == null) { "claim replace: expected PLAYER_ACTION select after bait discard, was phase=${state.currentTurnState.phase} pending=${pending?.javaClass?.simpleName}\n${getDomainEventsString(matchId)}" }
@@ -284,8 +285,8 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
         matchId = response.matchId
         playUntilClaimed(scenario, matchId) { step ->
             val state = loadMatch(matchId)
-            val replaceSoft = step.harness.legalRows.filter { it.kind == AiLegalKind.replaceChallenge && it.softMaskLegal }
-            val claim = step.harness.legalRows.firstOrNull { it.kind == AiLegalKind.claimChallenge }
+            val replaceSoft = step.harness.legalRows.filter { AiLegalPacker.packKind(it.action) == AiLegalKind.replaceChallenge && it.softMaskLegal }
+            val claim = step.harness.legalRows.firstOrNull { AiLegalPacker.packKind(it.action) == AiLegalKind.claimChallenge }
             val softMask = step.harness.legalRows.filter { it.softMaskLegal }
             val passing = step.harness.legalRows.filter { it.passingLegal }
             // Prefer soft-mask (solvability search on multi-step TRAIN drills), then PASS rows.
@@ -300,14 +301,14 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
                     AiLegalKind.`throw`,
                     AiLegalKind.run,
                 ).asSequence()
-                    .map { kind -> guided.filter { it.kind == kind } }
+                    .map { kind -> guided.filter { AiLegalPacker.packKind(it.action) == kind } }
                     .firstOrNull { it.isNotEmpty() }
                     ?: guided
             } else {
-                guided.filter { it.potentialChallengeClaims.isNotEmpty() }.ifEmpty {
+                guided.filter { it.action.potentialChallengeClaims.isNotEmpty() }.ifEmpty {
                     listOf(AiLegalKind.mark, AiLegalKind.block, AiLegalKind.sidestep, AiLegalKind.run)
                         .asSequence()
-                        .map { kind -> guided.filter { it.kind == kind } }
+                        .map { kind -> guided.filter { AiLegalPacker.packKind(it.action) == kind } }
                         .firstOrNull { it.isNotEmpty() }
                         ?: guided
                 }
@@ -323,15 +324,15 @@ class ChallengeClaimTrainingScenarioTest : BaseApiTest() {
                 null
             }
             val decline =
-                step.harness.legalRows.firstOrNull { it.kind == AiLegalKind.declineBonus || it.kind == AiLegalKind.skip || it.kind == AiLegalKind.keepOffer }
+                step.harness.legalRows.firstOrNull { AiLegalPacker.packKind(it.action) == AiLegalKind.declineBonus || AiLegalPacker.packKind(it.action) == AiLegalKind.skip || AiLegalPacker.packKind(it.action) == AiLegalKind.keepOffer }
             when {
-                replaceSoft.isNotEmpty() -> replaceSoft.first().legalActionId
-                claim != null            -> claim.legalActionId
-                guidedPick.isNotEmpty()  -> guidedPick.first().legalActionId
+                replaceSoft.isNotEmpty() -> replaceSoft.first().action.id
+                claim != null            -> claim.action.id
+                guidedPick.isNotEmpty()  -> guidedPick.first().action.id
                 starOpening != null      -> starOpening
-                decline != null          -> decline.legalActionId
+                decline != null          -> decline.action.id
                 else                     -> error(
-                    "$scenario d$difficulty: no replace/claim/soft-mask/passing/decline; kinds=${step.harness.legalRows.map { it.kind }}\n${getDomainEventsString(matchId)}",
+                    "$scenario d$difficulty: no replace/claim/soft-mask/passing/decline; kinds=${step.harness.legalRows.map { AiLegalPacker.packKind(it.action) }}\n${getDomainEventsString(matchId)}",
                 )
             }
         }

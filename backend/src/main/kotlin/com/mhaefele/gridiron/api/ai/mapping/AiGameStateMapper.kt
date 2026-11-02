@@ -1,7 +1,6 @@
 package com.mhaefele.gridiron.api.ai.mapping
 
-import com.mhaefele.gridiron.api.ai.dto.HarnessRewardCellDto
-import com.mhaefele.gridiron.api.ai.dto.HarnessRewardPlayerDto
+import com.mhaefele.gridiron.api.ai.dto.HarnessPlayerDto
 import com.mhaefele.gridiron.api.ai.dto.HarnessRewardSnapshotDto
 import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 import com.mhaefele.gridiron.api.ai.dto.AiPitchSquare
@@ -63,7 +62,8 @@ class AiGameStateMapper {
             touchdownsThem = touchdownsThem,
             challengeCardsUs = challengeCardsUs,
             challengeCardsThem = challengeCardsThem,
-            cells = toHarnessRewardCells(state.board, perspectiveSeat),
+            players = toHarnessPlayers(state.board, perspectiveSeat),
+            ballCoordinate = ballCoordinate(state.board),
         )
     }
 
@@ -151,7 +151,7 @@ class AiGameStateMapper {
     fun perspectivePitchIndex(coord: Coordinate, perspectiveSeat: TeamSide): Int =
         AiObsLayout.toPerspectiveIndex(pitchIndex(coord), perspectiveSeat)
 
-    /** Perspective-relative [AiPitchSquare] for [AiLegalChoiceDto.target] / [AiLegalChoiceDto.source]. */
+    /** Perspective-relative [AiPitchSquare] for packed dest / source columns. */
     fun perspectivePitchXy0(coord: Coordinate, perspectiveSeat: TeamSide): AiPitchSquare =
         AiObsLayout.toPerspectivePitchXy0(coord, perspectiveSeat)
 
@@ -252,39 +252,41 @@ class AiGameStateMapper {
         return AiHeldCheckObs.empty()
     }
 
-    private fun toHarnessRewardCells(board: Board, perspective: TeamSide): List<HarnessRewardCellDto> {
-        val cells = MutableList(AiObsLayout.BOARD_SLOT_COUNT) { HarnessRewardCellDto() }
-        for (y in 1..AiObsLayout.PLAY_HEIGHT) {
-            for (x in 1..AiObsLayout.PLAY_WIDTH) {
-                val obsIndex = AiObsLayout.toPerspectiveIndex(AiObsLayout.squareIndex(x, y), perspective)
-                cells[obsIndex] = toHarnessRewardCell(board.squareAt(Coordinate(x, y)), board, perspective)
+    /** Pitch + dugout roster for harness joins (absolute coords; null coord = dugout). */
+    private fun toHarnessPlayers(board: Board, perspective: TeamSide): List<HarnessPlayerDto> =
+        board.players.values.map { player ->
+            val coordinate = when (player.status) {
+                PlayerStatus.STANDING, PlayerStatus.PRONE -> board.findSquare(player.id).coordinate
+                PlayerStatus.RESERVES                     -> null
+            }
+            HarnessPlayerDto(
+                playerId = player.id.value,
+                playerIndex = aiPlayerIndex(player.id),
+                teamRel = teamRel(player.team, perspective),
+                coordinate = coordinate,
+            )
+        }
+
+    /**
+     * Absolute pitch square of the single in-play ball (held or loose).
+     * Null when no ball is on a playable square (e.g. removed after a TD).
+     * Harness contract is one ball — fails if multiple on-pitch locations exist.
+     */
+    private fun ballCoordinate(board: Board): Coordinate? {
+        val heldOnPitch = board.players.values.mapNotNull { player ->
+            if (!player.holdsBall()) return@mapNotNull null
+            when (player.status) {
+                PlayerStatus.STANDING, PlayerStatus.PRONE -> board.findSquare(player.id).coordinate
+                PlayerStatus.RESERVES                     -> null
             }
         }
-        for (team in TeamSide.entries) {
-            val ids = board.reserves.getValue(team).playerIds
-            require(ids.size <= AiObsLayout.BENCH_SLOTS) { "${team} dugout size ${ids.size} exceeds AI bench slots" }
-            ids.forEachIndexed { slot, playerId ->
-                val absoluteIndex = when (team) {
-                    TeamSide.HOME -> AiObsLayout.homeBenchIndex(slot)
-                    TeamSide.AWAY -> AiObsLayout.awayBenchIndex(slot)
-                }
-                val obsIndex = AiObsLayout.toPerspectiveIndex(absoluteIndex, perspective)
-                cells[obsIndex] = HarnessRewardCellDto(player = toHarnessRewardPlayer(board.player(playerId), perspective))
-            }
+        val loose = board.allSquares().mapNotNull { square ->
+            square.coordinate.takeIf { square.looseBallId != null }
         }
-        return cells
+        val onPitch = heldOnPitch + loose
+        require(onPitch.size <= 1) { "Harness expects at most one on-pitch ball; found ${onPitch.size} at $onPitch" }
+        return onPitch.singleOrNull()
     }
-
-    private fun toHarnessRewardCell(square: BoardSquare, board: Board, perspective: TeamSide): HarnessRewardCellDto {
-        val occupant = square.playerId?.let { board.player(it) }
-        return HarnessRewardCellDto(
-            hasBall = square.looseBallId != null || occupant?.holdsBall() == true,
-            player = occupant?.let { toHarnessRewardPlayer(it, perspective) },
-        )
-    }
-
-    private fun toHarnessRewardPlayer(player: Player, perspective: TeamSide): HarnessRewardPlayerDto =
-        HarnessRewardPlayerDto(playerIndex = aiPlayerIndex(player.id), teamRel = teamRel(player.team, perspective))
 
     private fun toAiCells(
         board: Board,

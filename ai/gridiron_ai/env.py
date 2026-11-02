@@ -305,7 +305,7 @@ class GridironEnv(gym.Env):
 
     @property
     def _legal_action_ids(self) -> list[str]:
-        return [str(row["legalActionId"]) for row in self._legal_rows]
+        return [str(row["action"]["id"]) for row in self._legal_rows]
 
     @property
     def _soft_mask_legal(self) -> list[bool]:
@@ -317,23 +317,23 @@ class GridironEnv(gym.Env):
 
     @property
     def _legal_row_meta(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "kind": row["kind"],
-                "factors": row.get("factors", []),
-                "potentialChallengeClaims": row.get("potentialChallengeClaims", []),
-            }
-            for row in self._legal_rows
-        ]
+        """Full harness legal rows (action + curriculum flags)."""
+        return [dict(row) for row in self._legal_rows]
+
+    @property
+    def _perspective_seat(self) -> str:
+        if self._current_step_dto is None:
+            return "HOME"
+        return str(self._current_step_dto.get("perspectiveSeat") or "HOME")
 
     def _harness_rewards(self, source: dict[str, Any]) -> dict[str, Any]:
-        """Harness ``rewards`` JSON — scores + cells. Accepts step dict or bare snapshot."""
-        if "cells" in source:
+        """Harness ``rewards`` JSON — scores + players + ballCoordinate. Accepts step or bare."""
+        if "players" in source:
             rewards = source
         else:
             rewards = source["rewards"]
-        if not isinstance(rewards, dict) or "cells" not in rewards:
-            raise RuntimeError("Packed frame missing harness rewards (scores + cells)")
+        if not isinstance(rewards, dict) or "players" not in rewards:
+            raise RuntimeError("Packed frame missing harness rewards (scores + players)")
         return rewards
 
     def _build_observation(self) -> dict[str, np.ndarray]:
@@ -407,10 +407,10 @@ class GridironEnv(gym.Env):
             self.on_match_created(self.match_id)
         self._current_step_dto = self._fetch_step_for_policy()
         if self.scenario is not None and self._scenario_eval_debug is not None:
-            start_obs = self._harness_rewards(self._current_step_dto)
+            start_rewards = self._harness_rewards(self._current_step_dto)
             self._scenario_eval_debug.on_scenario_start(
-                int(start_obs["turnNumber"]),
-                start_obs,
+                int(start_rewards["turnNumber"]),
+                start_rewards,
                 policy_seat=self.policy_seat,
                 first_action_legal_count=len(self._legal_action_ids),
                 legal_row_meta=self._legal_row_meta,
@@ -458,7 +458,7 @@ class GridironEnv(gym.Env):
                 pass
             self._scenario_eval_debug.maybe_record_action(
                 turn_number=int(observation_before_move["turnNumber"]),
-                observation=observation_before_move,
+                rewards=observation_before_move,
                 legal_choice=resolved.legal_choice,
                 scored_touchdown=scored_td,
                 expected_move=was_expected,
@@ -476,6 +476,7 @@ class GridironEnv(gym.Env):
             shaping=self.reward_shaping,
             scoring=scoring,
             legal_choice=resolved.legal_choice,
+            perspective_seat=self._perspective_seat,
         )
 
         self._apply_submit_result(result)
@@ -504,7 +505,9 @@ class GridironEnv(gym.Env):
         if turn_number in self._sampled_turn_starts:
             return
         self._sampled_turn_starts.add(turn_number)
-        self._action_stats.record_turn_start(observation)
+        self._action_stats.record_turn_start(
+            observation, perspective_seat=self._perspective_seat
+        )
 
     def _sync_turn_tracking(self, observation: dict[str, Any]) -> None:
         """Remember scoreUs at the start of the current turnNumber (acting-seat perspective)."""

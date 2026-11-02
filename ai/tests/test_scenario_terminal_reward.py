@@ -11,7 +11,13 @@ from gridiron_ai.reward import (
 
 
 def _rewards(*, score_us: int = 0, score_them: int = 0) -> dict:
-    return {"scoreUs": score_us, "scoreThem": score_them, "turnNumber": 1, "cells": []}
+    return {
+        "scoreUs": score_us,
+        "scoreThem": score_them,
+        "turnNumber": 1,
+        "players": [],
+        "ballCoordinate": None,
+    }
 
 
 def _reward(*, before: dict, after: dict, **terminal: object) -> float:

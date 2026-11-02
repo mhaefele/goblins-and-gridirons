@@ -1,22 +1,17 @@
 package com.mhaefele.gridiron.api.ai.dto
 
 /**
- * AI legal-choice kind — policy vocabulary (schema 16+), not 1:1 with every GUI
- * [com.mhaefele.gridiron.api.dto.response.LegalAction] Jackson name.
+ * Pack-only legal-choice kind vocabulary (schema 16+) — ordinal on each packed legal row.
+ * Not on the harness wire; harness rows carry [com.mhaefele.gridiron.api.dto.response.LegalAction].
  *
- * Packed as [AiLegalChoiceDto.kindIndex] (= [ordinal]) on each legal row.
- * Kind-axis width is [AiLegalKind.entries].size.
- *
- * Schema 16 drops MultiDiscrete-era coarse merges: Skip / DeclineBonus / ContinueBlock /
- * keep-reroll and the three Do-Over adjusts are distinct kinds; [cancelThrowTeammate] and
- * [chooseBlockFaceOrder] are included (no longer GUI-only omissions).
+ * Kind-axis width is [AiLegalKind.entries].size. Not 1:1 with every GUI Jackson `kind`
+ * (`Choose*Reroll` → [keepOffer] / [reroll]).
  *
  * `` `throw` `` / `` `reroll` `` are backticked only because they are Kotlin keywords;
  * [name] is still `"throw"` / `"reroll"`.
  *
  * TODO(AI2.19): promote to a shared (non-`Ai*`) wire kind on [LegalAction] DTOs — GUI + AI
- * read the same catalog; drop this AI-only mirror once ordinals / Jackson names land on the
- * engine wire. Still investigate per-candidate vs [ActionType] collapses (reroll/keep, …).
+ * read the same catalog; drop this pack-only mirror once ordinals land on the engine wire.
  */
 enum class AiLegalKind {
     run,

@@ -45,7 +45,7 @@ PaddedLegalMoves: TypeAlias = np.ndarray
 
 
 class ResolvedAction(NamedTuple):
-    """Submit id plus wire kind name for metrics bucketing and the chosen legal row."""
+    """Submit id, kind name, and engine LegalAction wire object (absolute coords)."""
 
     legal_action_id: str
     sampled_kind: str
@@ -138,11 +138,9 @@ def resolve_legal_row_index(
             f"Sampled legal-row index {index} out of range (legal_move_count={moves.shape[0]})"
         )
     row = legal_rows[index]
-    kind_name = str(row.get("kind") or "other")
-    legal_choice = {
-        "kind": kind_name,
-        "legalActionId": str(row["legalActionId"]),
-        "factors": list(row.get("factors") or []),
-        "potentialChallengeClaims": list(row.get("potentialChallengeClaims") or []),
-    }
-    return ResolvedAction(str(row["legalActionId"]), kind_name, legal_choice)
+    action = row.get("action")
+    if not isinstance(action, dict):
+        raise RuntimeError(f"legalRows[{index}] missing action object")
+    kind_name = str(action.get("kind") or "other")
+    action_id = str(action["id"])
+    return ResolvedAction(action_id, kind_name, action)

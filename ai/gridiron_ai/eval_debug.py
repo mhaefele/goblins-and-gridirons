@@ -9,9 +9,15 @@ from __future__ import annotations
 import fcntl
 from typing import Any
 
-from gridiron_ai.constants import BOARD_SLOT_COUNT, PITCH_SQUARE_COUNT, PLAY_HEIGHT, PLAY_WIDTH
+from gridiron_ai.constants import PLAY_HEIGHT
 from gridiron_ai.paths import SCENARIO_DRAWS_LOG_PATH
-from gridiron_ai.reward import get_absolute_ball_pitch_index
+from gridiron_ai.reward import (
+    action_actor_coordinate,
+    action_target_coordinate,
+    ball_xy,
+    coordinate_xy,
+    player_by_id,
+)
 
 def _scoring_endzone_row_y(*, policy_seat: str) -> int:
     """Perspective-relative row y (`1..PLAY_HEIGHT`) of the end zone the policy seat scores in."""
@@ -56,27 +62,27 @@ class ScenarioEvalDebug:
     def on_scenario_start(
         self,
         turn_number: int,
-        observation: dict[str, Any],
+        rewards: dict[str, Any],
         *,
         policy_seat: str,
         first_action_legal_count: int,
         legal_row_meta: list[dict[str, Any]] | None = None,
         passing_legal: list[bool] | None = None,
     ) -> None:
+        """``rewards`` is harness [HarnessRewardSnapshotDto] — board snapshot for log headers."""
         self._start_turn = int(turn_number)
         self._first_action_legal_count = int(first_action_legal_count)
-        ball_index = get_absolute_ball_pitch_index(observation)
-        if ball_index is not None:
-            self._initial_ball = _pitch_xy_label(ball_index % PLAY_WIDTH, ball_index // PLAY_WIDTH)
-        us, them = _pitch_player_position_labels(observation)
+        ball = ball_xy(rewards)
+        if ball is not None:
+            self._initial_ball = _abs_xy_label(*ball)
+        us, them = _pitch_player_position_labels(rewards)
         self._us_positions = ";".join(us) if us else None
         self._them_positions = ";".join(them) if them else None
         self._endzone_y = _scoring_endzone_row_y(policy_seat=policy_seat)
         meta = legal_row_meta or []
         self._available_cards = None
         expected = _format_expected_moves(
-            observation,
-            policy_seat=policy_seat,
+            rewards=rewards,
             legal_row_meta=meta,
             passing_legal=passing_legal or [],
         )
@@ -87,7 +93,7 @@ class ScenarioEvalDebug:
         self,
         *,
         turn_number: int,
-        observation: dict[str, Any],
+        rewards: dict[str, Any],
         legal_choice: dict[str, Any],
         scored_touchdown: bool = False,
         expected_move: bool = False,
@@ -96,7 +102,7 @@ class ScenarioEvalDebug:
         if self._start_turn is not None and turn_number == self._start_turn:
             action_label = self.format_action(
                 legal_choice,
-                observation=observation,
+                rewards=rewards,
                 scored_touchdown=scored_touchdown,
                 expected_move=expected_move,
                 acquired_card=acquired_card,
@@ -230,66 +236,54 @@ class ScenarioEvalDebug:
     def format_action(
         legal_choice: dict[str, Any],
         *,
-        observation: dict[str, Any] | None = None,
+        rewards: dict[str, Any] | None = None,
         scored_touchdown: bool = False,
         expected_move: bool = False,
         acquired_card: bool = False,
     ) -> str:
-        """Compact label for logs. The tag is the server kind, unchanged."""
+        """Compact label for logs. Actor geometry joins ``playerId`` → ``rewards.players``."""
         tag = str(legal_choice.get("kind") or "?")
 
-        actor_player_index: int | None = None
-        challenge_slot: int | None = None
-        attached_bonus: int | None = None
-        for factor in list(legal_choice.get("factors") or []) + list(legal_choice.get("sugarFactors") or []):
-            factor_kind = factor.get("kind")
-            if factor_kind == "actor":
-                actor_player_index = int(factor["playerIndex"])
-            elif factor_kind == "challengeSlot":
-                challenge_slot = int(factor["slot"])
-            elif factor_kind == "attachedBonus":
-                attached_bonus = int(factor["index"])
+        challenge_slot = _challenge_slot(legal_choice)
+        attached_bonus = None
+        bonus = legal_choice.get("requiredBonusCard")
+        if bonus is not None:
+            attached_bonus = str(bonus)
 
-        target_xy: tuple[int, int] | None = None
-        target = legal_choice.get("target")
-        if target:
-            x = int(target["x"])
-            y = int(target["y"])
-            target_xy = (x, y) if 0 <= x < PLAY_WIDTH and 0 <= y < PLAY_HEIGHT else None
-
-        source_xy: tuple[int, int] | None = None
-        source_label: str | None = None
-        if actor_player_index is not None and observation is not None:
-            source_label = _actor_square_label(observation, actor_player_index)
-            source_xy = _pitch_xy_for_us_player(observation, actor_player_index)
+        target_xy = action_target_coordinate(legal_choice)
+        source_xy = action_actor_coordinate(rewards, legal_choice) if rewards is not None else None
+        actor_player_index = None
+        if source_xy is None and rewards is not None:
+            player_id = legal_choice.get("playerId")
+            if isinstance(player_id, str):
+                player = player_by_id(rewards, player_id)
+                if player is not None:
+                    actor_player_index = int(player["playerIndex"])
 
         extras: list[str] = []
         if challenge_slot is not None:
             extras.append(str(challenge_slot))
         if attached_bonus is not None:
-            extras.append(str(attached_bonus))
+            extras.append(attached_bonus)
 
         suffix = ("*" if expected_move else "") + ("!" if scored_touchdown else "") + ("+" if acquired_card else "")
 
         if source_xy is not None and target_xy is not None:
-            from_label = _pitch_xy_label(*source_xy)
-            to_label = _pitch_xy_label(*target_xy)
-            if source_xy == target_xy:
-                body = from_label
-            else:
-                body = f"{from_label}->{to_label}"
-        elif source_label is not None:
-            body = source_label
+            from_label = _abs_xy_label(*source_xy)
+            to_label = _abs_xy_label(*target_xy)
+            body = from_label if source_xy == target_xy else f"{from_label}->{to_label}"
+        elif source_xy is not None:
+            body = _abs_xy_label(*source_xy)
         elif actor_player_index is not None:
             body = f"p{actor_player_index}"
         elif target_xy is not None:
-            body = _pitch_xy_label(*target_xy)
+            body = _abs_xy_label(*target_xy)
         elif extras:
             body = ",".join(extras)
         else:
             return f"{tag}{suffix}"
 
-        if extras and (source_label is not None or actor_player_index is not None or target_xy is not None):
+        if extras and (source_xy is not None or actor_player_index is not None or target_xy is not None):
             body = f"{body},{','.join(extras)}"
         return f"{tag}({body}){suffix}"
 
@@ -306,21 +300,20 @@ def append_scenario_draw_log(block: str, *, path: Any | None = None) -> None:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def _factor_challenge_slot(legal_choice: dict[str, Any]) -> int | None:
-    for factor in list(legal_choice.get("factors") or []) + list(legal_choice.get("sugarFactors") or []):
-        if factor.get("kind") == "challengeSlot":
-            return int(factor["slot"])
+def _challenge_slot(legal_choice: dict[str, Any]) -> int | None:
+    if "slotIndex" in legal_choice and legal_choice["slotIndex"] is not None:
+        return int(legal_choice["slotIndex"])
     return None
 
 
 def _describe_satisfied_claim(legal_choice: dict[str, Any], *, action_label: str) -> str | None:
     """Which challenge card this action actually claimed (best-effort from server hints)."""
     claims = legal_choice.get("potentialChallengeClaims") or []
-    slot = _factor_challenge_slot(legal_choice)
+    slot = _challenge_slot(legal_choice)
     slot_bit = f"@slot{slot}" if slot is not None else ""
     if not claims:
         return f"unknown({action_label})"
-    certain = [claim for claim in claims if claim.get("certainty") in ("CERTAIN", 0)]
+    certain = [claim for claim in claims if claim.get("certainty") == "CERTAIN"]
     pool = certain or claims
     if len(pool) == 1:
         title = pool[0].get("challengeTitle") or pool[0].get("claimCondition")
@@ -330,9 +323,8 @@ def _describe_satisfied_claim(legal_choice: dict[str, Any], *, action_label: str
 
 
 def _format_expected_moves(
-    observation: dict[str, Any],
     *,
-    policy_seat: str,
+    rewards: dict[str, Any],
     legal_row_meta: list[dict[str, Any]],
     passing_legal: list[bool],
 ) -> tuple[int, list[str]] | None:
@@ -346,67 +338,34 @@ def _format_expected_moves(
         return None
     labels: list[str] = []
     for index in expected_indices:
-        choice = legal_row_meta[index]
-        labels.append(ScenarioEvalDebug.format_action(choice, observation=observation))
+        row = legal_row_meta[index]
+        choice = row["action"] if isinstance(row.get("action"), dict) else row
+        labels.append(ScenarioEvalDebug.format_action(choice, rewards=rewards))
     count = len(labels)
     if count <= 2:
         return count, labels
     return count, labels[:2]
 
 
-def _pitch_xy_label(x0: int, y0: int) -> str:
-    """Rulebook-style ``x,y`` from 0-based pitch coords."""
-    return f"{x0 + 1},{y0 + 1}"
+def _abs_xy_label(x: int, y: int) -> str:
+    return f"{x},{y}"
 
 
-def _cell_index_for_us_player(observation: dict[str, Any], player_index: int) -> int | None:
-    """Pitch or bench slot holding US ``player_index`` (roster ids collide across teams)."""
-    cells = observation.get("cells") or []
-    fallback: int | None = None
-    for index in range(min(len(cells), BOARD_SLOT_COUNT)):
-        player = cells[index].get("player")
-        if not player or int(player["playerIndex"]) != player_index:
-            continue
-        team_rel = player.get("teamRel")
-        if team_rel in (0, "US"):
-            return index
-        if fallback is None:
-            fallback = index
-    return fallback
-
-
-def _pitch_xy_for_us_player(observation: dict[str, Any], player_index: int) -> tuple[int, int] | None:
-    """0-based pitch ``(x, y)`` for US ``player_index``, or None if dugout / missing."""
-    index = _cell_index_for_us_player(observation, player_index)
-    if index is None or not (0 <= index < PITCH_SQUARE_COUNT):
-        return None
-    return index % PLAY_WIDTH, index // PLAY_WIDTH
-
-
-def _actor_square_label(observation: dict[str, Any], player_index: int) -> str | None:
-    """Display label for the actor’s square (pitch ``x,y`` or ``#bench``)."""
-    index = _cell_index_for_us_player(observation, player_index)
-    if index is None:
-        return None
-    if 0 <= index < PITCH_SQUARE_COUNT:
-        return _pitch_xy_label(index % PLAY_WIDTH, index // PLAY_WIDTH)
-    return f"#{index}"
-
-
-def _pitch_player_position_labels(observation: dict[str, Any]) -> tuple[list[str], list[str]]:
-    """Pitch ``x,y`` labels for US / THEM occupants (policy-seat relative), board order."""
+def _pitch_player_position_labels(rewards: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Absolute pitch ``x,y`` labels for US / THEM from harness ``rewards.players``."""
     us: list[str] = []
     them: list[str] = []
-    cells = observation.get("cells") or []
-    for index in range(min(len(cells), PITCH_SQUARE_COUNT)):
-        player = cells[index].get("player")
-        if not player:
+    for player in rewards.get("players") or []:
+        if not isinstance(player, dict):
             continue
-        label = _pitch_xy_label(index % PLAY_WIDTH, index // PLAY_WIDTH)
+        xy = coordinate_xy(player.get("coordinate"))
+        if xy is None:
+            continue
+        label = _abs_xy_label(*xy)
         team_rel = player.get("teamRel")
-        if team_rel in (0, "US"):
+        if team_rel == "US":
             us.append(label)
-        elif team_rel in (1, "THEM"):
+        elif team_rel == "THEM":
             them.append(label)
     return us, them
 

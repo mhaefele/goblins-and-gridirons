@@ -1,9 +1,12 @@
 package com.mhaefele.gridiron.api.ai.dto
 
+import com.mhaefele.gridiron.shared.Coordinate
+
 /**
  * Harness-only reward / metrics snapshot — JSON on the wire, never concatenated into policy [obs].
  *
- * Deliberately smaller than [AiNestedObsDto]: only what Python ``reward.py`` / metrics / eval_debug read.
+ * Board facts: [players] (who / where) + [ballCoordinate] (where the ball is). Legal rows stay
+ * [LegalAction] + curriculum flags — join by `playerId` / absolute coords.
  */
 data class HarnessRewardSnapshotDto(
     val turnNumber: Int,
@@ -13,26 +16,35 @@ data class HarnessRewardSnapshotDto(
     val touchdownsThem: Int,
     val challengeCardsUs: Int,
     val challengeCardsThem: Int,
-    /** Pitch + bench slots — ball location and occupant identity only. */
-    val cells: List<HarnessRewardCellDto>,
+    /** Every roster player still in the match (pitch + dugout). */
+    val players: List<HarnessPlayerDto>,
+    /**
+     * Absolute square of the **one** in-play ball (held or loose). Null when no ball is
+     * on a playable square (e.g. removed after a TD). Mapper fails if multiple on-pitch
+     * ball locations exist. Carrier = player whose [HarnessPlayerDto.coordinate] matches.
+     */
+    val ballCoordinate: Coordinate? = null,
 ) {
     init {
-        require(cells.size == AiObsLayout.BOARD_SLOT_COUNT) { "cells size ${cells.size} != ${AiObsLayout.BOARD_SLOT_COUNT}" }
+        require(players.size <= AiObsLayout.MAX_PLAYERS_PER_TEAM * 2) { "players size ${players.size} exceeds 2×${AiObsLayout.MAX_PLAYERS_PER_TEAM}" }
+        val ids = players.map { it.playerId }.toSet()
+        require(ids.size == players.size) { "duplicate playerId in harness players" }
     }
 }
 
-/** One board slot for harness ball / dugout / carrier helpers — not a policy feature slice. */
-data class HarnessRewardCellDto(
-    val hasBall: Boolean = false,
-    val player: HarnessRewardPlayerDto? = null,
-)
-
-/** Occupant identity when [HarnessRewardCellDto.player] is non-null. */
-data class HarnessRewardPlayerDto(
+/**
+ * One harness player — absolute geometry + perspective [teamRel].
+ *
+ * [coordinate] null = dugout. Ball possession is [HarnessRewardSnapshotDto.ballCoordinate], not here.
+ */
+data class HarnessPlayerDto(
+    val playerId: String,
     val playerIndex: Int,
     val teamRel: AiTeamRel,
+    val coordinate: Coordinate?,
 ) {
     init {
+        require(playerId.isNotBlank()) { "playerId blank" }
         require(playerIndex in 1..AiObsLayout.MAX_PLAYERS_PER_TEAM) { "playerIndex=$playerIndex out of range 1..${AiObsLayout.MAX_PLAYERS_PER_TEAM}" }
     }
 }

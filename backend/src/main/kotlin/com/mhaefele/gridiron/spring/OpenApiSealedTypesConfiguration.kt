@@ -2,7 +2,6 @@ package com.mhaefele.gridiron.spring
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.mhaefele.gridiron.api.ai.dto.AiFactor
 import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.game.action.dto.DomainEvent
 import io.swagger.v3.oas.models.media.Discriminator
@@ -32,7 +31,6 @@ class OpenApiSealedTypesConfiguration {
             rewriteDomainIdSchemas(schemas)
             rewriteSealedParent(schemas, DomainEvent::class.java)
             rewriteSealedParent(schemas, LegalAction::class.java)
-            rewriteSealedParent(schemas, AiFactor::class.java)
             // Nest event under DomainEvent so list/SSE payloads share the same union.
             schemas["StoredDomainEvent"]?.properties?.get("event")?.let { event ->
                 event.oneOf = null

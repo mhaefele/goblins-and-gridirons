@@ -74,10 +74,10 @@ class OnnxOpponentFactory(
             steps.checkLiveAiLegals(state, legal)
             val choices = legalChoices.toLegalChoices(legal, perspective, state)
             check(choices.isNotEmpty()) { "AI legal choices empty after filter (gui legal=${legal.size})" }
-            val packedMoves = legalPacker.legalMoves(choices).map { it.toIntArray() }
+            val packedMoves = legalPacker.legalMoves(choices, state, perspective).map { it.toIntArray() }
             val obs = obsPacker.pack(steps.toAiStepDto(state, legal, perspective).policy.obs)
             val row = policy.chooseRow(profile, obs, packedMoves)
-            val chosenId = choices[row].legalActionId
+            val chosenId = choices[row].action.id
             return legal.firstOrNull { it.id == chosenId } ?: error("Chosen legalActionId=$chosenId not in GUI legal set")
         }
     }

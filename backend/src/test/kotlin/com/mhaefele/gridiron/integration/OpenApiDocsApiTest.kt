@@ -1,7 +1,6 @@
 package com.mhaefele.gridiron.integration
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
-import com.mhaefele.gridiron.api.ai.dto.AiFactor
 import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.game.action.dto.DomainEvent
 import com.mhaefele.gridiron.integration.support.BaseApiTest
@@ -86,7 +85,6 @@ class OpenApiDocsApiTest : BaseApiTest() {
 
         assertDiscriminatedSealedSchema(schemas, "DomainEvent", DomainEvent::class.java)
         assertDiscriminatedSealedSchema(schemas, "LegalAction", LegalAction::class.java)
-        assertDiscriminatedSealedSchema(schemas, "AiFactor", AiFactor::class.java)
     }
 
     @Test

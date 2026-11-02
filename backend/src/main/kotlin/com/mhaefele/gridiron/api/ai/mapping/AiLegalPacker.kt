@@ -1,56 +1,168 @@
 package com.mhaefele.gridiron.api.ai.mapping
 
-import com.mhaefele.gridiron.api.ai.dto.AiFactor
 import com.mhaefele.gridiron.api.ai.dto.AiLegalChoiceDto
+import com.mhaefele.gridiron.api.ai.dto.AiLegalKind
 import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
+import com.mhaefele.gridiron.api.ai.dto.AiPitchSquare
+import com.mhaefele.gridiron.api.dto.response.LegalAction
+import com.mhaefele.gridiron.model.MatchState
+import com.mhaefele.gridiron.model.board.PlayerStatus
+import com.mhaefele.gridiron.shared.Coordinate
+import com.mhaefele.gridiron.shared.PlayerId
+import com.mhaefele.gridiron.shared.TeamSide
 import org.springframework.stereotype.Component
 
 /**
  * Policy legal-row int matrix from harness rows — matches Python gym ``legal_moves``.
  *
- * Identity columns: actor, kind, targetX, targetY, challengeSlot, attachedBonus, face0..2
- * (who-id = roster [AiFactor.Actor]; dest = [AiLegalChoiceDto.target]).
- * Metadata tail: [AiLegalChoiceDto.source] as sourceX / sourceY.
+ * Perspective + 0-based pitch packing stay here (not on the harness wire).
+ * Identity: actor, kind, targetX, targetY, challengeSlot, attachedBonus, face0..2;
+ * metadata: sourceX, sourceY.
  */
 @Component
-class AiLegalPacker {
-    fun legalMoves(choices: List<AiLegalChoiceDto>): List<List<Int>> =
-        choices.map { harnessFactorKey(it) }
+class AiLegalPacker(
+    private val gameState: AiGameStateMapper,
+) {
+    fun legalMoves(
+        choices: List<AiLegalChoiceDto>,
+        state: MatchState,
+        perspectiveSeat: TeamSide,
+    ): List<List<Int>> =
+        choices.map { harnessFactorKey(it.action, state, perspectiveSeat) }
+
+    fun harnessFactorKey(
+        action: LegalAction,
+        state: MatchState,
+        perspectiveSeat: TeamSide,
+    ): List<Int> {
+        val kind = packKind(action)
+        val actorId = actorPlayerId(action)
+        val actor = actorId?.let { gameState.aiPlayerIndex(it) } ?: AiObsLayout.UNUSED_PLAYER_INDEX
+        val target = destCoordinate(action)?.let { gameState.perspectivePitchXy0(it, perspectiveSeat) }
+        val source = sourcePitch(actorId, state, perspectiveSeat)
+        val challengeSlot = when (action) {
+            is LegalAction.ClaimChallenge   -> action.slotIndex
+            is LegalAction.ReplaceChallenge -> action.slotIndex
+            else                            -> AiObsLayout.ACTIVE_CHALLENGE_SLOTS
+        }
+        val attachedBonus = action.requiredBonusCard?.let { AttachedBonusEncoding.indexFor(it) }
+            ?: AiObsLayout.ATTACHED_BONUS_UNUSED
+        val faces = IntArray(AiObsLayout.MAX_HELD_BLOCK_FACES) { AiObsLayout.BLOCK_FACE_PACK_UNUSED }
+        if (action is LegalAction.ChooseBlockFaceOrder) {
+            require(action.orderedFaces.size <= AiObsLayout.MAX_HELD_BLOCK_FACES) { "FaceOrder length ${action.orderedFaces.size} > ${AiObsLayout.MAX_HELD_BLOCK_FACES}" }
+            for (i in action.orderedFaces.indices) {
+                faces[i] = action.orderedFaces[i].ordinal + 1
+            }
+        }
+        return listOf(
+            actor,
+            kind.ordinal,
+            target?.x ?: AiObsLayout.TARGET_X_UNUSED,
+            target?.y ?: AiObsLayout.TARGET_Y_UNUSED,
+            challengeSlot,
+            attachedBonus,
+            faces[0],
+            faces[1],
+            faces[2],
+            source?.x ?: AiObsLayout.SOURCE_X_UNUSED,
+            source?.y ?: AiObsLayout.SOURCE_Y_UNUSED,
+        )
+    }
+
+    private fun sourcePitch(
+        actorId: PlayerId?,
+        state: MatchState,
+        perspectiveSeat: TeamSide,
+    ): AiPitchSquare? {
+        if (actorId == null) return null
+        return when (state.board.player(actorId).status) {
+            PlayerStatus.STANDING, PlayerStatus.PRONE -> gameState.perspectivePitchXy0(state.board.findSquare(actorId).coordinate, perspectiveSeat)
+            PlayerStatus.RESERVES                     -> null
+        }
+    }
 
     companion object {
-        fun harnessFactorKey(choice: AiLegalChoiceDto): List<Int> {
-            var actor = AiObsLayout.UNUSED_PLAYER_INDEX
-            var challengeSlot = AiObsLayout.ACTIVE_CHALLENGE_SLOTS
-            var attachedBonus = AiObsLayout.ATTACHED_BONUS_UNUSED
-            val faces = IntArray(AiObsLayout.MAX_HELD_BLOCK_FACES) { AiObsLayout.BLOCK_FACE_PACK_UNUSED }
-            for (factor in choice.factors + choice.sugarFactors) {
-                when (factor) {
-                    is AiFactor.Actor         -> actor = factor.playerIndex
-                    is AiFactor.ChallengeSlot -> challengeSlot = factor.slot
-                    is AiFactor.AttachedBonus -> attachedBonus = factor.index
-                    is AiFactor.FaceOrder     -> {
-                        require(factor.faces.size <= AiObsLayout.MAX_HELD_BLOCK_FACES) { "FaceOrder length ${factor.faces.size} > ${AiObsLayout.MAX_HELD_BLOCK_FACES}" }
-                        for (i in factor.faces.indices) {
-                            faces[i] = factor.faces[i]
-                        }
-                    }
-                }
+        fun actorPlayerId(action: LegalAction): PlayerId? =
+            when (action) {
+                // Free actor (packed when free; sugar/packed for pending-fixed rows too — who-id).
+                is LegalAction.PathMovement,
+                is LegalAction.DeclareRun,
+                is LegalAction.Throw,
+                is LegalAction.ThrowTeammateSelect,
+                is LegalAction.Block,
+                is LegalAction.Foul,
+                is LegalAction.StandUp,
+                is LegalAction.Reserves,
+                is LegalAction.ThrowTeammate,
+                is LegalAction.CancelThrowTeammate,
+                is LegalAction.Skip,
+                is LegalAction.ContinueBlock,
+                is LegalAction.PlaceLooseBall,
+                is LegalAction.ChooseBlockReroll,
+                is LegalAction.ChooseThrowReroll,
+                is LegalAction.ChooseBlockFaceOrder,
+                is LegalAction.AdjustThrowByDoOver,
+                is LegalAction.AdjustBlockByDoOver,
+                is LegalAction.QuickReleaseThrow    -> (action as LegalAction.PlayerLegalAction).playerId
+                is LegalAction.AdjustArmourByDoOver -> action.targetId
+                else                                -> null
             }
-            val target = choice.target
-            val source = choice.source
-            return listOf(
-                actor,
-                choice.kindIndex,
-                target?.x ?: AiObsLayout.TARGET_X_UNUSED,
-                target?.y ?: AiObsLayout.TARGET_Y_UNUSED,
-                challengeSlot,
-                attachedBonus,
-                faces[0],
-                faces[1],
-                faces[2],
-                source?.x ?: AiObsLayout.SOURCE_X_UNUSED,
-                source?.y ?: AiObsLayout.SOURCE_Y_UNUSED,
-            )
-        }
+
+        fun destCoordinate(action: LegalAction): Coordinate? =
+            when (action) {
+                is LegalAction.BoardTargetedLegalAction -> action.targetCoordinate
+                is LegalAction.AdjustThrowByDoOver      -> action.destination
+                is LegalAction.AdjustBlockByDoOver      -> action.destination
+                else                                    -> null
+            }
+
+        /**
+         * Pack-kind vocabulary — keepOffer/reroll split Choose*Reroll; not 1:1 with Jackson `kind`.
+         * TODO(AI2.19): shared wire kinds so this collapses.
+         */
+        fun packKind(action: LegalAction): AiLegalKind =
+            when (action) {
+                is LegalAction.Run                  -> AiLegalKind.run
+                is LegalAction.Mark                 -> AiLegalKind.mark
+                is LegalAction.Sidestep             -> AiLegalKind.sidestep
+                is LegalAction.Throw                -> AiLegalKind.`throw`
+                is LegalAction.ThrowTeammateSelect  -> AiLegalKind.throwTeammateSelect
+                is LegalAction.ThrowTeammate        -> AiLegalKind.throwTeammate
+                is LegalAction.CancelThrowTeammate  -> AiLegalKind.cancelThrowTeammate
+                is LegalAction.Block                -> AiLegalKind.block
+                is LegalAction.Foul                 -> AiLegalKind.foul
+                is LegalAction.StandUp              -> AiLegalKind.standUp
+                is LegalAction.Reserves             -> AiLegalKind.reserves
+                is LegalAction.Skip                 -> AiLegalKind.skip
+                is LegalAction.DeclineBonus         -> AiLegalKind.declineBonus
+                is LegalAction.ContinueBlock        -> AiLegalKind.continueBlock
+                is LegalAction.PlaceLooseBall       -> AiLegalKind.placeLooseBall
+                is LegalAction.ChooseBlockReroll    -> if (action.reroll) AiLegalKind.`reroll` else AiLegalKind.keepOffer
+                is LegalAction.ChooseThrowReroll    -> if (action.reroll) AiLegalKind.`reroll` else AiLegalKind.keepOffer
+                is LegalAction.ChooseBlockFaceOrder -> AiLegalKind.chooseBlockFaceOrder
+                is LegalAction.AdjustThrowByDoOver  -> AiLegalKind.adjustThrowByDoOver
+                is LegalAction.AdjustBlockByDoOver  -> AiLegalKind.adjustBlockByDoOver
+                is LegalAction.AdjustArmourByDoOver -> AiLegalKind.adjustArmourByDoOver
+                is LegalAction.QuickReleaseThrow    -> AiLegalKind.quickReleaseThrow
+                is LegalAction.DeclareRun           -> AiLegalKind.declareRun
+                is LegalAction.PlayGangUp           -> AiLegalKind.playGangUp
+                is LegalAction.PlayHoldTheLine      -> AiLegalKind.playHoldTheLine
+                is LegalAction.PlayExtraEffort      -> AiLegalKind.playExtraEffort
+                is LegalAction.PlayMomentum         -> AiLegalKind.playMomentum
+                is LegalAction.PlayAllInTackle      -> AiLegalKind.playAllInTackle
+                is LegalAction.PlaySlipAway         -> AiLegalKind.playSlipAway
+                is LegalAction.PlayCutOff           -> AiLegalKind.playCutOff
+                is LegalAction.PlayStickClose       -> AiLegalKind.playStickClose
+                is LegalAction.PlayBackOnYourFeet   -> AiLegalKind.playBackOnYourFeet
+                is LegalAction.PlayFreshLegs        -> AiLegalKind.playFreshLegs
+                is LegalAction.PlayBrace            -> AiLegalKind.playBrace
+                is LegalAction.PlayUnderdog         -> AiLegalKind.playUnderdog
+                is LegalAction.PlaySpikedGauntlets  -> AiLegalKind.playSpikedGauntlets
+                is LegalAction.PlayDeadEye          -> AiLegalKind.playDeadEye
+                is LegalAction.PlayHailMary         -> AiLegalKind.playHailMary
+                is LegalAction.PlaySprint           -> AiLegalKind.playSprint
+                is LegalAction.ClaimChallenge       -> AiLegalKind.claimChallenge
+                is LegalAction.ReplaceChallenge     -> AiLegalKind.replaceChallenge
+            }
     }
 }

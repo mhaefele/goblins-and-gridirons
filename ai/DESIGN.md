@@ -81,6 +81,8 @@ Computed in the harness from game-state scores / result — no `AiRewardDto`. Ph
 | Profile shaping | `general` / `spread` / `td` / `defense` — train only; eval off |
 | Marked scenario move | Soft-mask only (`preferred_legal`); drill grade also feeds curriculum/winrate |
 
+**Schema 21+:** packed `legalMoves` = policy only (perspective). Harness `legalRows` = absolute `LegalAction` + curriculum flags. Harness `rewards.players` + `ballCoordinate` (absolute). Join by `playerId` / coords. Never use packed ints for reward.
+
 ---
 
 ## Python harness conventions

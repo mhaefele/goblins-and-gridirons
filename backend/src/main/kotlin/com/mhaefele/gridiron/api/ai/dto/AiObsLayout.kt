@@ -20,9 +20,9 @@ import com.mhaefele.gridiron.shared.TeamSide
  * | `[AWAY_BENCH_START] .. +9` (175..184) | Perspective “them” dugout slots |
  *
  * Pitch: `index = (y - 1) * [PLAY_WIDTH] + (x - 1)` with `x ∈ [1, W]`, `y ∈ [1, H]`.
- * Obs [AiNestedObsDto.cells] use the full board space (linear pitch + benches). [AiFactor.Actor]
- * is a **roster player index** (same id on the cell that holds them). Dest / source pitch use
- * [AiPitchSquare] on [AiLegalChoiceDto] (0-based) — not cell indices.
+ * Obs [AiNestedObsDto.cells] use the full board space (linear pitch + benches). Packed legal-row
+ * actor is a **roster player index** (same id on the cell that holds them). Dest / source pitch
+ * in the pack are perspective [AiPitchSquare] (0-based) — harness [LegalAction] stays absolute.
  * Pathfinding / adjacency use pitch only.
  */
 object AiObsLayout {
@@ -51,10 +51,15 @@ object AiObsLayout {
      * v18: source metadata is pitch `(x, y)` ints from Kotlin (not a linear board index)
      * so the encoder does not decode index→coords.
      * v19: dest / source are [AiPitchSquare] on the harness row (pack targetX/targetY,
-     * sourceX/sourceY); drop linear dest index. Schema 15 remains the only dual-path
-     * ONNX fork — mutate 16+ in place / bump freely.
+     * sourceX/sourceY); drop linear dest index.
+     * v20: harness `legalRows` wrap [com.mhaefele.gridiron.api.dto.response.LegalAction] + AI
+     * flags only — drop wire factors / sugar / kindIndex / pitch sidecars; packer maps
+     * absolute action → perspective pack ints. Schema 15 remains the only dual-path ONNX
+     * fork — mutate 16+ in place / bump freely.
+     * v21: harness [HarnessRewardSnapshotDto.players] (absolute coords + playerId) +
+     * `ballCoordinate`; legal rows = LegalAction + curriculum flags only.
      */
-    const val SCHEMA_VERSION = 19
+    const val SCHEMA_VERSION = 21
 
     const val PLAY_WIDTH = 11
     const val PLAY_HEIGHT = 15
@@ -174,7 +179,7 @@ object AiObsLayout {
 
     /**
      * Perspective-relative [AiPitchSquare] from absolute playable [Coordinate] (`1..W` / `1..H`).
-     * HOME identity; AWAY 180° rotate. Used as [AiLegalChoiceDto.target] / [source].
+     * HOME identity; AWAY 180° rotate. Pack-private dest / source columns.
      */
     fun toPerspectivePitchXy0(absolute: Coordinate, perspectiveSeat: TeamSide): AiPitchSquare {
         require(absolute.x in 1..PLAY_WIDTH && absolute.y in 1..PLAY_HEIGHT) {

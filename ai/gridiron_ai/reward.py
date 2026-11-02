@@ -19,13 +19,9 @@ Scenario episodes use this same stack. ``passingLegal`` marks PASS-grade curricu
 
 Eval runs with profile shaping off.
 
-Perspective (important)
------------------------
-"Us" and "them" are relative to whoever just acted. Submit returns ``afterSubmitRewards`` (pre-handoff
-snapshot) when set, else top-level ``rewards``. Episode terminal meta uses [next] on same-frame
-submit; on handoff it is usually omitted unless [next] is already terminal after the computer wait.
-in that seat's perspective, so both before and after snapshots use the same "us".
-Self-play reuses one policy for both seats; each step is still scored for the seat that moved.
+Harness ``rewards.players`` (absolute coords + ``playerId``) and ``ballCoordinate``
+(where the ball is). Legal rows = action + curriculum flags only. Packed ``legalMoves``
+are policy-only — never read here.
 
 Called by
 ---------
@@ -37,7 +33,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from gridiron_ai.constants import PLAY_HEIGHT, PLAY_WIDTH, PITCH_SQUARE_COUNT
+from gridiron_ai.constants import PLAY_HEIGHT, PLAY_WIDTH
+from gridiron_ai.harness_wire import HarnessPlayerDict, HarnessRewardSnapshotDict
 
 TERMINAL_WIN = 1.0
 TERMINAL_DRAW = 0.0
@@ -70,10 +67,7 @@ def profiles_for_all(purpose: AllProfilesPurpose = "train") -> tuple[RewardProfi
         return REWARD_PROFILES
     return ("baseline", *TRAIN_ALL_SHAPED_PROFILES)
 
-# Bench index ranges in perspective-relative AiObsLayout (them = 175..184).
-_THEM_BENCH_START = 175
-_BENCH_SLOTS = 10
-# Perspective pitch: scoring end zone is y = PLAY_HEIGHT (AiObsLayout 180° for AWAY).
+# Absolute pitch: HOME scores at y = PLAY_HEIGHT; AWAY at y = 1.
 _MAX_END_ZONE_ROW_DIST = PLAY_HEIGHT - 1
 
 
@@ -98,9 +92,9 @@ class RewardShaping:
     block_ball_carrier_bonus: float = 0.0
     # When they hold: no any_block; block carrier for carrier bonus; else this penalty.
     block_non_carrier_penalty: float = 0.0
-    # Actor factor is our ball carrier (when we hold on pitch before the action).
+    # LegalAction actor playerId matches our ball carrier (we hold on pitch before).
     ball_carrier_action_bonus: float = 0.0
-    # Path lands in scoring end zone while we do not hold (empty EZ sightseeing).
+    # Absolute dest is acting seat's scoring end zone while we do not hold.
     empty_scoring_endzone_penalty: float = 0.0
     # Signed Δ covering radius: max over pitch of min Manhattan dist to any US player
     # (lower = more spread). Symmetric so peel-out then walk-back nets ~0.
@@ -211,16 +205,16 @@ def score_margin(rewards: dict[str, Any]) -> float:
 
 
 def _is_us_team_rel(team_rel: Any) -> bool:
-    # Wire: AiTeamRel ordinal (0=US) or legacy name string.
-    return team_rel in (0, "US")
+    """Harness ``AiTeamRel`` / outcome name strings (not packed ordinals)."""
+    return team_rel == "US"
 
 
 def _is_them_team_rel(team_rel: Any) -> bool:
-    return team_rel in (1, "THEM")
+    return team_rel == "THEM"
 
 
 def _is_distracted_training_outcome(outcome: Any) -> bool:
-    return outcome in (2, "DISTRACTED")
+    return outcome == "DISTRACTED"
 
 
 def training_outcome_winner_rel(outcome: Any) -> str | None:
@@ -232,242 +226,208 @@ def training_outcome_winner_rel(outcome: Any) -> str | None:
     return None
 
 
-def _player_on_ball(cell: dict[str, Any]) -> dict[str, Any] | None:
-    """Occupant of a hasBall square (held, or rare loose-under-player bounce)."""
-    player = cell.get("player")
-    if player and cell.get("hasBall"):
+def _players(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> list[HarnessPlayerDict]:
+    raw = rewards.get("players") or []
+    return [p for p in raw if isinstance(p, dict)]  # type: ignore[misc]
+
+
+def coordinate_xy(raw: Any) -> tuple[int, int] | None:
+    """Parse wire ``{x,y}`` (1-based absolute) → tuple, or None if absent/null."""
+    if not isinstance(raw, dict):
+        return None
+    return int(raw["x"]), int(raw["y"])
+
+
+def player_by_id(
+    rewards: HarnessRewardSnapshotDict | dict[str, Any],
+    player_id: str,
+) -> HarnessPlayerDict | None:
+    """Join LegalAction ``playerId`` → harness player row."""
+    for player in _players(rewards):
+        if player.get("playerId") == player_id:
+            return player
+    return None
+
+
+def player_at(
+    rewards: HarnessRewardSnapshotDict | dict[str, Any],
+    xy: tuple[int, int],
+) -> HarnessPlayerDict | None:
+    """Join absolute playable square → on-pitch harness player."""
+    for player in _players(rewards):
+        if coordinate_xy(player.get("coordinate")) == xy:
+            return player
+    return None
+
+
+def ball_xy(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> tuple[int, int] | None:
+    """Absolute playable square of the ball from ``ballCoordinate``."""
+    return coordinate_xy(rewards.get("ballCoordinate"))
+
+
+def us_ball_carrier(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> HarnessPlayerDict | None:
+    """US player whose square matches ``ballCoordinate``, if any."""
+    ball = ball_xy(rewards)
+    if ball is None:
+        return None
+    player = player_at(rewards, ball)
+    if player and _is_us_team_rel(player.get("teamRel")):
         return player
     return None
 
 
-def us_ball_carrier_pitch_index(observation_from_server: dict[str, Any]) -> int | None:
-    """Pitch cell index of our ball carrier, or None if we do not hold the ball on pitch."""
-    cells = observation_from_server.get("cells") or []
-    for index in range(min(len(cells), PITCH_SQUARE_COUNT)):
-        player = _player_on_ball(cells[index])
-        if player and _is_us_team_rel(player.get("teamRel")):
-            return index
+def them_ball_carrier(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> HarnessPlayerDict | None:
+    """Them player whose square matches ``ballCoordinate``, if any."""
+    ball = ball_xy(rewards)
+    if ball is None:
+        return None
+    player = player_at(rewards, ball)
+    if player and _is_them_team_rel(player.get("teamRel")):
+        return player
     return None
 
 
-def them_ball_carrier_pitch_index(observation_from_server: dict[str, Any]) -> int | None:
-    """Pitch cell index of their ball carrier, or None if they do not hold the ball on pitch."""
-    cells = observation_from_server.get("cells") or []
-    for index in range(min(len(cells), PITCH_SQUARE_COUNT)):
-        player = _player_on_ball(cells[index])
-        if player and _is_them_team_rel(player.get("teamRel")):
-            return index
-    return None
+def manhattan_xy(a: tuple[int, int], b: tuple[int, int]) -> int:
+    """Grid distance between two absolute playable squares."""
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
-def get_absolute_ball_pitch_index(observation_from_server: dict[str, Any]) -> int | None:
-    """Find the ball's location, whether someone is holding it or it's loose on the floor."""
-    cells = observation_from_server.get("cells") or []
-    for index in range(min(len(cells), PITCH_SQUARE_COUNT)):
-        if cells[index].get("hasBall"):
-            return index
-    return None
+def us_pitch_coordinates(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> list[tuple[int, int]]:
+    """Absolute squares occupied by perspective-us players on pitch."""
+    coords: list[tuple[int, int]] = []
+    for player in _players(rewards):
+        if not _is_us_team_rel(player.get("teamRel")):
+            continue
+        xy = coordinate_xy(player.get("coordinate"))
+        if xy is not None:
+            coords.append(xy)
+    return coords
 
 
-def manhattan_distance(index_a: int, index_b: int) -> int:
-    """Grid distance between two pitch indices."""
-    x_a, y_a = index_a % PLAY_WIDTH, index_a // PLAY_WIDTH
-    x_b, y_b = index_b % PLAY_WIDTH, index_b // PLAY_WIDTH
-    return abs(x_a - x_b) + abs(y_a - y_b)
-
-
-def us_pitch_indices(observation_from_server: dict[str, Any]) -> list[int]:
-    """Pitch cell indices occupied by perspective-us players."""
-    cells = observation_from_server.get("cells") or []
-    indices: list[int] = []
-    for index in range(min(len(cells), PITCH_SQUARE_COUNT)):
-        player = cells[index].get("player")
-        if player and _is_us_team_rel(player.get("teamRel")):
-            indices.append(index)
-    return indices
-
-
-def covering_radius(observation_from_server: dict[str, Any]) -> int | None:
+def covering_radius(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> int | None:
     """Max over pitch of min Manhattan dist to any US player — None if nobody is on pitch."""
-    players = us_pitch_indices(observation_from_server)
+    players = us_pitch_coordinates(rewards)
     if not players:
         return None
     worst = 0
-    for square in range(PITCH_SQUARE_COUNT):
-        best = min(manhattan_distance(square, player) for player in players)
-        if best > worst:
-            worst = best
+    for y in range(1, PLAY_HEIGHT + 1):
+        for x in range(1, PLAY_WIDTH + 1):
+            square = (x, y)
+            best = min(manhattan_xy(square, player) for player in players)
+            if best > worst:
+                worst = best
     return worst
 
 
-def min_us_distance_to_ball(observation_from_server: dict[str, Any]) -> int | None:
-    """Finds the shortest distance between any 'US' player and the ball."""
-    ball_idx = get_absolute_ball_pitch_index(observation_from_server)
-    if ball_idx is None:
+def min_us_distance_to_ball(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> int | None:
+    """Shortest Manhattan distance from any US on-pitch player to the ball."""
+    ball = ball_xy(rewards)
+    if ball is None:
         return None
-
-    cells = observation_from_server.get("cells") or []
-    min_dist = 9999
-    found_us = False
-
-    for index in range(min(len(cells), PITCH_SQUARE_COUNT)):
-        player = cells[index].get("player")
-        if player and _is_us_team_rel(player.get("teamRel")):
-            found_us = True
-            dist = manhattan_distance(index, ball_idx)
-            if dist < min_dist:
-                min_dist = dist
-
-    return min_dist if found_us else None
+    players = us_pitch_coordinates(rewards)
+    if not players:
+        return None
+    return min(manhattan_xy(player, ball) for player in players)
 
 
-def us_holds_ball(observation_from_server: dict[str, Any]) -> bool:
+def us_holds_ball(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> bool:
     """True when a perspective-us player holds the ball."""
-    return us_ball_carrier_pitch_index(observation_from_server) is not None
+    return us_ball_carrier(rewards) is not None
 
 
-def them_holds_ball(observation_from_server: dict[str, Any]) -> bool:
+def them_holds_ball(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> bool:
     """True when a perspective-them player holds the ball."""
-    return them_ball_carrier_pitch_index(observation_from_server) is not None
+    return them_ball_carrier(rewards) is not None
 
 
-def endzone_proximity(pitch_index: int) -> float:
-    """0 at our end-zone row, 1 in the opponent end zone (perspective-relative pitch)."""
-    y = pitch_index // PLAY_WIDTH + 1
-    return (y - 1) / _MAX_END_ZONE_ROW_DIST
+def endzone_proximity(xy: tuple[int, int], *, acting_seat: str) -> float:
+    """0 at our defensive end zone, 1 at our scoring end zone (absolute pitch)."""
+    _, y = xy
+    if acting_seat == "HOME":
+        return (y - 1) / _MAX_END_ZONE_ROW_DIST
+    if acting_seat == "AWAY":
+        return (PLAY_HEIGHT - y) / _MAX_END_ZONE_ROW_DIST
+    raise ValueError(f"acting_seat must be HOME or AWAY, got {acting_seat!r}")
 
 
-def is_scoring_endzone_xy(x: int, y: int) -> bool:
-    """True when 0-based pitch ``(x, y)`` is on the perspective scoring end-zone row."""
-    return 0 <= x < PLAY_WIDTH and y == PLAY_HEIGHT - 1
-
-
-def _cell_at_xy(observation_from_server: dict[str, Any], x: int, y: int) -> dict[str, Any] | None:
-    """Nested obs ``cells`` are still a flat pitch+bench list — only lookup site for dest xy."""
-    if not (0 <= x < PLAY_WIDTH and 0 <= y < PLAY_HEIGHT):
-        return None
-    cells = observation_from_server.get("cells") or []
-    index = y * PLAY_WIDTH + x
-    if index >= len(cells):
-        return None
-    return cells[index]
-
-
-def is_loose_ball_at_xy(observation_from_server: dict[str, Any], x: int, y: int) -> bool:
-    """True when the ball is loose (hasBall, no occupant) on that pitch square."""
-    cell = _cell_at_xy(observation_from_server, x, y)
-    if cell is None:
-        return False
-    return bool(cell.get("hasBall")) and cell.get("player") is None
-
-
-def is_run_onto_loose_ball(
-    observation_before_move: dict[str, Any],
-    legal_choice: dict[str, Any] | None,
-) -> bool:
-    """True when ``legal_choice`` runs onto the square with a loose ball (we do not hold yet)."""
-    if not legal_choice:
-        return False
-    if str(legal_choice.get("kind")) not in ("run", "declareRun", "sidestep"):
-        return False
-    if us_holds_ball(observation_before_move):
-        return False
-    target = _factor_board_target_xy(legal_choice)
-    if target is None:
-        return False
-    return is_loose_ball_at_xy(observation_before_move, target[0], target[1])
-
-
-def them_in_dugout(observation_from_server: dict[str, Any]) -> int:
-    """Count opponent players in the perspective-them bench region."""
-    cells = observation_from_server.get("cells") or []
-    count = 0
-    for index in range(_THEM_BENCH_START, _THEM_BENCH_START + _BENCH_SLOTS):
-        if index >= len(cells):
-            break
-        player = cells[index].get("player")
-        if player and _is_them_team_rel(player.get("teamRel")):
-            count += 1
-    return count
-
-
-def _claims_all_uncertain(legal_choice: dict[str, Any] | None) -> bool:
-    if not legal_choice:
-        return False
-    claims = legal_choice.get("potentialChallengeClaims") or []
-    if not claims:
-        return False
-    return all(claim.get("certainty") in ("POTENTIAL", 1) for claim in claims)
-
-
-def _factor_board_target_xy(legal_choice: dict[str, Any] | None) -> tuple[int, int] | None:
-    """0-based pitch ``(x, y)`` from harness ``target``, or None if absent / out of range."""
-    if not legal_choice:
-        return None
-    target = legal_choice.get("target")
-    if not target:
-        return None
-    x = int(target["x"])
-    y = int(target["y"])
-    if 0 <= x < PLAY_WIDTH and 0 <= y < PLAY_HEIGHT:
-        return x, y
-    return None
-
-
-def _factor_actor(legal_choice: dict[str, Any] | None) -> int | None:
-    if not legal_choice:
-        return None
-    for factor in legal_choice.get("factors") or []:
-        if factor.get("kind") == "actor":
-            return int(factor["playerIndex"])
-    return None
-
-
-def _us_ball_carrier_player_index(observation_from_server: dict[str, Any]) -> int | None:
-    """Roster playerIndex of our ball carrier, or None if we do not hold on pitch."""
-    pitch = us_ball_carrier_pitch_index(observation_from_server)
-    if pitch is None:
-        return None
-    cells = observation_from_server.get("cells") or []
-    if pitch < 0 or pitch >= len(cells):
-        return None
-    player = cells[pitch].get("player")
-    if not player:
-        return None
-    return int(player["playerIndex"])
-
-
-def _them_ball_carrier_at_xy(observation_from_server: dict[str, Any], x: int, y: int) -> bool:
-    cell = _cell_at_xy(observation_from_server, x, y)
-    if cell is None:
-        return False
-    player = _player_on_ball(cell)
-    return bool(player and _is_them_team_rel(player.get("teamRel")))
+def them_in_dugout(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> int:
+    """Count perspective-them players with no pitch coordinate (dugout)."""
+    return sum(
+        1
+        for player in _players(rewards)
+        if _is_them_team_rel(player.get("teamRel")) and player.get("coordinate") is None
+    )
 
 
 def is_block_on_them_ball_carrier(
-        observation_before_move: dict[str, Any],
-        legal_choice: dict[str, Any] | None,
+    rewards_before: HarnessRewardSnapshotDict | dict[str, Any],
+    legal_choice: dict[str, Any] | None,
 ) -> bool:
-    """True when ``legal_choice`` is a block whose target holds the ball for Them."""
+    """True when ``legal_choice`` is a block whose dest is Them's ball square."""
     if not legal_choice or str(legal_choice.get("kind")) != "block":
         return False
-    target = _factor_board_target_xy(legal_choice)
-    if target is None:
+    target = action_target_coordinate(legal_choice)
+    ball = ball_xy(rewards_before)
+    if target is None or ball is None or target != ball:
         return False
-    return _them_ball_carrier_at_xy(observation_before_move, target[0], target[1])
+    player = player_at(rewards_before, target)
+    return bool(player and _is_them_team_rel(player.get("teamRel")))
+
+
+def _claims_all_uncertain(action: dict[str, Any] | None) -> bool:
+    if not action:
+        return False
+    claims = action.get("potentialChallengeClaims") or []
+    if not claims:
+        return False
+    return all(claim.get("certainty") == "POTENTIAL" for claim in claims)
+
+
+def action_target_coordinate(action: dict[str, Any] | None) -> tuple[int, int] | None:
+    """Absolute playable ``Coordinate`` from LegalAction ``targetCoordinate``."""
+    if not action:
+        return None
+    return coordinate_xy(action.get("targetCoordinate"))
+
+
+def action_actor_coordinate(
+    rewards: HarnessRewardSnapshotDict | dict[str, Any],
+    action: dict[str, Any] | None,
+) -> tuple[int, int] | None:
+    """Actor pitch square via LegalAction ``playerId`` → ``rewards.players``."""
+    if not action:
+        return None
+    player_id = action.get("playerId")
+    if not isinstance(player_id, str):
+        return None
+    player = player_by_id(rewards, player_id)
+    if player is None:
+        return None
+    return coordinate_xy(player.get("coordinate"))
+
+
+def is_absolute_scoring_endzone(x: int, y: int, *, acting_seat: str) -> bool:
+    if acting_seat == "HOME":
+        return 1 <= x <= PLAY_WIDTH and y == PLAY_HEIGHT
+    if acting_seat == "AWAY":
+        return 1 <= x <= PLAY_WIDTH and y == 1
+    raise ValueError(f"acting_seat must be HOME or AWAY, got {acting_seat!r}")
 
 
 def shaping_reward(
         *,
-        rewards_before: dict[str, Any],
-        rewards_after: dict[str, Any],
+        rewards_before: HarnessRewardSnapshotDict | dict[str, Any],
+        rewards_after: HarnessRewardSnapshotDict | dict[str, Any],
         turn_start_score_us: int,
         shaping: RewardShaping,
         scoring: dict[str, Any] | None = None,
         legal_choice: dict[str, Any] | None = None,
+        perspective_seat: str = "HOME",
 ) -> float:
-    """Extra reward beyond score-margin delta. Zero when shaping disabled."""
+    """Extra reward beyond score-margin delta. Zero when shaping disabled.
+
+    ``legal_choice`` is engine LegalAction (absolute). Board facts join via ``rewards.players``.
+    """
     if not shaping.enabled:
         return 0.0
     observation_before_move = rewards_before
@@ -477,23 +437,28 @@ def shaping_reward(
     before_turn = int(observation_before_move["turnNumber"])
     after_turn = int(next_observation["turnNumber"])
     kind = str(legal_choice.get("kind")) if legal_choice else ""
-    target = _factor_board_target_xy(legal_choice)
+    target = action_target_coordinate(legal_choice)
 
     if shaping.idle_turn_penalty > 0.0 and after_turn > before_turn:
         if int(next_observation["scoreUs"]) <= turn_start_score_us:
             extra -= shaping.idle_turn_penalty
 
     if shaping.ball_possession_bonus > 0.0:
-        carrier_after = us_ball_carrier_pitch_index(next_observation)
-        if carrier_after is not None:
+        carrier_after = us_ball_carrier(next_observation)
+        after_xy = coordinate_xy(carrier_after.get("coordinate")) if carrier_after else None
+        if after_xy is not None:
             if shaping.ball_possession_delta:
-                carrier_before = us_ball_carrier_pitch_index(observation_before_move)
-                if carrier_before is not None:
-                    delta = endzone_proximity(carrier_after) - endzone_proximity(carrier_before)
+                carrier_before = us_ball_carrier(observation_before_move)
+                before_xy = coordinate_xy(carrier_before.get("coordinate")) if carrier_before else None
+                if before_xy is not None:
+                    delta = (
+                        endzone_proximity(after_xy, acting_seat=perspective_seat)
+                        - endzone_proximity(before_xy, acting_seat=perspective_seat)
+                    )
                     if delta != 0.0:
                         extra += shaping.ball_possession_bonus * delta
             else:
-                proximity = endzone_proximity(carrier_after)
+                proximity = endzone_proximity(after_xy, acting_seat=perspective_seat)
                 extra += shaping.ball_possession_bonus * (0.5 + (0.5 * proximity))
 
     if shaping.us_gained_ball_bonus > 0.0:
@@ -517,7 +482,7 @@ def shaping_reward(
         shaping.empty_scoring_endzone_penalty > 0.0
         and kind in ("run", "sidestep")
         and target is not None
-        and is_scoring_endzone_xy(target[0], target[1])
+        and is_absolute_scoring_endzone(target[0], target[1], acting_seat=perspective_seat)
         and not us_holds_ball(observation_before_move)
     ):
         extra -= shaping.empty_scoring_endzone_penalty
@@ -525,10 +490,9 @@ def shaping_reward(
     if shaping.uncertain_challenge_bonus > 0.0 and _claims_all_uncertain(legal_choice):
         extra += shaping.uncertain_challenge_bonus
 
-    if shaping.ball_carrier_action_bonus > 0.0:
-        carrier = _us_ball_carrier_player_index(observation_before_move)
-        actor = _factor_actor(legal_choice)
-        if carrier is not None and actor == carrier:
+    if shaping.ball_carrier_action_bonus > 0.0 and legal_choice:
+        carrier = us_ball_carrier(observation_before_move)
+        if carrier is not None and legal_choice.get("playerId") == carrier.get("playerId"):
             extra += shaping.ball_carrier_action_bonus
 
     them_had = them_holds_ball(observation_before_move)
@@ -577,12 +541,11 @@ def is_episode_ended(state: dict[str, Any]) -> bool:
 
 
 def _is_us_winner_rel(winner_rel: Any) -> bool:
-    # Harness metadata is name strings; accept ordinals if a packed path ever emits them.
-    return winner_rel in (0, "US")
+    return winner_rel == "US"
 
 
 def _is_them_winner_rel(winner_rel: Any) -> bool:
-    return winner_rel in (1, "THEM")
+    return winner_rel == "THEM"
 
 
 def step_reward(
@@ -597,11 +560,12 @@ def step_reward(
         shaping: RewardShaping | None = None,
         scoring: dict[str, Any] | None = None,
         legal_choice: dict[str, Any] | None = None,
+        perspective_seat: str = "HOME",
 ) -> float:
     """Reward for the seat that just moved.
 
-    ``rewards_before`` / ``rewards_after`` are harness JSON snapshots from the wire
-    (same seat perspective). Episode terminal fields come from the submit frame meta.
+    ``perspective_seat`` is the acting seat (absolute end-zone geometry + us/them scores).
+    Board facts join via ``rewards.players`` / ``ballCoordinate``.
     """
     shaping_cfg = shaping or RewardShaping()
     reward = score_margin(rewards_after) - score_margin(rewards_before)
@@ -612,6 +576,7 @@ def step_reward(
         shaping=shaping_cfg,
         scoring=scoring,
         legal_choice=legal_choice,
+        perspective_seat=perspective_seat,
     )
     if result_kind is not None:
         if _is_us_winner_rel(result_winner_rel):

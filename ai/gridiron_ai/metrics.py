@@ -12,10 +12,11 @@ from __future__ import annotations
 from typing import Any
 
 from gridiron_ai.reward import (
+    coordinate_xy,
     endzone_proximity,
-    them_ball_carrier_pitch_index,
+    them_ball_carrier,
     them_holds_ball,
-    us_ball_carrier_pitch_index,
+    us_ball_carrier,
     us_holds_ball,
 )
 
@@ -241,22 +242,29 @@ class EpisodeActionStats:
         if (not them_holds_ball(before)) and them_holds_ball(after):
             self.ball_them_gained += 1
 
-    def record_turn_start(self, observation_from_server: dict[str, Any]) -> None:
+    def record_turn_start(
+        self,
+        observation_from_server: dict[str, Any],
+        *,
+        perspective_seat: str,
+    ) -> None:
         """One turn-start possession sample (caller dedupes by ``turnNumber``)."""
         self.turn_start_samples += 1
-        us_index = us_ball_carrier_pitch_index(observation_from_server)
-        them_index = them_ball_carrier_pitch_index(observation_from_server)
-        if us_index is not None:
+        us_carrier = us_ball_carrier(observation_from_server)
+        them_carrier = them_ball_carrier(observation_from_server)
+        us_xy = coordinate_xy(us_carrier.get("coordinate") if us_carrier else None)
+        them_xy = coordinate_xy(them_carrier.get("coordinate") if them_carrier else None)
+        if us_xy is not None:
             self.ball_us += 1
-            proximity = endzone_proximity(us_index)
+            proximity = endzone_proximity(us_xy, acting_seat=perspective_seat)
             self.ball_us_proximity_sum += proximity
             self.ball_us_proximity_n += 1
             if proximity > _OPP_HALF_PROXIMITY:
                 self.ball_us_opp_half += 1
-        if them_index is not None:
+        if them_xy is not None:
             self.ball_them += 1
-            # Their scoring direction is toward our end zone (low perspective y).
-            if endzone_proximity(them_index) < _OPP_HALF_PROXIMITY:
+            # Them deep in our half = low proximity toward our scoring end zone.
+            if endzone_proximity(them_xy, acting_seat=perspective_seat) < _OPP_HALF_PROXIMITY:
                 self.ball_them_opp_half += 1
 
     @property

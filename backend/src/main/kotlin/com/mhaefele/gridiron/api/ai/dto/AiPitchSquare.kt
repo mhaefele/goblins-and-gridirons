@@ -1,10 +1,11 @@
 package com.mhaefele.gridiron.api.ai.dto
 
 /**
- * Perspective-relative **0-based** playable pitch square for AI pack / factors.
+ * Perspective-relative **0-based** playable pitch square for packed legal-row columns.
  *
  * Distinct from rulebook [com.mhaefele.gridiron.shared.Coordinate] (`1..W` / `1..H` playable).
- * Produced by [AiObsLayout.toPerspectivePitchXy0].
+ * Harness [com.mhaefele.gridiron.api.dto.response.LegalAction] keeps absolute coords;
+ * [AiObsLayout.toPerspectivePitchXy0] is pack-private.
  */
 data class AiPitchSquare(val x: Int, val y: Int) {
     init {

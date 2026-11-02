@@ -5,9 +5,10 @@ Owner: ``SCHEMA_VERSION`` + obs / legal-row pack widths shared by ``obs`` / ``ac
 semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
-# v19: Discrete legal-row join scores; pack = actor, kind, targetX, targetY, challenge, bonus,
-# face0..2, sourceX, sourceY (0-based pitch coords from Kotlin). Schema 15 is the only dual-path ONNX fork.
-SCHEMA_VERSION = 19
+# v21: harness rewards.players + ballCoordinate (absolute); legal rows = LegalAction + flags.
+# v20: harness legalRows wrap LegalAction + flags; pack still perspective 0-based xy.
+# Schema 15 is the only dual-path ONNX fork.
+SCHEMA_VERSION = 21
 
 PLAY_WIDTH = 11
 PLAY_HEIGHT = 15

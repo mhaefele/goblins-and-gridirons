@@ -37,7 +37,7 @@ class AiStepMapper(
         return AiNestedStepDto(
             policy = AiNestedStepPolicyDto(
                 obs = gameState.toAiNestedObsDto(state, perspectiveSeat, legalActions),
-                legalMoves = legalPacker.legalMoves(choices),
+                legalMoves = legalPacker.legalMoves(choices, state, perspectiveSeat),
             ),
             harness = AiHarnessStepDto(
                 actingSeat = acting,

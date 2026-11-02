@@ -9,7 +9,7 @@ from gridiron_ai.client import (
     _assert_packed_step,
     _assert_packed_submit,
 )
-from gridiron_ai.constants import BOARD_SLOT_COUNT, OBSERVATION_VECTOR_LENGTH, SCHEMA_VERSION
+from gridiron_ai.constants import OBSERVATION_VECTOR_LENGTH, SCHEMA_VERSION
 
 
 def _rewards_view() -> dict:
@@ -21,7 +21,15 @@ def _rewards_view() -> dict:
         "touchdownsThem": 0,
         "challengeCardsUs": 0,
         "challengeCardsThem": 0,
-        "cells": [{"hasBall": False, "player": None}] * BOARD_SLOT_COUNT,
+        "players": [
+            {
+                "playerId": "h0",
+                "playerIndex": 1,
+                "teamRel": "US",
+                "coordinate": {"x": 2, "y": 3},
+            }
+        ],
+        "ballCoordinate": {"x": 4, "y": 7},
     }
 
 
@@ -47,14 +55,9 @@ def _harness_meta(*, ended: bool = False) -> dict:
 
 def _legal_row(*, action_id: str = "a") -> dict:
     return {
-        "legalActionId": action_id,
+        "action": {"kind": "run", "id": action_id},
         "softMaskLegal": False,
         "passingLegal": False,
-        "kind": "run",
-        "kindIndex": 0,
-        "factors": [],
-        "sugarFactors": [],
-        "potentialChallengeClaims": [],
     }
 
 
@@ -104,6 +107,13 @@ def test_assert_packed_step_requires_rewards_fields() -> None:
     step = _minimal_step()
     del step["rewards"]["turnNumber"]
     with pytest.raises(GridironApiError, match="missing turnNumber"):
+        _assert_packed_step(step)
+
+
+def test_assert_packed_step_requires_players() -> None:
+    step = _minimal_step()
+    del step["rewards"]["players"]
+    with pytest.raises(GridironApiError, match="missing players"):
         _assert_packed_step(step)
 
 

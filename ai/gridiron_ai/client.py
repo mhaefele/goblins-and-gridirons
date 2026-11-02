@@ -13,9 +13,11 @@ from typing import Any
 import requests
 
 from gridiron_ai.constants import (
-    BOARD_SLOT_COUNT,
+    BENCH_SLOTS,
     FACTORS_PER_LEGAL_MOVE,
     OBSERVATION_VECTOR_LENGTH,
+    PLAY_HEIGHT,
+    PLAY_WIDTH,
     SCHEMA_VERSION,
 )
 
@@ -33,7 +35,8 @@ _REWARDS_KEYS = (
     "touchdownsThem",
     "challengeCardsUs",
     "challengeCardsThem",
-    "cells",
+    "players",
+    "ballCoordinate",
 )
 
 
@@ -49,14 +52,9 @@ _HARNESS_META_KEYS = (
 )
 
 _HARNESS_LEGAL_ROW_KEYS = (
-    "legalActionId",
+    "action",
     "softMaskLegal",
     "passingLegal",
-    "kind",
-    "kindIndex",
-    "factors",
-    "sugarFactors",
-    "potentialChallengeClaims",
 )
 
 
@@ -69,6 +67,11 @@ def _assert_packed_legal_row(row: Any, *, label: str) -> None:
         raise GridironApiError(f"{label} softMaskLegal must be a bool")
     if not isinstance(row["passingLegal"], bool):
         raise GridironApiError(f"{label} passingLegal must be a bool")
+    action = row["action"]
+    if not isinstance(action, dict):
+        raise GridironApiError(f"{label} action must be an object")
+    _require_key(action, "kind", label=f"{label}.action")
+    _require_key(action, "id", label=f"{label}.action")
 
 
 def _assert_packed_legal_rows(rows: Any, *, label: str, expected_rows: int) -> None:
@@ -393,30 +396,63 @@ def _assert_packed_harness_legal_rows(rows: Any, *, label: str, expected_rows: i
     _assert_packed_legal_rows(rows, label=f"{label} legalRows", expected_rows=expected_rows)
 
 
+def _assert_coordinate(raw: Any, *, label: str) -> None:
+    if not isinstance(raw, dict):
+        raise GridironApiError(f"{label} must be an object")
+    _require_key(raw, "x", label=label)
+    _require_key(raw, "y", label=label)
+    x = raw["x"]
+    y = raw["y"]
+    if not isinstance(x, int) or isinstance(x, bool) or not (1 <= x <= PLAY_WIDTH):
+        raise GridironApiError(f"{label}.x={x!r} out of range")
+    if not isinstance(y, int) or isinstance(y, bool) or not (1 <= y <= PLAY_HEIGHT):
+        raise GridironApiError(f"{label}.y={y!r} out of range")
+
+
+def _assert_harness_player(player: Any, *, label: str) -> None:
+    if not isinstance(player, dict):
+        raise GridironApiError(f"{label} must be an object")
+    _require_key(player, "playerId", label=label)
+    _require_key(player, "playerIndex", label=label)
+    _require_key(player, "teamRel", label=label)
+    _require_key(player, "coordinate", label=label)
+    player_id = player["playerId"]
+    if not isinstance(player_id, str) or not player_id:
+        raise GridironApiError(f"{label}.playerId must be a non-empty string")
+    index = player["playerIndex"]
+    if not isinstance(index, int) or isinstance(index, bool) or not (1 <= index <= BENCH_SLOTS):
+        raise GridironApiError(f"{label}.playerIndex={index!r} out of range")
+    team_rel = player["teamRel"]
+    if team_rel not in ("US", "THEM"):
+        raise GridironApiError(f"{label}.teamRel={team_rel!r} must be US or THEM")
+    coord = player["coordinate"]
+    if coord is not None:
+        _assert_coordinate(coord, label=f"{label}.coordinate")
+
+
 def _assert_harness_rewards(rewards: Any, *, label: str) -> None:
     if not isinstance(rewards, dict):
         raise GridironApiError(f"{label} rewards must be an object")
     for key in _REWARDS_KEYS:
         _require_key(rewards, key, label=label)
-    cells = rewards["cells"]
-    if not isinstance(cells, list):
-        raise GridironApiError(f"{label} rewards.cells must be a JSON array")
-    if len(cells) != BOARD_SLOT_COUNT:
-        raise GridironApiError(f"{label} rewards.cells length {len(cells)} != {BOARD_SLOT_COUNT}")
-    for index, cell in enumerate(cells):
-        if not isinstance(cell, dict):
-            raise GridironApiError(f"{label} rewards.cells[{index}] must be an object")
-        cell_label = f"{label} rewards.cells[{index}]"
-        _require_key(cell, "hasBall", label=cell_label)
-        if not isinstance(cell["hasBall"], bool):
-            raise GridironApiError(f"{cell_label}.hasBall must be a bool")
-        player = cell.get("player")
-        if player is not None:
-            if not isinstance(player, dict):
-                raise GridironApiError(f"{cell_label}.player must be an object or null")
-            player_label = f"{cell_label}.player"
-            _require_key(player, "playerIndex", label=player_label)
-            _require_key(player, "teamRel", label=player_label)
+    players = rewards["players"]
+    if not isinstance(players, list):
+        raise GridironApiError(f"{label} rewards.players must be a JSON array")
+    if len(players) > 2 * BENCH_SLOTS:
+        raise GridironApiError(
+            f"{label} rewards.players length {len(players)} > {2 * BENCH_SLOTS}"
+        )
+    seen_ids: set[str] = set()
+    for index, player in enumerate(players):
+        player_label = f"{label} rewards.players[{index}]"
+        _assert_harness_player(player, label=player_label)
+        player_id = player["playerId"]
+        if player_id in seen_ids:
+            raise GridironApiError(f"{label} rewards.players duplicate playerId={player_id!r}")
+        seen_ids.add(player_id)
+    ball = rewards["ballCoordinate"]
+    if ball is not None:
+        _assert_coordinate(ball, label=f"{label} rewards.ballCoordinate")
 
 
 def _assert_packed_step(step: dict[str, Any], *, label: str = "Packed step") -> None:

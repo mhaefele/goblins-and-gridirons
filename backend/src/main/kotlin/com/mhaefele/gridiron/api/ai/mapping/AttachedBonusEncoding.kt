@@ -3,7 +3,7 @@ package com.mhaefele.gridiron.api.ai.mapping
 import com.mhaefele.gridiron.model.catalog.BonusPlay
 
 /**
- * [com.mhaefele.gridiron.api.ai.dto.AiFactor.AttachedBonus] sugar index for geometry cards.
+ * Pack column index for geometry-attached bonuses.
  *
  * Only geometry-attached bonuses ([ActionAttachedBonuses.expandFromHand]) set
  * [com.mhaefele.gridiron.api.dto.response.LegalAction.requiredBonusCard] on path/throw actions.

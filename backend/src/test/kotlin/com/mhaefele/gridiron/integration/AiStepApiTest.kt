@@ -1,7 +1,5 @@
 package com.mhaefele.gridiron.integration
 
-import com.mhaefele.gridiron.api.ai.dto.AiFactor
-import com.mhaefele.gridiron.api.ai.dto.AiLegalKind
 import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 import com.mhaefele.gridiron.api.ai.dto.AiTeamRel
 import com.mhaefele.gridiron.api.ai.dto.AiTerrain
@@ -24,15 +22,13 @@ class AiStepApiTest : BaseApiTest() {
     private lateinit var restTemplate: RestTemplate
 
     @Test
-    fun `AI step returns schema version acting seat and factored legals`() {
+    fun `AI step returns schema version acting seat and LegalAction harness rows`() {
         dice.queueD6(4) // AWAY wins toss → HOME is Coach A
         val match = api.createAndStartMatch(api.defaultCreateMatchRequest())
         placeAllInitialPieces(match)
 
         val step = api.aiStep(match)
 
-        assertThat(step.schemaVersion).isEqualTo(AiObsLayout.SCHEMA_VERSION)
-        assertThat(step.schemaVersion).isEqualTo(AiObsLayout.SCHEMA_VERSION)
         assertThat(step.schemaVersion).isEqualTo(AiObsLayout.SCHEMA_VERSION)
         assertThat(step.harness.actingSeat).isEqualTo(TeamSide.HOME)
         assertThat(step.harness.perspectiveSeat).isEqualTo(TeamSide.HOME)
@@ -47,12 +43,10 @@ class AiStepApiTest : BaseApiTest() {
         assertThat(step.policy.obs.challengeCardsThem).isEqualTo(0)
         assertThat(step.harness.legalRows).isNotEmpty()
 
-        val run = step.harness.legalRows.first { it.kind == AiLegalKind.run }
-        assertThat(run.factors).hasSize(1)
-        assertThat(run.factors[0]).isInstanceOf(AiFactor.Actor::class.java)
-        assertThat(run.target).isNotNull
-        assertThat(run.legalActionId.value).isNotBlank()
-        assertThat(run.potentialChallengeClaims).isNotNull()
+        val run = step.harness.legalRows.first { it.action is LegalAction.Run }
+        assertThat(run.action).isInstanceOf(LegalAction.Run::class.java)
+        assertThat(run.action.id.value).isNotBlank()
+        assertThat(run.action.potentialChallengeClaims).isNotNull()
         assertThat(step.harness.legalRows).noneMatch { it.softMaskLegal }
     }
 
@@ -101,7 +95,7 @@ class AiStepApiTest : BaseApiTest() {
     }
 
     @Test
-    fun `AWAY perspective remaps legal board targets and actor playerIndex is stable`() {
+    fun `AWAY perspective remaps packed dest while LegalAction coords stay absolute`() {
         dice.queueD6(4)
         val match = api.createAndStartMatch(api.defaultCreateMatchRequest())
         placeAllInitialPieces(match)
@@ -109,33 +103,35 @@ class AiStepApiTest : BaseApiTest() {
         val homeStep = api.aiStep(match, perspectiveSeat = TeamSide.HOME)
         val awayStep = api.aiStep(match, perspectiveSeat = TeamSide.AWAY)
 
-        val homeRun = homeStep.harness.legalRows.first { it.kind == AiLegalKind.run }
-        val awayRun = awayStep.harness.legalRows.first { it.legalActionId == homeRun.legalActionId }
+        val homeRun = homeStep.harness.legalRows.first { it.action is LegalAction.Run }
+        val awayRun = awayStep.harness.legalRows.first { it.action.id == homeRun.action.id }
+        val homeAction = homeRun.action as LegalAction.Run
+        val awayAction = awayRun.action as LegalAction.Run
+        assertThat(awayAction.targetCoordinate).isEqualTo(homeAction.targetCoordinate)
+        assertThat(awayAction.playerId).isEqualTo(homeAction.playerId)
 
-        val homeActor = (homeRun.factors[0] as AiFactor.Actor).playerIndex
-        val homeTarget = homeRun.target!!
-        val awayActor = (awayRun.factors[0] as AiFactor.Actor).playerIndex
-        val awayTarget = awayRun.target!!
+        val homePacked = homeStep.policy.legalMoves[homeStep.harness.legalRows.indexOf(homeRun)]
+        val awayPacked = awayStep.policy.legalMoves[awayStep.harness.legalRows.indexOf(awayRun)]
+        assertThat(awayPacked[0]).isEqualTo(homePacked[0]) // actor
+        assertThat(awayPacked[2]).isEqualTo(AiObsLayout.PLAY_WIDTH - 1 - homePacked[2])
+        assertThat(awayPacked[3]).isEqualTo(AiObsLayout.PLAY_HEIGHT - 1 - homePacked[3])
 
-        assertThat(awayActor).isEqualTo(homeActor)
-        assertThat(awayTarget.x).isEqualTo(AiObsLayout.PLAY_WIDTH - 1 - homeTarget.x)
-        assertThat(awayTarget.y).isEqualTo(AiObsLayout.PLAY_HEIGHT - 1 - homeTarget.y)
-
+        val homeActor = homePacked[0]
         val homeCell = homeStep.policy.obs.cells.first { it.player?.playerIndex == homeActor }
         assertThat(homeCell.player?.playerIndex).isEqualTo(homeActor)
-        val awayCell = awayStep.policy.obs.cells.first { it.player?.playerIndex == awayActor && it.player?.teamRel == AiTeamRel.THEM }
-        assertThat(awayCell.player?.playerIndex).isEqualTo(awayActor)
+        val awayCell = awayStep.policy.obs.cells.first { it.player?.playerIndex == homeActor && it.player?.teamRel == AiTeamRel.THEM }
+        assertThat(awayCell.player?.playerIndex).isEqualTo(homeActor)
     }
 
     @Test
-    fun `submit uses legalActionId sidecar from AI step`() {
+    fun `submit uses LegalAction id from AI step`() {
         dice.queueD6(4)
         val match = api.createAndStartMatch(api.defaultCreateMatchRequest())
         placeAllInitialPieces(match)
 
         val before = api.aiStep(match)
-        val run = before.harness.legalRows.first { it.kind == AiLegalKind.run }
-        api.play(match.matchId, run.legalActionId)
+        val run = before.harness.legalRows.first { it.action is LegalAction.Run }
+        api.play(match.matchId, run.action.id)
 
         val after = api.aiStep(match)
         assertThat(after.policy.obs.actionsRemaining).isEqualTo(before.policy.obs.actionsRemaining - 1)
@@ -151,18 +147,18 @@ class AiStepApiTest : BaseApiTest() {
     }
 
     @Test
-    fun `GUI legal-actions and AI step share the same legalActionId set`() {
+    fun `GUI legal-actions and AI step share the same LegalAction id set`() {
         dice.queueD6(4)
         val match = api.createAndStartMatch(api.defaultCreateMatchRequest())
         placeAllInitialPieces(match)
 
         val guiIds = api.legalActions(match).map { it.id }.toSet()
-        val aiIds = api.aiStep(match).harness.legalRows.map { it.legalActionId }.toSet()
+        val aiIds = api.aiStep(match).harness.legalRows.map { it.action.id }.toSet()
         assertThat(aiIds).isEqualTo(guiIds)
 
         val guiRun = api.legalActions<LegalAction.Run>(match).first()
-        val aiRun = api.aiStep(match).harness.legalRows.first { it.legalActionId == guiRun.id }
-        assertThat(aiRun.kind).isEqualTo(AiLegalKind.run)
+        val aiRun = api.aiStep(match).harness.legalRows.first { it.action.id == guiRun.id }
+        assertThat(aiRun.action).isInstanceOf(LegalAction.Run::class.java)
     }
 
     @Test
@@ -184,19 +180,21 @@ class AiStepApiTest : BaseApiTest() {
         val sprintRun = sprintRuns.first { it.targetCoordinate == shared }
         val weaveRun = weaveRuns.first { it.targetCoordinate == shared }
         val step = api.aiStep(match)
-        val sharedChoices = step.harness.legalRows.filter { it.legalActionId == sprintRun.id || it.legalActionId == weaveRun.id }
+        val sharedChoices = step.harness.legalRows.filter { it.action.id == sprintRun.id || it.action.id == weaveRun.id }
         assertThat(sharedChoices).hasSize(2)
-        val byId = sharedChoices.associateBy { it.legalActionId }
+        val byId = sharedChoices.associateBy { it.action.id }
         val sprintChoice = byId.getValue(sprintRun.id)
         val weaveChoice = byId.getValue(weaveRun.id)
-        assertThat(sprintChoice.sugarFactors.filterIsInstance<AiFactor.AttachedBonus>().single().index).isEqualTo(0)
-        assertThat(weaveChoice.sugarFactors.filterIsInstance<AiFactor.AttachedBonus>().single().index).isEqualTo(1)
-        assertThat(sprintChoice.target).isNotNull
-        assertThat(weaveChoice.target).isNotNull
+        assertThat(sprintChoice.action.requiredBonusCard).isEqualTo(BonusPlay.Sprint)
+        assertThat(weaveChoice.action.requiredBonusCard).isEqualTo(BonusPlay.Weave)
+        val sprintPacked = step.policy.legalMoves[step.harness.legalRows.indexOf(sprintChoice)]
+        val weavePacked = step.policy.legalMoves[step.harness.legalRows.indexOf(weaveChoice)]
+        assertThat(sprintPacked[5]).isEqualTo(0) // attachedBonus Sprint
+        assertThat(weavePacked[5]).isEqualTo(1) // Weave
     }
 
     @Test
-    fun `Back on Your Feet play row is playBackOnYourFeet with empty factors`() {
+    fun `Back on Your Feet play row wraps PlayBackOnYourFeet`() {
         lateinit var prone: PlacedPlayer
         val match = match {
             homeBonus(BonusPlay.`Back on Your Feet`)
@@ -204,8 +202,8 @@ class AiStepApiTest : BaseApiTest() {
             prone = addPlayer(5, 6, status = PlayerStatus.PRONE)
         }
         match.play(match.legalActions<LegalAction.StandUp>().single { it.playerId == prone.player.id })
-        val choice = api.aiStep(match).harness.legalRows.single { it.kind == AiLegalKind.playBackOnYourFeet }
-        assertThat(choice.factors).isEmpty()
+        val choice = api.aiStep(match).harness.legalRows.single { it.action is LegalAction.PlayBackOnYourFeet }
+        assertThat(choice.action).isInstanceOf(LegalAction.PlayBackOnYourFeet::class.java)
     }
 
     @Test
@@ -232,7 +230,7 @@ class AiStepApiTest : BaseApiTest() {
     }
 
     @Test
-    fun `AI step JSON encodes packable obs enums as ordinals and kind as name plus index`() {
+    fun `AI step JSON nests LegalAction on harness rows`() {
         dice.queueD6(4)
         val match = api.createAndStartMatch(api.defaultCreateMatchRequest())
         placeAllInitialPieces(match)
@@ -258,9 +256,11 @@ class AiStepApiTest : BaseApiTest() {
         val rows = raw["legalRows"] as List<Map<String, Any?>>
         assertThat(rows).isNotEmpty
         val first = rows.first()
-        assertThat(first["kind"]).isInstanceOf(String::class.java)
-        assertThat(first["kindIndex"]).isInstanceOf(Number::class.java)
-        assertThat((first["kindIndex"] as Number).toInt())
-            .isEqualTo(AiLegalKind.fromWireName(first["kind"] as String).ordinal)
+        assertThat(first).containsKeys("action", "passingLegal", "softMaskLegal")
+        assertThat(first).doesNotContainKeys("factors", "sugarFactors", "kindIndex", "legalActionId")
+        @Suppress("UNCHECKED_CAST")
+        val action = first["action"] as Map<String, Any?>
+        assertThat(action["kind"]).isInstanceOf(String::class.java)
+        assertThat(action["id"]).isInstanceOf(String::class.java)
     }
 }

@@ -141,7 +141,7 @@ class TrainingScenarioApiTest : BaseApiTest() {
             val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.LOOSE_BALL_RUN))
             val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
             val pickup = opening.harness.legalRows.first { it.softMaskLegal }
-            val submitted = api.aiSubmit(response.matchId, pickup.legalActionId, forSeat = TeamSide.HOME)
+            val submitted = api.aiSubmit(response.matchId, pickup.action.id, forSeat = TeamSide.HOME)
             val nextChoices = submitted.next.harness.legalRows.ifEmpty { api.aiStep(response.matchId, forSeat = TeamSide.HOME).harness.legalRows }
             assertThat(nextChoices).isNotEmpty()
             assertThat(nextChoices).noneMatch { it.softMaskLegal }
@@ -195,7 +195,7 @@ class TrainingScenarioApiTest : BaseApiTest() {
                 // Claim foul drill opens on forced replace (soft bait, no PASS); claim after discard.
                 if (scenario == TrainingScenarioEnum.CLAIM_SEND_THEM_OFF_FOUL) {
                     val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
-                    api.play(response.matchId, opening.harness.legalRows.first { it.softMaskLegal }.legalActionId)
+                    api.play(response.matchId, opening.harness.legalRows.first { it.softMaskLegal }.action.id)
                     state = loadMatch(response.matchId)
                 }
                 val legals = legalMovesGenerator.forActingCoach(state)

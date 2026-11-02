@@ -1,7 +1,6 @@
 package com.mhaefele.gridiron.api.ai.dto.nested
 
 import com.mhaefele.gridiron.api.ai.dto.internal.AiEnumOrdinal
-import com.mhaefele.gridiron.api.ai.dto.AiFactor
 import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 import com.mhaefele.gridiron.api.ai.dto.AiTeamRel
 import com.mhaefele.gridiron.api.ai.dto.AiTerrain
@@ -22,7 +21,7 @@ import com.mhaefele.gridiron.model.catalog.PlayerAbility
 data class AiCellPlayerObs(
     /**
      * Stable roster id for this occupant (`1 .. MAX_PLAYERS_PER_TEAM`).
-     * Same value as [AiFactor.Actor.playerIndex] when this player is the actor.
+     * Same value as the packed legal-row actor when this player is the actor.
      * Empty cells pack [AiObsLayout.UNUSED_PLAYER_INDEX] (0).
      */
     val playerIndex: Int,

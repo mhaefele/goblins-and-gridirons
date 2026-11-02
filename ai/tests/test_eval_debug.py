@@ -2,34 +2,35 @@
 
 from __future__ import annotations
 
-from gridiron_ai.constants import PLAY_HEIGHT, PLAY_WIDTH, PITCH_SQUARE_COUNT
+from gridiron_ai.constants import PLAY_HEIGHT
 from gridiron_ai.eval_debug import ScenarioEvalDebug, _format_expected_moves
 
 
-def _cell(*, player: dict | None = None, terrain: str = "FIELD") -> dict:
-    return {"hasBall": False, "player": player, "terrain": terrain}
+def _rewards(*, players: list[dict], ball: dict | None = None) -> dict:
+    return {"players": players, "ballCoordinate": ball}
 
 
-def _pitch(x: int, y: int) -> int:
-    return (y - 1) * PLAY_WIDTH + (x - 1)
-
-
-def test_format_action_prefers_us_when_roster_index_collides() -> None:
-    """playerIndex is per-team; THEM earlier on the board must not steal the source square."""
-    cells = [_cell() for _ in range(PITCH_SQUARE_COUNT)]
-    cells[_pitch(1, 7)] = _cell(player={"teamRel": 1, "playerIndex": 1})
-    cells[_pitch(1, 13)] = _cell(player={"teamRel": 0, "playerIndex": 1})
-    obs = {"cells": cells}
+def test_format_action_joins_actor_via_player_id() -> None:
     choice = {
         "kind": "throw",
-        "factors": [{"kind": "actor", "playerIndex": 1}],
-        "target": {"x": 4 - 1, "y": 14 - 1},
+        "playerId": "h0",
+        "targetCoordinate": {"x": 4, "y": 14},
     }
-    assert ScenarioEvalDebug.format_action(choice, observation=obs) == "throw(1,13->4,14)"
+    rewards = _rewards(
+        players=[
+            {
+                "playerId": "h0",
+                "playerIndex": 1,
+                "teamRel": "US",
+                "coordinate": {"x": 1, "y": 13},
+            }
+        ]
+    )
+    assert ScenarioEvalDebug.format_action(choice, rewards=rewards) == "throw(1,13->4,14)"
 
 
 def test_format_action_marks_expected_scored_and_card_suffixes() -> None:
-    choice = {"kind": "run", "factors": []}
+    choice = {"kind": "run"}
     assert ScenarioEvalDebug.format_action(choice, expected_move=True) == "run*"
     assert ScenarioEvalDebug.format_action(choice, scored_touchdown=True) == "run!"
     assert ScenarioEvalDebug.format_action(choice, acquired_card=True) == "run+"
@@ -38,30 +39,45 @@ def test_format_action_marks_expected_scored_and_card_suffixes() -> None:
 
 
 def test_format_expected_moves_shown_for_one_or_two_flags() -> None:
-    cells = [_cell() for _ in range(PITCH_SQUARE_COUNT)]
-    cells[_pitch(2, 3)] = _cell(player={"teamRel": 0, "playerIndex": 0})
-    obs = {"cells": cells}
+    rewards = _rewards(
+        players=[
+            {
+                "playerId": "h0",
+                "playerIndex": 1,
+                "teamRel": "US",
+                "coordinate": {"x": 2, "y": 3},
+            }
+        ]
+    )
     run = {
-        "kind": "run",
-        "factors": [{"kind": "actor", "playerIndex": 0}],
-        "target": {"x": 2 - 1, "y": PLAY_HEIGHT - 1},
+        "action": {"kind": "run", "playerId": "h0", "targetCoordinate": {"x": 2, "y": PLAY_HEIGHT}},
+        "softMaskLegal": False,
+        "passingLegal": True,
     }
     block = {
-        "kind": "block",
-        "factors": [{"kind": "actor", "playerIndex": 0}],
-        "target": {"x": 3 - 1, "y": 3 - 1},
+        "action": {"kind": "block", "playerId": "h0", "targetCoordinate": {"x": 3, "y": 3}},
+        "softMaskLegal": False,
+        "passingLegal": True,
     }
 
-    one = _format_expected_moves(obs, policy_seat="HOME", legal_row_meta=[run, block], passing_legal=[True, False])
+    one = _format_expected_moves(
+        rewards=rewards, legal_row_meta=[run, block], passing_legal=[True, False]
+    )
     assert one == (1, ["run(2,3->2,15)"])
 
-    two = _format_expected_moves(obs, policy_seat="HOME", legal_row_meta=[run, block], passing_legal=[True, True])
+    two = _format_expected_moves(
+        rewards=rewards, legal_row_meta=[run, block], passing_legal=[True, True]
+    )
     assert two == (2, ["run(2,3->2,15)", "block(2,3->3,3)"])
 
-    many = _format_expected_moves(obs, policy_seat="HOME", legal_row_meta=[run, block, block], passing_legal=[True, True, True])
+    many = _format_expected_moves(
+        rewards=rewards, legal_row_meta=[run, block, block], passing_legal=[True, True, True]
+    )
     assert many == (3, ["run(2,3->2,15)", "block(2,3->3,3)"])
 
-    none = _format_expected_moves(obs, policy_seat="HOME", legal_row_meta=[run, block], passing_legal=[False, False])
+    none = _format_expected_moves(
+        rewards=rewards, legal_row_meta=[run, block], passing_legal=[False, False]
+    )
     assert none is None
 
 
@@ -121,4 +137,3 @@ def test_format_scenario_draw_log_block() -> None:
     assert "cards=Grab It(2pts)" in block
     assert "turn1=R(2,3->3,4)+" in block
     assert "claimed=Push Forward(R(2,3->3,4)+)" in block
-

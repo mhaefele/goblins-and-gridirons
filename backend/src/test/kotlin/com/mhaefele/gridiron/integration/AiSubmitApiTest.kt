@@ -90,7 +90,7 @@ class AiSubmitApiTest : BaseApiTest() {
         val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.TD_RUN))
         val before = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
         val passing = before.harness.legalRows.first { it.passingLegal }
-        val submitPacked = api.aiSubmitPacked(response.matchId, passing.legalActionId, forSeat = TeamSide.HOME)
+        val submitPacked = api.aiSubmitPacked(response.matchId, passing.action.id, forSeat = TeamSide.HOME)
         assertThat(submitPacked.next.policy.obs.values).isNotEmpty()
         val stepPacked = api.aiStepPacked(response.matchId, forSeat = TeamSide.HOME)
         assertThat(submitPacked.next.policy.obs.values).isEqualTo(stepPacked.policy.obs.values)
