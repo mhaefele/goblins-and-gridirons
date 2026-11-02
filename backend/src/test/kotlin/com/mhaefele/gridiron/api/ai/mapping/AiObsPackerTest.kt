@@ -17,7 +17,7 @@ class AiObsPackerTest {
         val obs = emptyObs()
         val packed = packer.pack(obs)
         assertThat(packed).hasSize(AiObsLayout.OBSERVATION_VECTOR_LENGTH)
-        assertThat(AiObsLayout.OBSERVATION_VECTOR_LENGTH).isEqualTo(3922)
+        assertThat(AiObsLayout.OBSERVATION_VECTOR_LENGTH).isEqualTo(4477)
     }
 
     @Test

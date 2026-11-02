@@ -54,7 +54,8 @@ data class AiCellPlayerObs(
 /**
  * One board slot (pitch square **or** dugout slot): square facts + optional occupant.
  *
- * Append in declaration order: [terrain], [hasBall], then [player] (expanded or absent codes).
+ * Append in declaration order: [terrain], [hasBall], [player] (expanded or absent), then
+ * [pitchX], [pitchY], [distToBall].
  */
 data class AiCellObs(
     /** Wire: 0-based [AiTerrain] ordinal. */
@@ -67,10 +68,45 @@ data class AiCellObs(
     val hasBall: Boolean,
     /** `null` if the slot is empty — still packs a full [AiCellPlayerObs]-width block of absents. */
     val player: AiCellPlayerObs?,
+    /**
+     * Perspective pitch column (`0 .. PLAY_WIDTH-1`). Bench slots use [AiObsLayout.SENTINEL].
+     */
+    val pitchX: Int = AiObsLayout.SENTINEL,
+    /**
+     * Perspective pitch row (`0 .. PLAY_HEIGHT-1`). Bench slots use [AiObsLayout.SENTINEL].
+     */
+    val pitchY: Int = AiObsLayout.SENTINEL,
+    /**
+     * Chebyshev steps to the single on-pitch ball (`0 .. max(H,W)`).
+     * [AiObsLayout.DIST_TO_BALL_ABSENT] when no ball is on a playable square (and on benches).
+     */
+    val distToBall: Int = AiObsLayout.DIST_TO_BALL_ABSENT,
 ) {
+    init {
+        if (pitchX != AiObsLayout.SENTINEL) {
+            require(pitchX in 0 until AiObsLayout.PLAY_WIDTH) { "pitchX=$pitchX out of range" }
+        }
+        if (pitchY != AiObsLayout.SENTINEL) {
+            require(pitchY in 0 until AiObsLayout.PLAY_HEIGHT) { "pitchY=$pitchY out of range" }
+        }
+        require(distToBall in 0..AiObsLayout.DIST_TO_BALL_ABSENT) { "distToBall=$distToBall out of range" }
+    }
+
     companion object {
-        fun emptyPitch(terrain: AiTerrain): AiCellObs =
-            AiCellObs(terrain = terrain, hasBall = false, player = null)
+        fun emptyPitch(
+            terrain: AiTerrain,
+            pitchX: Int = AiObsLayout.SENTINEL,
+            pitchY: Int = AiObsLayout.SENTINEL,
+            distToBall: Int = AiObsLayout.DIST_TO_BALL_ABSENT,
+        ): AiCellObs =
+            AiCellObs(
+                terrain = terrain,
+                hasBall = false,
+                player = null,
+                pitchX = pitchX,
+                pitchY = pitchY,
+                distToBall = distToBall,
+            )
 
         fun emptyBench(): AiCellObs = emptyPitch(AiTerrain.BENCH)
     }

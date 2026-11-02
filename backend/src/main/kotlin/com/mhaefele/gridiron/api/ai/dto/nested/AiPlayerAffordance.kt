@@ -6,7 +6,7 @@ import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
  * Per-player highlights derived from the current legal menu (not multi-turn planning).
  * Nested on [AiCellPlayerObs]; vector pack expands [AiPlayerAffordance] fields inline after stats.
  *
- * Reach bbox uses perspective pitch coordinates (`1..PLAY_WIDTH` / `1..PLAY_HEIGHT`).
+ * Reach bbox uses perspective **0-based** pitch coordinates (`0..PLAY_WIDTH-1` / `0..PLAY_HEIGHT-1`).
  * [AiObsLayout.SENTINEL] when the player has no run/sidestep/mark/reserves destinations.
  */
 data class AiPlayerAffordance(

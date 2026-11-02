@@ -7,6 +7,7 @@ import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.integration.support.BaseApiTest
 import com.mhaefele.gridiron.model.board.PlayerStatus
 import com.mhaefele.gridiron.model.catalog.BonusPlay
+import com.mhaefele.gridiron.shared.Coordinate
 import com.mhaefele.gridiron.shared.LegalActionId
 import com.mhaefele.gridiron.shared.TeamSide
 import com.mhaefele.gridiron.support.PlacedPlayer
@@ -73,7 +74,18 @@ class AiStepApiTest : BaseApiTest() {
 
         val absoluteIndex = AiObsLayout.squareIndex(3, 2)
         val flippedIndex = AiObsLayout.toPerspectiveIndex(absoluteIndex, TeamSide.AWAY)
-        assertThat(homeView.policy.obs.cells[absoluteIndex]).isEqualTo(awayView.policy.obs.cells[flippedIndex])
+        // Same absolute square lands at the flipped AWAY index (occupancy / terrain / ball).
+        val homeAbs = homeView.policy.obs.cells[absoluteIndex]
+        val awayFlipped = awayView.policy.obs.cells[flippedIndex]
+        assertThat(awayFlipped.terrain).isEqualTo(homeAbs.terrain)
+        assertThat(awayFlipped.hasBall).isEqualTo(homeAbs.hasBall)
+        assertThat(awayFlipped.player).isEqualTo(homeAbs.player)
+        assertThat(awayFlipped.distToBall).isEqualTo(homeAbs.distToBall)
+        // pitchX/Y are perspective-slot coords — equal at the same index across seats, not across the flip.
+        assertThat(homeView.policy.obs.cells[absoluteIndex].pitchX)
+            .isEqualTo(awayView.policy.obs.cells[absoluteIndex].pitchX)
+        assertThat(homeView.policy.obs.cells[absoluteIndex].pitchY)
+            .isEqualTo(awayView.policy.obs.cells[absoluteIndex].pitchY)
 
         val homeEndNear = homeView.policy.obs.cells[AiObsLayout.squareIndex(6, 1)]
         val awayEndNear = awayView.policy.obs.cells[AiObsLayout.squareIndex(6, 1)]
@@ -217,8 +229,12 @@ class AiStepApiTest : BaseApiTest() {
         val occupant = cells[AiObsLayout.squareIndex(5, 6)]
         assertThat(loose.hasBall).isTrue()
         assertThat(loose.player).isNull()
+        assertThat(loose.distToBall).isEqualTo(0)
         assertThat(occupant.hasBall).isFalse()
         assertThat(occupant.player).isNotNull()
+        assertThat(occupant.distToBall).isEqualTo(
+            AiObsLayout.distToBall(Coordinate(5, 6), Coordinate(6, 8)),
+        )
     }
 
     @Test
@@ -227,6 +243,9 @@ class AiStepApiTest : BaseApiTest() {
         val held = api.aiStep(match).policy.obs.cells[AiObsLayout.squareIndex(5, 6)]
         assertThat(held.hasBall).isTrue()
         assertThat(held.player).isNotNull()
+        assertThat(held.distToBall).isEqualTo(0)
+        assertThat(held.pitchX).isEqualTo(AiObsLayout.pitchX0(Coordinate(5, 6), TeamSide.HOME))
+        assertThat(held.pitchY).isEqualTo(AiObsLayout.pitchY0(Coordinate(5, 6), TeamSide.HOME))
     }
 
     @Test

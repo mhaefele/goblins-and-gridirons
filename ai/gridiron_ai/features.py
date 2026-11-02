@@ -5,7 +5,8 @@ row (actor / kind / target xy / source xy / challenge condition). Policy join-sc
 board latent ⊕ row features. See ``ai/OWNERSHIP.md``.
 
 # DEVIATION: stock CombinedExtractor would Flatten each Dict Box. We embed enums,
-add pitch (x, y, dist-to-ball), keep benches as a table, then Linear-project.
+keep benches as a table, then Linear-project. Spatial pitchX/Y/distToBall come
+from the packed cell (Kotlin), not synthesized here.
 """
 
 from __future__ import annotations
@@ -37,9 +38,12 @@ from gridiron_ai.constants import (
     CELL_CH_CAN_SCORE_TD,
     CELL_CH_CAN_THROW_TEAMMATE,
     CELL_CH_CERTAIN_CLAIM,
+    CELL_CH_DIST_TO_BALL,
     CELL_CH_HAS_BALL,
     CELL_CH_MIGHT_CLAIM,
     CELL_CH_MOVE,
+    CELL_CH_PITCH_X,
+    CELL_CH_PITCH_Y,
     CELL_CH_PLAYER_INDEX,
     CELL_CH_REACH_MAX_X,
     CELL_CH_REACH_MAX_Y,
@@ -74,11 +78,10 @@ from gridiron_ai.constants import (
 
 # Small shared width for every enum / player-index embedding (board + legal rows).
 EMBED_DIM = 8
-# Occupant block: terrain + playerIndex + team + status + ability + 16 scalars (stats/affordances/reach).
-_OCCUPANT_WIDTH = 5 * EMBED_DIM + 16
-# Pitch extras: x_norm, y_norm, chebyshev-to-ball / max(H,W).
-_PITCH_EXTRA = 3
-# heldCheck: kind emb + d6/6 + 3 face embs.
+# Occupant block: terrain + playerIndex + team + status + ability + 16 scalars
+# (stats/affordances/reach) + pitchX + pitchY + distToBall from the packed cell.
+_OCCUPANT_WIDTH = 5 * EMBED_DIM + 16 + 3
+# heldCheck: kind emb + raw d6 + 3 face embs.
 _HELD_CHECK_WIDTH = EMBED_DIM + 1 + MAX_HELD_BLOCK_FACES * EMBED_DIM
 # Legal row: actor + kind + (x,y,has_tgt) + (src_x,src_y,has_src) + challenge + bonus + faces.
 LEGAL_ROW_FEATURE_DIM = (
@@ -95,7 +98,7 @@ _PROJECTED_FEATURES = 256
 
 def _concat_width() -> int:
     """Flattened size before the projection Linear — keep in sync with forward()."""
-    pitch = PITCH_SQUARE_COUNT * (_OCCUPANT_WIDTH + _PITCH_EXTRA)
+    pitch = PITCH_SQUARE_COUNT * _OCCUPANT_WIDTH
     benches = 2 * BENCH_SLOTS * _OCCUPANT_WIDTH
     scalars = EMBED_DIM + (SCALAR_COUNT - 1)  # phase embedded, other scalars raw
     challenges = ACTIVE_CHALLENGE_SLOTS * (EMBED_DIM + 1)
@@ -105,7 +108,7 @@ def _concat_width() -> int:
 
 
 class GridironFeaturesExtractor(BaseFeaturesExtractor):
-    """Embed + coord channels + flatten concat + Linear. Pitch is (C, H, W); benches are not on the grid."""
+    """Embed packed cell channels + flatten concat + Linear. Pitch is (C, H, W); benches are a table."""
 
     def __init__(self, observation_space: spaces.Dict, features_dim: int = _PROJECTED_FEATURES) -> None:
         super().__init__(observation_space, features_dim=features_dim)
@@ -122,15 +125,6 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         # Action-menu kind / attached-bonus index — same emb width as board enums.
         self.kind_emb = nn.Embedding(LEGAL_ACTION_KIND_COUNT, EMBED_DIM)
         self.attached_bonus_emb = nn.Embedding(ATTACHED_BONUS_UNUSED + 1, EMBED_DIM)
-
-        # Pitch (row, col) in 0..H-1 / 0..W-1 — buffers move with .to(device).
-        # clone(): expand() aliases memory; SB3 load_state_dict cannot copy into that view.
-        rows = th.arange(PLAY_HEIGHT, dtype=th.float32).view(PLAY_HEIGHT, 1).expand(PLAY_HEIGHT, PLAY_WIDTH).clone()
-        cols = th.arange(PLAY_WIDTH, dtype=th.float32).view(1, PLAY_WIDTH).expand(PLAY_HEIGHT, PLAY_WIDTH).clone()
-        self.register_buffer("pitch_row", rows)
-        self.register_buffer("pitch_col", cols)
-        self.register_buffer("pitch_y_norm", rows / float(PLAY_HEIGHT - 1))
-        self.register_buffer("pitch_x_norm", cols / float(PLAY_WIDTH - 1))
 
         self.proj = nn.Linear(_concat_width(), features_dim)
         self.proj_act = nn.ReLU()
@@ -168,18 +162,28 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         actor_e = self.player_index_emb(self._enum_index(actors.clamp(min=0).float(), PLAYER_INDEX_VOCAB))
         kind_e = self.kind_emb(kinds.clamp(min=0, max=LEGAL_ACTION_KIND_COUNT - 1))
 
+        # Dest / source are already perspective 0-based ints from Kotlin — gate unused axes only.
         has_target = (target_xs >= 0) & (target_xs < PLAY_WIDTH) & (target_ys >= 0) & (target_ys < PLAY_HEIGHT)
-        x_norm = target_xs.clamp(0, PLAY_WIDTH - 1).float() / float(PLAY_WIDTH - 1)
-        y_norm = target_ys.clamp(0, PLAY_HEIGHT - 1).float() / float(PLAY_HEIGHT - 1)
-        gate_t = has_target.to(dtype=x_norm.dtype)
-        target_feat = th.stack([x_norm * gate_t, y_norm * gate_t, gate_t], dim=-1)
+        gate_t = has_target.to(dtype=th.float32)
+        target_feat = th.stack(
+            [
+                target_xs.clamp(0, PLAY_WIDTH - 1).float() * gate_t,
+                target_ys.clamp(0, PLAY_HEIGHT - 1).float() * gate_t,
+                gate_t,
+            ],
+            dim=-1,
+        )
 
-        # Metadata (pack tail): 0-based pitch x/y shipped from Kotlin — normalize only.
         has_source = (source_xs >= 0) & (source_xs < PLAY_WIDTH) & (source_ys >= 0) & (source_ys < PLAY_HEIGHT)
-        src_x = source_xs.clamp(0, PLAY_WIDTH - 1).float() / float(PLAY_WIDTH - 1)
-        src_y = source_ys.clamp(0, PLAY_HEIGHT - 1).float() / float(PLAY_HEIGHT - 1)
-        gate_src = has_source.to(dtype=src_x.dtype)
-        source_feat = th.stack([src_x * gate_src, src_y * gate_src, gate_src], dim=-1)
+        gate_src = has_source.to(dtype=th.float32)
+        source_feat = th.stack(
+            [
+                source_xs.clamp(0, PLAY_WIDTH - 1).float() * gate_src,
+                source_ys.clamp(0, PLAY_HEIGHT - 1).float() * gate_src,
+                gate_src,
+            ],
+            dim=-1,
+        )
 
         has_challenge = (slots >= 0) & (slots < ACTIVE_CHALLENGE_SLOTS)
         safe_s = slots.clamp(0, ACTIVE_CHALLENGE_SLOTS - 1)
@@ -232,27 +236,22 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         if held.shape[-1] != HELD_CHECK_FIELD_COUNT:
             raise ValueError(f"held_check width {held.shape[-1]} != {HELD_CHECK_FIELD_COUNT}")
         kind = self.held_kind_emb(self._enum_index(held[:, 0], AI_HELD_CHECK_KIND_VOCAB))
-        d6 = (held[:, 1:2].clamp(min=0.0) / 6.0)
+        d6 = held[:, 1:2].clamp(min=0.0)
         faces = self.block_face_emb(self._enum_index(held[:, 2:], BLOCK_DIE_FACE_VOCAB)).flatten(1)
         return th.cat([kind, d6, faces], dim=1)
 
     def _encode_pitch(self, pitch: th.Tensor) -> th.Tensor:
-        """pitch: (N, C, H, W) packed cell channels. Adds x, y, dist-to-ball; still no conv."""
+        """pitch: (N, C, H, W) packed cell channels — no extra synth; still no conv."""
         if pitch.shape[1] != NUMBERS_PER_BOARD_CELL:
             raise ValueError(f"pitch channel count {pitch.shape[1]} != {NUMBERS_PER_BOARD_CELL}")
-        n = pitch.shape[0]
-        occupants = self._encode_occupants(pitch.permute(0, 2, 3, 1))  # (N, H, W, occupant)
-        x = self.pitch_x_norm.unsqueeze(0).unsqueeze(-1).expand(n, -1, -1, 1)
-        y = self.pitch_y_norm.unsqueeze(0).unsqueeze(-1).expand(n, -1, -1, 1)
-        dist = self._dist_to_ball(pitch[:, CELL_CH_HAS_BALL]).unsqueeze(-1)
-        return th.cat([occupants, x, y, dist], dim=-1).flatten(1)
+        return self._encode_occupants(pitch.permute(0, 2, 3, 1)).flatten(1)
 
     def _encode_benches(self, benches: th.Tensor) -> th.Tensor:
         """benches: (N, 2, 10, C) — us then them; not spatial neighbors of the pitch."""
         return self._encode_occupants(benches).flatten(1)
 
     def _encode_occupants(self, cell_last: th.Tensor) -> th.Tensor:
-        """cell_last: (..., 21) channel-last packed cell. Shared by pitch squares and bench slots."""
+        """cell_last: (..., 24) channel-last packed cell. Shared by pitch squares and bench slots."""
         terrain = self.terrain_emb(self._enum_index(cell_last[..., CELL_CH_TERRAIN], AI_TERRAIN_VOCAB))
         player_index = self.player_index_emb(self._enum_index(cell_last[..., CELL_CH_PLAYER_INDEX], PLAYER_INDEX_VOCAB))
         team = self.team_emb(self._enum_index(cell_last[..., CELL_CH_TEAM_REL], AI_TEAM_REL_VOCAB))
@@ -260,24 +259,28 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         ability = self.ability_emb(self._enum_index(cell_last[..., CELL_CH_ABILITY], PLAYER_ABILITY_VOCAB))
         has_ball = cell_last[..., CELL_CH_HAS_BALL].unsqueeze(-1)
         turn_ended = cell_last[..., CELL_CH_TURN_ENDED].clamp(min=0.0).unsqueeze(-1)
-        # Empty-square stats are -1 on the wire; clamp then /8 so they sit near embedding scale.
-        move = (cell_last[..., CELL_CH_MOVE].clamp(min=0.0) / 8.0).unsqueeze(-1)
-        block_dice = (cell_last[..., CELL_CH_BLOCK_DICE].clamp(min=0.0) / 8.0).unsqueeze(-1)
-        throw_stat = (cell_last[..., CELL_CH_THROW_STAT].clamp(min=0.0) / 8.0).unsqueeze(-1)
-        armour = (cell_last[..., CELL_CH_ARMOUR].clamp(min=0.0) / 8.0).unsqueeze(-1)
+        # Empty-square stats are SENTINEL (-1) on the wire — clamp to 0 like other numeric channels.
+        move = cell_last[..., CELL_CH_MOVE].clamp(min=0.0).unsqueeze(-1)
+        block_dice = cell_last[..., CELL_CH_BLOCK_DICE].clamp(min=0.0).unsqueeze(-1)
+        throw_stat = cell_last[..., CELL_CH_THROW_STAT].clamp(min=0.0).unsqueeze(-1)
+        armour = cell_last[..., CELL_CH_ARMOUR].clamp(min=0.0).unsqueeze(-1)
         can_throw = cell_last[..., CELL_CH_CAN_THROW_TEAMMATE].clamp(min=0.0).unsqueeze(-1)
         can_score_td = cell_last[..., CELL_CH_CAN_SCORE_TD].clamp(min=0.0).unsqueeze(-1)
         might_claim = cell_last[..., CELL_CH_MIGHT_CLAIM].clamp(min=0.0).unsqueeze(-1)
         certain_claim = cell_last[..., CELL_CH_CERTAIN_CLAIM].clamp(min=0.0).unsqueeze(-1)
         can_reach_ball = cell_last[..., CELL_CH_CAN_REACH_BALL].clamp(min=0.0).unsqueeze(-1)
         can_pickup = cell_last[..., CELL_CH_CAN_PICKUP].clamp(min=0.0).unsqueeze(-1)
-        # Reach bbox: 1..W/H on the wire; SENTINEL (-1) → 0 via has_reach gate.
+        # Reach bbox: perspective 0-based on the wire; SENTINEL (-1) → 0 via has_reach gate.
         reach_min_x_raw = cell_last[..., CELL_CH_REACH_MIN_X]
         has_reach = (reach_min_x_raw >= 0.0).float().unsqueeze(-1)
-        reach_min_x = (reach_min_x_raw.clamp(min=1.0) - 1.0) / float(PLAY_WIDTH - 1)
-        reach_max_x = (cell_last[..., CELL_CH_REACH_MAX_X].clamp(min=1.0) - 1.0) / float(PLAY_WIDTH - 1)
-        reach_min_y = (cell_last[..., CELL_CH_REACH_MIN_Y].clamp(min=1.0) - 1.0) / float(PLAY_HEIGHT - 1)
-        reach_max_y = (cell_last[..., CELL_CH_REACH_MAX_Y].clamp(min=1.0) - 1.0) / float(PLAY_HEIGHT - 1)
+        reach_min_x = reach_min_x_raw.clamp(min=0.0).unsqueeze(-1) * has_reach
+        reach_max_x = cell_last[..., CELL_CH_REACH_MAX_X].clamp(min=0.0).unsqueeze(-1) * has_reach
+        reach_min_y = cell_last[..., CELL_CH_REACH_MIN_Y].clamp(min=0.0).unsqueeze(-1) * has_reach
+        reach_max_y = cell_last[..., CELL_CH_REACH_MAX_Y].clamp(min=0.0).unsqueeze(-1) * has_reach
+        # pitchX/Y may be SENTINEL on benches; distToBall is always 0..max(H,W).
+        pitch_x = cell_last[..., CELL_CH_PITCH_X].clamp(min=0.0).unsqueeze(-1)
+        pitch_y = cell_last[..., CELL_CH_PITCH_Y].clamp(min=0.0).unsqueeze(-1)
+        dist_to_ball = cell_last[..., CELL_CH_DIST_TO_BALL].unsqueeze(-1)
         return th.cat(
             [
                 terrain,
@@ -297,30 +300,16 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
                 certain_claim,
                 can_reach_ball,
                 can_pickup,
-                reach_min_x.unsqueeze(-1) * has_reach,
-                reach_max_x.unsqueeze(-1) * has_reach,
-                reach_min_y.unsqueeze(-1) * has_reach,
-                reach_max_y.unsqueeze(-1) * has_reach,
+                reach_min_x,
+                reach_max_x,
+                reach_min_y,
+                reach_max_y,
+                pitch_x,
+                pitch_y,
+                dist_to_ball,
             ],
             dim=-1,
         )
-
-    def _dist_to_ball(self, has_ball: th.Tensor) -> th.Tensor:
-        """Chebyshev distance to the ball square, 0..1. All-ones if no ball (empty map).
-
-        The base game has one ball in play; argmax is enough. Distance is *computed* from hasBall
-        — not an extra DTO channel.
-        """
-        n = has_ball.shape[0]
-        flat = has_ball.reshape(n, -1)
-        ball_index = flat.argmax(dim=1)
-        has_any = flat.max(dim=1).values > 0.5
-        ball_row = (ball_index // PLAY_WIDTH).float().view(n, 1, 1)
-        ball_col = (ball_index % PLAY_WIDTH).float().view(n, 1, 1)
-        cheb = th.maximum((self.pitch_row - ball_row).abs(), (self.pitch_col - ball_col).abs())
-        scaled = cheb / float(max(PLAY_HEIGHT, PLAY_WIDTH))
-        # No ball → 1.0 (as far as the scaled grid goes).
-        return scaled * has_any.view(n, 1, 1).float() + (~has_any).view(n, 1, 1).float()
 
     @staticmethod
     def _enum_index(codes: th.Tensor, vocab: int) -> th.Tensor:

@@ -58,8 +58,10 @@ object AiObsLayout {
      * fork — mutate 16+ in place / bump freely.
      * v21: harness [HarnessRewardSnapshotDto.players] (absolute coords + playerId) +
      * `ballCoordinate`; legal rows = LegalAction + curriculum flags only.
+     * v22: [AiCellObs.pitchX]/[pitchY]/[distToBall] ints on the cell; reach bbox 0-based;
+     * feature extractor stops inventing / renormalizing board geometry.
      */
-    const val SCHEMA_VERSION = 21
+    const val SCHEMA_VERSION = 22
 
     const val PLAY_WIDTH = 11
     const val PLAY_HEIGHT = 15
@@ -144,8 +146,25 @@ object AiObsLayout {
     /** Match scalars on [AiNestedObsDto] before challenges / deck / hand / heldCheck / cells. */
     const val SCALAR_COUNT = 17
     const val DECK_FIELD_COUNT = 3
-    /** terrain + hasBall + 19 player fields (stats + affordances + reach bbox). */
-    const val NUMBERS_PER_BOARD_CELL = 21
+    /** terrain + hasBall + 19 player fields + pitchX + pitchY + distToBall. */
+    const val NUMBERS_PER_BOARD_CELL = 24
+
+    /** [AiCellObs.distToBall] when no ball is on pitch (or for bench slots) — max Chebyshev on this board. */
+    val DIST_TO_BALL_ABSENT: Int = maxOf(PLAY_HEIGHT, PLAY_WIDTH)
+
+    /** Perspective 0-based pitch column from absolute playable coord. */
+    fun pitchX0(absolute: Coordinate, perspectiveSeat: TeamSide): Int =
+        toPerspectivePitchXy0(absolute, perspectiveSeat).x
+
+    /** Perspective 0-based pitch row from absolute playable coord. */
+    fun pitchY0(absolute: Coordinate, perspectiveSeat: TeamSide): Int =
+        toPerspectivePitchXy0(absolute, perspectiveSeat).y
+
+    /** Chebyshev steps; [DIST_TO_BALL_ABSENT] when [ball] is null. */
+    fun distToBall(cell: Coordinate, ball: Coordinate?): Int {
+        if (ball == null) return DIST_TO_BALL_ABSENT
+        return maxOf(kotlin.math.abs(cell.x - ball.x), kotlin.math.abs(cell.y - ball.y))
+    }
 
     /**
      * Packed learning obs length (declaration-order concat on [AiNestedObsDto]).

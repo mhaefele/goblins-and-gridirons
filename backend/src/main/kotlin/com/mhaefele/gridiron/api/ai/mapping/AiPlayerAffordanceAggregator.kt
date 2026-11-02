@@ -90,14 +90,12 @@ object AiPlayerAffordanceAggregator {
         private var reachMaxY = Int.MIN_VALUE
 
         fun noteReach(absolute: Coordinate, perspectiveSeat: TeamSide) {
-            val absoluteIndex = AiObsLayout.squareIndex(absolute.x, absolute.y)
-            val perspectiveIndex = AiObsLayout.toPerspectiveIndex(absoluteIndex, perspectiveSeat)
-            val (x, y) = AiObsLayout.coordinate(perspectiveIndex)
+            val xy = AiObsLayout.toPerspectivePitchXy0(absolute, perspectiveSeat)
             hasReach = true
-            if (x < reachMinX) reachMinX = x
-            if (x > reachMaxX) reachMaxX = x
-            if (y < reachMinY) reachMinY = y
-            if (y > reachMaxY) reachMaxY = y
+            if (xy.x < reachMinX) reachMinX = xy.x
+            if (xy.x > reachMaxX) reachMaxX = xy.x
+            if (xy.y < reachMinY) reachMinY = xy.y
+            if (xy.y > reachMaxY) reachMaxY = xy.y
         }
 
         fun build(): AiPlayerAffordance =

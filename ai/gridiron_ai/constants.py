@@ -5,10 +5,10 @@ Owner: ``SCHEMA_VERSION`` + obs / legal-row pack widths shared by ``obs`` / ``ac
 semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
+# v22: cell pitchX / pitchY / distToBall on the wire (was Python feature synth).
 # v21: harness rewards.players + ballCoordinate (absolute); legal rows = LegalAction + flags.
-# v20: harness legalRows wrap LegalAction + flags; pack still perspective 0-based xy.
 # Schema 15 is the only dual-path ONNX fork.
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 PLAY_WIDTH = 11
 PLAY_HEIGHT = 15
@@ -57,8 +57,8 @@ ACTION_FACTOR_WIDTHS = [
 # Policy / ONNX output width: one score per padded legal-row slot.
 LEGAL_ROW_SCORE_WIDTH = MAX_LEGAL_MOVES
 
-# terrain, hasBall, + 19 player fields (stats + affordances + reach bbox)
-NUMBERS_PER_BOARD_CELL = 21
+# terrain, hasBall, + 19 player fields, + pitchX / pitchY / distToBall
+NUMBERS_PER_BOARD_CELL = 24
 CELL_CH_TERRAIN = 0
 CELL_CH_HAS_BALL = 1
 CELL_CH_PLAYER_INDEX = 2
@@ -80,6 +80,9 @@ CELL_CH_REACH_MIN_X = 17
 CELL_CH_REACH_MAX_X = 18
 CELL_CH_REACH_MIN_Y = 19
 CELL_CH_REACH_MAX_Y = 20
+CELL_CH_PITCH_X = 21
+CELL_CH_PITCH_Y = 22
+CELL_CH_DIST_TO_BALL = 23
 
 # Match scalars before challenges/deck/hand/heldCheck/cells (AiObsDto declaration order).
 SCALAR_COUNT = 17
@@ -97,7 +100,7 @@ OBSERVATION_VECTOR_LENGTH = (
     + HELD_CHECK_FIELD_COUNT
     + BOARD_SLOT_COUNT * NUMBERS_PER_BOARD_CELL
 )
-assert OBSERVATION_VECTOR_LENGTH == 3922
+assert OBSERVATION_VECTOR_LENGTH == 4477
 
 # Embedding row counts = 1 (empty/absent code 0) + Kotlin enum size.
 # Sync with TurnPhase / AiTerrain / AiTeamRel / PlayerStatus / ChallengeClaimCondition /

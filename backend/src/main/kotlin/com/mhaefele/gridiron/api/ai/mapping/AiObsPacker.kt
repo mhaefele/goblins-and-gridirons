@@ -14,7 +14,8 @@ import org.springframework.stereotype.Component
  * Flattens [AiNestedObsDto] into the learning float vector (length [AiObsLayout.OBSERVATION_VECTOR_LENGTH]).
  *
  * Concat order matches `ai/gridiron_ai/constants.py` / Python `obs_flat_to_dict` field count:
- * scalars → challenges → deck → hand → heldCheck → cells[0..184] (each terrain, hasBall, player block).
+ * scalars → challenges → deck → hand → heldCheck → cells[0..184]
+ * (each terrain, hasBall, player block, pitchX, pitchY, distToBall).
  */
 @Component
 class AiObsPacker {
@@ -82,6 +83,9 @@ class AiObsPacker {
         } else {
             packPresentPlayer(player, put)
         }
+        put(cell.pitchX)
+        put(cell.pitchY)
+        put(cell.distToBall)
     }
 
     private inline fun packAbsentPlayer(put: (Int) -> Unit) {

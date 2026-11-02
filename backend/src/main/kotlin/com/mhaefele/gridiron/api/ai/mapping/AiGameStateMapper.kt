@@ -294,12 +294,20 @@ class AiGameStateMapper {
         turnEnded: Set<PlayerId>,
         affordances: Map<Int, AiPlayerAffordance>,
     ): List<AiCellObs> {
+        val ball = ballCoordinate(board)
         val cells = MutableList(AiObsLayout.BOARD_SLOT_COUNT) { AiCellObs.emptyBench() }
         for (y in 1..AiObsLayout.PLAY_HEIGHT) {
             for (x in 1..AiObsLayout.PLAY_WIDTH) {
                 val coord = Coordinate(x, y)
                 val obsIndex = AiObsLayout.toPerspectiveIndex(AiObsLayout.squareIndex(x, y), perspective)
-                cells[obsIndex] = toAiCellObs(board.squareAt(coord), board, perspective, turnEnded, affordances)
+                cells[obsIndex] = toAiCellObs(
+                    board.squareAt(coord),
+                    board,
+                    perspective,
+                    turnEnded,
+                    affordances,
+                    ball,
+                )
             }
         }
         for (team in TeamSide.entries) {
@@ -327,12 +335,17 @@ class AiGameStateMapper {
         perspective: TeamSide,
         turnEnded: Set<PlayerId>,
         affordances: Map<Int, AiPlayerAffordance>,
+        ball: Coordinate?,
     ): AiCellObs {
         val occupant = square.playerId?.let { board.player(it) }
+        val coord = square.coordinate
         return AiCellObs(
             terrain = toAiTerrain(square, perspective),
             hasBall = square.looseBallId != null || occupant?.holdsBall() == true,
             player = occupant?.let { toAiCellPlayerObs(it, perspective, turnEnded, affordances) },
+            pitchX = AiObsLayout.pitchX0(coord, perspective),
+            pitchY = AiObsLayout.pitchY0(coord, perspective),
+            distToBall = AiObsLayout.distToBall(coord, ball),
         )
     }
 
