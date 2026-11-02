@@ -5,9 +5,9 @@ Owner: ``SCHEMA_VERSION`` + obs / legal-row pack widths shared by ``obs`` / ``ac
 semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
-# v18: Discrete legal-row join scores; pack = actor, kind, target, challenge, bonus, face0..2,
-# sourceX, sourceY (0-based pitch metadata from Kotlin). Schema 15 is the only dual-path ONNX fork.
-SCHEMA_VERSION = 18
+# v19: Discrete legal-row join scores; pack = actor, kind, targetX, targetY, challenge, bonus,
+# face0..2, sourceX, sourceY (0-based pitch coords from Kotlin). Schema 15 is the only dual-path ONNX fork.
+SCHEMA_VERSION = 19
 
 PLAY_WIDTH = 11
 PLAY_HEIGHT = 15
@@ -16,6 +16,8 @@ MAX_PLAYERS_PER_TEAM = 10  # catalog max roster; actor / cell playerIndex upper 
 BENCH_SLOTS = MAX_PLAYERS_PER_TEAM
 HOME_BENCH_START = PITCH_SQUARE_COUNT  # 165
 BOARD_SLOT_COUNT = PITCH_SQUARE_COUNT + 2 * BENCH_SLOTS  # 185
+TARGET_X_UNUSED = PLAY_WIDTH  # pad when no pitch dest
+TARGET_Y_UNUSED = PLAY_HEIGHT
 SOURCE_X_UNUSED = PLAY_WIDTH  # pad when no pitch source
 SOURCE_Y_UNUSED = PLAY_HEIGHT
 
@@ -41,13 +43,14 @@ ACTOR_PLAYER_INDEX_COUNT = MAX_PLAYERS_PER_TEAM + 1  # includes unused 0
 ACTION_FACTOR_WIDTHS = [
     ACTOR_PLAYER_INDEX_COUNT,
     LEGAL_ACTION_KIND_COUNT,
-    PITCH_SQUARE_COUNT + 1,
+    PLAY_WIDTH + 1,  # targetX identity (0-based + unused)
+    PLAY_HEIGHT + 1,  # targetY identity
     ACTIVE_CHALLENGE_SLOTS + 1,
     ATTACHED_BONUS_UNUSED + 1,
     BLOCK_FACE_PACK_SIZE,
     BLOCK_FACE_PACK_SIZE,
     BLOCK_FACE_PACK_SIZE,
-    PLAY_WIDTH + 1,  # sourceX metadata (0-based + unused); who-id = actor
+    PLAY_WIDTH + 1,  # sourceX metadata; who-id = actor
     PLAY_HEIGHT + 1,  # sourceY metadata
 ]
 # Policy / ONNX output width: one score per padded legal-row slot.
@@ -124,7 +127,7 @@ OBS_KEY_LEGAL_MOVE_COUNT = "legal_move_count"
 OBS_KEY_SOFT_MASK_LEGAL = "soft_mask_legal"
 # Parallel to legal_moves rows: 1 when server flagged passingScenarioMove (pass-grade solve; not soft-mask).
 OBS_KEY_PASSING_LEGAL = "passing_legal"
-FACTORS_PER_LEGAL_MOVE = len(ACTION_FACTOR_WIDTHS)  # 10
+FACTORS_PER_LEGAL_MOVE = len(ACTION_FACTOR_WIDTHS)  # 11
 # Logit bonus on preferred legal rows (soft preference, not hard mask).
 SOFT_MASK_LOGIT_BIAS = 2.5
 

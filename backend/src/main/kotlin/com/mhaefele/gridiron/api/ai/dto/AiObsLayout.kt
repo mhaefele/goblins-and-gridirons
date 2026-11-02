@@ -1,5 +1,6 @@
 package com.mhaefele.gridiron.api.ai.dto
 
+import com.mhaefele.gridiron.shared.Coordinate
 import com.mhaefele.gridiron.shared.TeamSide
 
 /**
@@ -19,8 +20,9 @@ import com.mhaefele.gridiron.shared.TeamSide
  * | `[AWAY_BENCH_START] .. +9` (175..184) | Perspective “them” dugout slots |
  *
  * Pitch: `index = (y - 1) * [PLAY_WIDTH] + (x - 1)` with `x ∈ [1, W]`, `y ∈ [1, H]`.
- * Obs [AiNestedObsDto.cells] use the full board space. [AiFactor.Actor] is a **roster player index**
- * (same id on the cell that holds them). [AiFactor.BoardTarget] is **pitch only**.
+ * Obs [AiNestedObsDto.cells] use the full board space (linear pitch + benches). [AiFactor.Actor]
+ * is a **roster player index** (same id on the cell that holds them). Dest / source pitch use
+ * [AiPitchSquare] on [AiLegalChoiceDto] (0-based) — not cell indices.
  * Pathfinding / adjacency use pitch only.
  */
 object AiObsLayout {
@@ -47,10 +49,12 @@ object AiObsLayout {
      * ONNX emits chosen row index (masked argmax).
      * v17: legal-row pack appends sourceSquare metadata + per-step menu shuffle.
      * v18: source metadata is pitch `(x, y)` ints from Kotlin (not a linear board index)
-     * so the encoder does not decode index→coords. Schema 15 remains the only dual-path
+     * so the encoder does not decode index→coords.
+     * v19: dest / source are [AiPitchSquare] on the harness row (pack targetX/targetY,
+     * sourceX/sourceY); drop linear dest index. Schema 15 remains the only dual-path
      * ONNX fork — mutate 16+ in place / bump freely.
      */
-    const val SCHEMA_VERSION = 18
+    const val SCHEMA_VERSION = 19
 
     const val PLAY_WIDTH = 11
     const val PLAY_HEIGHT = 15
@@ -75,11 +79,11 @@ object AiObsLayout {
     const val HELD_CHECK_FIELD_COUNT = 1 + 1 + MAX_HELD_BLOCK_FACES
 
     /**
-     * Packed legal-row width: identity (actor, kind, boardTarget, challengeSlot, attachedBonus,
+     * Packed legal-row width: identity (actor, kind, targetX, targetY, challengeSlot, attachedBonus,
      * face0..2) then metadata (sourceX, sourceY). Who-id = roster actor, not source coords.
      * Unused axes use pad sentinels (not MultiDiscrete heads — join-score embeds like board).
      */
-    const val ACTION_FACTOR_COUNT = 10
+    const val ACTION_FACTOR_COUNT = 11
 
     const val ACTIVE_CHALLENGE_SLOTS = 3
     /** Geometry AttachedBonus indices `0..4`; pad = [ATTACHED_BONUS_UNUSED]. */
@@ -92,13 +96,12 @@ object AiObsLayout {
     val ACTOR_PACK_WIDTH: Int = MAX_PLAYERS_PER_TEAM + 1
     /** [AiLegalKind.entries] — packed as ordinal on each legal row. */
     val KIND_PACK_WIDTH: Int = AiLegalKind.entries.size
-    /** Pitch squares + pad (unused axis). */
-    val BOARD_TARGET_PACK_WIDTH: Int = PITCH_SQUARE_COUNT + 1
-    /** 0-based pitch x + pad (unused axis) — source metadata. */
-    val SOURCE_X_PACK_WIDTH: Int = PLAY_WIDTH + 1
-    /** 0-based pitch y + pad (unused axis) — source metadata. */
-    val SOURCE_Y_PACK_WIDTH: Int = PLAY_HEIGHT + 1
-    /** Pack pad when no pitch source (kind-only / dugout / claim rows). */
+    /** 0-based pitch x/y + pad — dest identity and source metadata share these widths. */
+    val PITCH_X_PACK_WIDTH: Int = PLAY_WIDTH + 1
+    val PITCH_Y_PACK_WIDTH: Int = PLAY_HEIGHT + 1
+    /** Pack pad when no pitch dest / source (kind-only / dugout / claim rows). */
+    const val TARGET_X_UNUSED: Int = PLAY_WIDTH
+    const val TARGET_Y_UNUSED: Int = PLAY_HEIGHT
     const val SOURCE_X_UNUSED: Int = PLAY_WIDTH
     const val SOURCE_Y_UNUSED: Int = PLAY_HEIGHT
     /** Challenge slots + pad (unused axis). */
@@ -107,7 +110,7 @@ object AiObsLayout {
     /** `0` unused + one code per [com.mhaefele.gridiron.game.dice.dto.BlockDieFace]. */
     val BLOCK_FACE_PACK_SIZE: Int = 1 + 5
     /** Column vocab widths on each legal row — must match `ai/gridiron_ai/constants.py` ACTION_FACTOR_WIDTHS. Not MultiDiscrete heads. */
-    val ACTION_FACTOR_WIDTHS: IntArray = intArrayOf(ACTOR_PACK_WIDTH, KIND_PACK_WIDTH, BOARD_TARGET_PACK_WIDTH, CHALLENGE_SLOT_PACK_WIDTH, ATTACHED_BONUS_PACK_WIDTH, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, SOURCE_X_PACK_WIDTH, SOURCE_Y_PACK_WIDTH,)
+    val ACTION_FACTOR_WIDTHS: IntArray = intArrayOf(ACTOR_PACK_WIDTH, KIND_PACK_WIDTH, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, CHALLENGE_SLOT_PACK_WIDTH, ATTACHED_BONUS_PACK_WIDTH, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH,)
     /** Pad width for the legal-row menu (Python ``MAX_LEGAL_MOVES``). */
     const val MAX_LEGAL_MOVES = 1024
     /** ONNX / policy output width — one score per padded legal-row slot. */
@@ -116,15 +119,16 @@ object AiObsLayout {
     /** Identity — roster playerIndex (same id on the occupied cell). */
     const val FACTOR_ACTOR = 0
     const val FACTOR_KIND = 1
-    const val FACTOR_BOARD_TARGET = 2
-    const val FACTOR_CHALLENGE_SLOT = 3
-    const val FACTOR_ATTACHED_BONUS = 4
-    const val FACTOR_FACE0 = 5
-    const val FACTOR_FACE1 = 6
-    const val FACTOR_FACE2 = 7
+    const val FACTOR_TARGET_X = 2
+    const val FACTOR_TARGET_Y = 3
+    const val FACTOR_CHALLENGE_SLOT = 4
+    const val FACTOR_ATTACHED_BONUS = 5
+    const val FACTOR_FACE0 = 6
+    const val FACTOR_FACE1 = 7
+    const val FACTOR_FACE2 = 8
     /** Metadata only (pack tail) — actor’s current pitch x/y; not legal-choice identity. */
-    const val FACTOR_SOURCE_X = 8
-    const val FACTOR_SOURCE_Y = 9
+    const val FACTOR_SOURCE_X = 9
+    const val FACTOR_SOURCE_Y = 10
 
     /**
      * Mid-turn hand capacity for obs: end-of-turn trim keeps 3, Clean Sweep allows 3 claims in one
@@ -166,6 +170,22 @@ object AiObsLayout {
         val y = pitchIndex / PLAY_WIDTH + 1
         val x = pitchIndex % PLAY_WIDTH + 1
         return x to y
+    }
+
+    /**
+     * Perspective-relative [AiPitchSquare] from absolute playable [Coordinate] (`1..W` / `1..H`).
+     * HOME identity; AWAY 180° rotate. Used as [AiLegalChoiceDto.target] / [source].
+     */
+    fun toPerspectivePitchXy0(absolute: Coordinate, perspectiveSeat: TeamSide): AiPitchSquare {
+        require(absolute.x in 1..PLAY_WIDTH && absolute.y in 1..PLAY_HEIGHT) {
+            "Playable coord out of range: (${absolute.x},${absolute.y})"
+        }
+        val x0 = absolute.x - 1
+        val y0 = absolute.y - 1
+        return when (perspectiveSeat) {
+            TeamSide.HOME -> AiPitchSquare(x0, y0)
+            TeamSide.AWAY -> AiPitchSquare(PLAY_WIDTH - 1 - x0, PLAY_HEIGHT - 1 - y0)
+        }
     }
 
     fun isPitchIndex(index: Int): Boolean = index in 0 until PITCH_SQUARE_COUNT

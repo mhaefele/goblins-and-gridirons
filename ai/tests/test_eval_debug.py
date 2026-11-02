@@ -22,10 +22,8 @@ def test_format_action_prefers_us_when_roster_index_collides() -> None:
     obs = {"cells": cells}
     choice = {
         "kind": "throw",
-        "factors": [
-            {"kind": "actor", "playerIndex": 1},
-            {"kind": "boardTarget", "boardIndex": _pitch(4, 14)},
-        ],
+        "factors": [{"kind": "actor", "playerIndex": 1}],
+        "target": {"x": 4 - 1, "y": 14 - 1},
     }
     assert ScenarioEvalDebug.format_action(choice, observation=obs) == "throw(1,13->4,14)"
 
@@ -43,15 +41,16 @@ def test_format_expected_moves_shown_for_one_or_two_flags() -> None:
     cells = [_cell() for _ in range(PITCH_SQUARE_COUNT)]
     cells[_pitch(2, 3)] = _cell(player={"teamRel": 0, "playerIndex": 0})
     obs = {"cells": cells}
-    td_target = _pitch(2, PLAY_HEIGHT)
     run = {
         "kind": "run",
-        "factors": [
-            {"kind": "actor", "playerIndex": 0},
-            {"kind": "boardTarget", "boardIndex": td_target},
-        ],
+        "factors": [{"kind": "actor", "playerIndex": 0}],
+        "target": {"x": 2 - 1, "y": PLAY_HEIGHT - 1},
     }
-    block = {"kind": "block", "factors": [{"kind": "actor", "playerIndex": 0}, {"kind": "boardTarget", "boardIndex": _pitch(3, 3)}]}
+    block = {
+        "kind": "block",
+        "factors": [{"kind": "actor", "playerIndex": 0}],
+        "target": {"x": 3 - 1, "y": 3 - 1},
+    }
 
     one = _format_expected_moves(obs, policy_seat="HOME", legal_row_meta=[run, block], passing_legal=[True, False])
     assert one == (1, ["run(2,3->2,15)"])

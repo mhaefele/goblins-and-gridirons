@@ -2,7 +2,7 @@
 
 Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) defers here.
 
-**Status:** Open — AI2.0–AI2.4 + AI2.7 done; [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) **obs landed** (schema 11; scenarios still open); [AI2.13](#ai213--scenario-catalog-metadata-api) catalog metadata done; [AI2.15](#ai215--coachcontrol-seat-semantics) seat naming done; [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) blind-spot taxonomy open. Then [AI2.5](#ai25--multi-team-curriculum). Sampling follow-ups: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) ([AI2.11](#ai211--action-sampling--factor-space-inventory)). Harness hygiene: [AI2.14](#ai214--split-train_self_play). Optimize (not next): [AI2.opt](#ai2opt--binary-observation-wire), [AI2.18](#ai218--one-bonus-play-action-kind-retrain), [AI2.19](#ai219--fold-ai-action-vocabulary-investigate). Ship AI1 done; see [archive/BACKLOG-done.md](../archive/BACKLOG-done.md).
+**Status:** Open — AI2.0–AI2.4 + AI2.7 done; [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) **obs landed** (schema 11; scenarios still open); [AI2.13](#ai213--scenario-catalog-metadata-api) catalog metadata done; [AI2.15](#ai215--coachcontrol-seat-semantics) seat naming done; [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) blind-spot taxonomy open. Then [AI2.5](#ai25--multi-team-curriculum). Sampling follow-ups: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) ([AI2.11](#ai211--action-sampling--factor-space-inventory)). **Next after schema-19 dest xy:** [AI2.21](#ai221--harness-legalrows-wrap-legalaction). Harness hygiene: [AI2.14](#ai214--split-train_self_play). Optimize (not next): [AI2.opt](#ai2opt--binary-observation-wire), [AI2.18](#ai218--one-bonus-play-action-kind-retrain), [AI2.19](#ai219--fold-ai-action-vocabulary-investigate). Ship AI1 done; see [archive/BACKLOG-done.md](../archive/BACKLOG-done.md).
 
 **Design:** [`DESIGN.md`](DESIGN.md) · **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md) · **Architecture:** [Backend § Long-term product goals](../backend/ARCHITECTURE.md#long-term-product-goals).
 
@@ -40,6 +40,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [ ] [AI2.18](#ai218--one-bonus-play-action-kind-retrain) — One bonus-play action kind *(retrain; bundle with the next layout change)*
 - [ ] [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) — Shared wire kind on `LegalAction` DTOs *(investigate; not next)*
 - [ ] [AI2.20](#ai220--remove-local-sb3-pickle-aliases) — Remove local SB3 pickle-alias shim *(after resume zips re-saved)*
+- [ ] [AI2.21](#ai221--harness-legalrows-wrap-legalaction) — Harness `legalRows` wrap `LegalAction` *(next after schema-19 dest xy)*
 
 ---
 
@@ -449,6 +450,20 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 | **Goal** | Drop the optional gitignored remap once every resume zip on disk pickles under current `gridiron_ai` module paths (one successful continue+save per zip is enough; prune stale `*_steps.zip`). |
 | **Files** | `install_legacy_pickle_aliases` + call in [`__init__.py`](gridiron_ai/__init__.py); [`PICKLE_ALIASES_PATH`](gridiron_ai/paths.py); `.gitignore` entry; alias tests in [`test_checkpoints.py`](tests/test_checkpoints.py); delete local `local.pickle_aliases.properties` if present. |
 | **Acceptance** | Resume works with no aliases file; no pickle-alias install path left in the package. |
+| **Rulebook** | n/a |
+
+---
+
+## AI2.21 — Harness `legalRows` wrap `LegalAction`
+
+| Field | Detail |
+|-------|--------|
+| **Status** | **Open — next after schema-19 dest `(x,y)` pack lands.** |
+| **Problem** | [`AiLegalChoiceDto`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiLegalChoiceDto.kt) still **projects** [`LegalAction`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) into `AiLegalKind` + free/sugar [`AiFactor`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiFactor.kt)s. That mirror was the MultiDiscrete identity surface; join-score learning only needs packed `legalMoves`. Harness typed work (reward, eval labels, submit) re-reads the factor list instead of the engine action. |
+| **Goal** | `legalRows` ≈ `{ action: LegalAction, softMaskLegal, passingLegal, … }`. Packer maps `LegalAction` (+ perspective) → ints directly. Drop wire `factors` / `sugarFactors` / parallel kind catalog from the harness DTO (pack-private helpers ok). Python reward/eval/submit read `action` fields. |
+| **Depends on** | Schema-19 dest xy committed. Pairs with [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) (shared kinds / keep-vs-reroll split) but can land the wrap first with today’s mapper kind rules. |
+| **Files** | `AiLegalChoiceDto` / `AiLegalPacker` / `AiLegalChoiceMapper`; Python `reward.py` / `eval_debug.py` / `env.py` / `client.py` asserts; [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md); schema bump. |
+| **Acceptance** | Nested step `legalRows` carry `LegalAction` + AI flags only; no factor mirror on the wire; pack parity tests green; reward/eval use `action` not `factors`. |
 | **Rulebook** | n/a |
 
 ---

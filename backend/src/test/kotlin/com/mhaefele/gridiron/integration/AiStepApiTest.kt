@@ -48,9 +48,9 @@ class AiStepApiTest : BaseApiTest() {
         assertThat(step.harness.legalRows).isNotEmpty()
 
         val run = step.harness.legalRows.first { it.kind == AiLegalKind.run }
-        assertThat(run.factors).hasSize(2)
+        assertThat(run.factors).hasSize(1)
         assertThat(run.factors[0]).isInstanceOf(AiFactor.Actor::class.java)
-        assertThat(run.factors[1]).isInstanceOf(AiFactor.BoardTarget::class.java)
+        assertThat(run.target).isNotNull
         assertThat(run.legalActionId.value).isNotBlank()
         assertThat(run.potentialChallengeClaims).isNotNull()
         assertThat(step.harness.legalRows).noneMatch { it.softMaskLegal }
@@ -113,12 +113,13 @@ class AiStepApiTest : BaseApiTest() {
         val awayRun = awayStep.harness.legalRows.first { it.legalActionId == homeRun.legalActionId }
 
         val homeActor = (homeRun.factors[0] as AiFactor.Actor).playerIndex
-        val homeTarget = (homeRun.factors[1] as AiFactor.BoardTarget).boardIndex
+        val homeTarget = homeRun.target!!
         val awayActor = (awayRun.factors[0] as AiFactor.Actor).playerIndex
-        val awayTarget = (awayRun.factors[1] as AiFactor.BoardTarget).boardIndex
+        val awayTarget = awayRun.target!!
 
         assertThat(awayActor).isEqualTo(homeActor)
-        assertThat(awayTarget).isEqualTo(AiObsLayout.toPerspectiveIndex(homeTarget, TeamSide.AWAY))
+        assertThat(awayTarget.x).isEqualTo(AiObsLayout.PLAY_WIDTH - 1 - homeTarget.x)
+        assertThat(awayTarget.y).isEqualTo(AiObsLayout.PLAY_HEIGHT - 1 - homeTarget.y)
 
         val homeCell = homeStep.policy.obs.cells.first { it.player?.playerIndex == homeActor }
         assertThat(homeCell.player?.playerIndex).isEqualTo(homeActor)
@@ -190,8 +191,8 @@ class AiStepApiTest : BaseApiTest() {
         val weaveChoice = byId.getValue(weaveRun.id)
         assertThat(sprintChoice.sugarFactors.filterIsInstance<AiFactor.AttachedBonus>().single().index).isEqualTo(0)
         assertThat(weaveChoice.sugarFactors.filterIsInstance<AiFactor.AttachedBonus>().single().index).isEqualTo(1)
-        assertThat(sprintChoice.factors.filterIsInstance<AiFactor.BoardTarget>()).hasSize(1)
-        assertThat(weaveChoice.factors.filterIsInstance<AiFactor.BoardTarget>()).hasSize(1)
+        assertThat(sprintChoice.target).isNotNull
+        assertThat(weaveChoice.target).isNotNull
     }
 
     @Test

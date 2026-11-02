@@ -4,23 +4,22 @@ import com.mhaefele.gridiron.api.dto.response.PotentialChallengeClaim
 import com.mhaefele.gridiron.shared.LegalActionId
 
 /**
- * One legal choice in AI form — [kind] + ordered free [factors] + [sugarFactors] + submit sidecar.
+ * One legal choice in AI form — [kind] + non-pitch [factors] / [sugarFactors] + pitch
+ * [target] / [source] + submit sidecar.
  *
- * ## Factors (schema 18+)
+ * ## Pitch (schema 19+)
  *
- * [factors] = free choices (packed into [AiLegalPacker] legal-row ints).
- * [sugarFactors] = pending-fixed identity / attached bonus / source coords — also packed onto the row.
- * [legalActionId] still encodes full domain identity for submit.
- * Pack columns: identity (actor, kindIndex, boardTarget, challengeSlot, attachedBonus, face0..2)
- * then metadata (sourceX, sourceY). Who-id = roster actor, not source coords.
+ * Dest and actor-from squares are [AiPitchSquare] on the row — not [AiFactor]s.
+ * Pack columns: identity (actor, kindIndex, targetX, targetY, challengeSlot, attachedBonus,
+ * face0..2) then metadata (sourceX, sourceY). Who-id = roster actor, not source coords.
  *
- * | kind | free factors |
- * |------|--------------|
- * | path / throw / block / foul / standUp / reserves / declareRun / throwTeammateSelect | `[Actor, BoardTarget]` |
- * | `throwTeammate` / `quickReleaseThrow` / `placeLooseBall` | `[BoardTarget]` (actor sugar) |
- * | `chooseBlockFaceOrder` | `[FaceOrder]` (actor sugar) |
- * | `skip` / `declineBonus` / `continueBlock` / `keepOffer` / `reroll` / adjust* / play-bonus / `cancelThrowTeammate` | `[]` |
- * | `claimChallenge` / `replaceChallenge` | `[ChallengeSlot]` |
+ * | kind | free factors | target |
+ * |------|--------------|--------|
+ * | path / throw / block / foul / standUp / reserves / declareRun / throwTeammateSelect | `[Actor]` | dest |
+ * | `throwTeammate` / `quickReleaseThrow` / `placeLooseBall` | `[]` (actor sugar) | dest |
+ * | `chooseBlockFaceOrder` | `[FaceOrder]` (actor sugar) | — |
+ * | `skip` / `declineBonus` / `continueBlock` / `keepOffer` / `reroll` / adjust* / play-bonus / `cancelThrowTeammate` | `[]` | sometimes dest (continue / Do-Over) |
+ * | `claimChallenge` / `replaceChallenge` | `[ChallengeSlot]` | — |
  */
 data class AiLegalChoiceDto(
     /**
@@ -34,21 +33,30 @@ data class AiLegalChoiceDto(
      */
     val kindIndex: Int,
 
-    /** Free decision factors after [kind], in question order. Empty when kind needs no further pick. */
+    /** Free non-pitch factors after [kind], in question order. Empty when kind needs none. */
     val factors: List<AiFactor>,
 
     /**
-     * Pending-fixed factors (not free). Omitted from MultiDiscrete matching; still useful for
-     * humans / exports. Sugar also lives inside [legalActionId] for engine submit.
+     * Pending-fixed non-pitch factors (actor sugar, attached bonus, …).
+     * Sugar also lives inside [legalActionId] for engine submit.
      */
     val sugarFactors: List<AiFactor> = emptyList(),
+
+    /** Destination / path end / … — perspective 0-based pitch; null when kind has no dest. */
+    val target: AiPitchSquare? = null,
+
+    /**
+     * Acting player’s current pitch square (metadata); null when dugout / no actor on pitch.
+     * Who-id remains roster [AiFactor.Actor].
+     */
+    val source: AiPitchSquare? = null,
 
     /** Sidecar for `POST /api/ai/matches/{id}/submit` (and GUI `POST .../legal-actions/submit`) — not part of the policy output vector. */
     val legalActionId: LegalActionId,
 
     /**
-     * Challenge cards this action could claim (same as GUI [LegalAction.potentialChallengeClaims]).
-     * Harness / shaping sidecar — not part of the MultiDiscrete factor tuple.
+     * Challenge cards this action could claim (same as GUI LegalAction.potentialChallengeClaims).
+     * Harness / shaping sidecar — not part of the packed factor tuple.
      */
     val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
 

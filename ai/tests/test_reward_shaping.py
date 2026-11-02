@@ -47,10 +47,13 @@ def _obs(
 
 
 def _run_choice(board_index: int, *, actor: int = 1) -> dict:
+    x = board_index % PLAY_WIDTH
+    y = board_index // PLAY_WIDTH
     return {
         "kind": "run",
         "kindIndex": 0,
-        "factors": [{"kind": "actor", "playerIndex": actor}, {"kind": "boardTarget", "boardIndex": board_index}],
+        "factors": [{"kind": "actor", "playerIndex": actor}],
+        "target": {"x": x, "y": y},
     }
 
 

@@ -84,7 +84,7 @@ For *this* problem (smarter action choices), almost everything collapses to two 
 | **2. Sample among legal rows** | How we **pick** among packed rows — join-score + soft preferred bias | Soft-mask (landed); further row encoders / attention are optional |
 
 **Default path:** Schema 10 packing (roster actor) → soft-mask (schema 12) →
-**schema 18 legal-row join scores** (source x/y metadata + shuffled menu). Measure
+**schema 19 legal-row join scores** (dest + source as pitch x/y + shuffled menu). Measure
 uniqueness before more representation shrinks.
 
 **Landed:** score the legal set directly — join board latent to each encoded row
@@ -132,7 +132,7 @@ heads, or “kind-conditioned target logits” as separate policy axes.
 - [ ] **Throw vs `quickReleaseThrow`.** Free factors differ: **throw** = actor + target; **quickReleaseThrow** = target only (actor sugar). Don’t merge. Quick Release is also an interrupt window — obs `phase` is only coarse `TurnPhase`, not `BlockStage.HANDLE_QUICK_RELEASE`.
 - [x] **Actor by player id / roster slot instead of board index.** Landed (schema 10): `1..10` + `0` unused; cell `playerIndex` binds id↔square.
 - [x] **Soft-mask preferred rows.** Landed (schema 12): `preferred_legal` + logit bias on values from `expectedScenarioMove` rows — see [Soft-mask preference](#soft-mask-preference). Not a hard legal filter.
-- [ ] **Relative `boardTarget` (Δx / Δy from actor) instead of absolute pitch index.** Could shrink *path* fan-out if the window tracks Move (e.g. ±4 → 9×9) and transfer “step forward” across the board. Costs: (1) end-zone / sideline geography leaves the packed dest; (2) throws / Hail Mary aim near board-wide, so a shared relative encoding needs a window ≈ full pitch (**no shrink**) or kind-specific dest encodings; (3) reserves / place-loose-ball / absolute tactics get awkward. Likely a win only for path-like kinds, not one global relative dest column.
+- [ ] **Relative dest (Δx / Δy from actor) instead of absolute pitch `(x,y)`.** Could shrink *path* fan-out if the window tracks Move (e.g. ±4 → 9×9) and transfer “step forward” across the board. Costs: (1) end-zone / sideline geography leaves the packed dest; (2) throws / Hail Mary aim near board-wide, so a shared relative encoding needs a window ≈ full pitch (**no shrink**) or kind-specific dest encodings; (3) reserves / place-loose-ball / absolute tactics get awkward. Likely a win only for path-like kinds, not one global relative dest column.
 - [x] ~~Sequential factor conditioning / kind-conditioned target logits / joint `(actor, kind)` MultiDiscrete~~ — **won’t do.** Schema 16 join-score replaced those sampling procedures.
 
 ### Out / don’t confuse with
@@ -141,6 +141,10 @@ heads, or “kind-conditioned target logits” as separate policy axes.
 - Board-obs enrichment or feeding the legal menu into the value net — [AI2.8](BACKLOG.md#ai28--evaluate-obs-enrichment-vs-fix-legals) / [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape).
 - Reward shaping — [AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2).
 - Per-step max legal rows — mask/APS metric; not structural distinct-move size.
+
+### Follow-up (after schema-19 dest xy)
+
+- [ ] **Harness `legalRows` wrap `LegalAction`** — stop projecting into wire `AiFactor`s; packer maps `LegalAction` → ints; reward/eval read `action`. Backlog: [AI2.21](BACKLOG.md#ai221--harness-legalrows-wrap-legalaction).
 
 ---
 
@@ -207,7 +211,7 @@ Schema 16+ gym action width is **`MAX_LEGAL_MOVES` (1024)**, not these products.
 Remaining representation Maybes matter for meaning / further shrink of **pack
 columns**, not because a MultiDiscrete softmax is hundreds of millions wide.
 
-## Policy action (schema 18)
+## Policy action (schema 19)
 
 **Gym action:** `Discrete(MAX_LEGAL_MOVES)` — index into this step’s packed `legal_moves` menu.
 The policy **join-scores** each live row with the board latent (`LegalRowActorCriticPolicy`):
@@ -218,7 +222,7 @@ step. Packed `legalMoves`, harness `legalRows` (incl. soft-mask / passing flags)
 `chosenFactors`, and the Discrete/ONNX **row index** all refer to that same shuffled order —
 no separate remap table. Prevents latching onto catalog / generation order.
 
-Each packed row is **ten** ints (storage / ONNX legal-matrix input). Python
+Each packed row is **eleven** ints (storage / ONNX legal-matrix input). Python
 `encode_legal_rows` embeds them the same way board channels are embedded
 (shared `player_index` / challenge / block-face embs + pitch xy)
 — it does **not** re-pack:
@@ -227,23 +231,29 @@ Each packed row is **ten** ints (storage / ONNX legal-matrix input). Python
 |------|--------|------|------:|-------------|
 | 0 | actor | **identity (who)** | 11 | roster `playerIndex` — same id as cell occupant; `0` when kind has no free actor |
 | 1 | kind | identity | 41 | `AiLegalKind.ordinal` |
-| 2 | boardTarget | identity (dest) | 166 | **pitch only** linear index `0..164` + unused (encoder decodes → xy for continuous features) |
-| 3 | challengeSlot | identity | 4 | claim / replace |
-| 4 | attachedBonus | identity | 6 | Sprint/Weave/… twin (`0..4` + unused) |
-| 5..7 | face0..2 | identity | 6 each | Enforcer order pack codes (`0` unused; `1..5` = face) |
-| 8 | sourceX | **metadata** (tail) | 12 | 0-based pitch x from Kotlin (`0..10` + unused) |
-| 9 | sourceY | **metadata** (tail) | 16 | 0-based pitch y from Kotlin (`0..14` + unused) |
+| 2 | targetX | identity (dest) | 12 | 0-based pitch x from Kotlin (`0..10` + unused) |
+| 3 | targetY | identity (dest) | 16 | 0-based pitch y from Kotlin (`0..14` + unused) |
+| 4 | challengeSlot | identity | 4 | claim / replace |
+| 5 | attachedBonus | identity | 6 | Sprint/Weave/… twin (`0..4` + unused) |
+| 6..8 | face0..2 | identity | 6 each | Enforcer order pack codes (`0` unused; `1..5` = face) |
+| 9 | sourceX | **metadata** (tail) | 12 | 0-based pitch x from Kotlin (`0..10` + unused) |
+| 10 | sourceY | **metadata** (tail) | 16 | 0-based pitch y from Kotlin (`0..14` + unused) |
 
-Wire still sends `kind` + `kindIndex` + typed factors (`Actor.playerIndex`, …).
-Kotlin `AiLegalPacker` writes the ten ints; Python only pads for the gym Dict
-and embeds. Source x/y are shipped as coords (normalize only); dugout / no-actor → unused
-pads. **Who** on a path/throw/block row is always roster `actor`, never source coords.
+Wire sends `kind` + `kindIndex` + non-pitch factors (`Actor`, `ChallengeSlot`, …) plus
+`target` / `source` as `{x,y}` ([`AiPitchSquare`]) — not factor subtypes.
+Kotlin `AiLegalPacker` writes the eleven ints; Python only pads for the gym Dict
+and embeds. Dest and source x/y are shipped as coords (normalize only); dugout /
+no-actor → unused pads. **Who** on a path/throw/block row is always roster `actor`,
+never source coords. Obs `cells[]` still uses linear pitch indices — that is board
+layout packing, not the legal-row dest encoding.
 
 Unused axes on a row are unused sentinels; the Kotlin DTO **omits** unused free
 factors (pending-fixed / source metadata stay in `sugarFactors`).
 
-**Schema 18:** schema-17 + source metadata as pitch `(x,y)` ints (no index→xy for source).
+**Schema 19:** schema-18 + dest as pitch `(x,y)` (drop linear `boardTarget` index).
 Schema 15 remains the only dual-path ONNX fork — bump/mutate 16+ freely (re-export ONNX).
+
+**Schema 18 (historical):** source `(x,y)` metadata; dest still linear pitch index.
 
 **Schema 17 (historical):** single `sourceSquare` board index + menu shuffle.
 
@@ -261,8 +271,8 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 |--------|----------------|----------------------|---------------------------|
 | Action kind (`run` / `throw` / …) | `LegalAction` / `AiLegalKind` | **Yes** — kind column | — |
 | Acting player identity | `playerId` | **Yes** — roster `Actor` | Cell `playerIndex` |
-| Destination square | path end / `targetCoordinate` | **Yes** — `boardTarget` (pitch) | Pitch terrain / occupants |
-| Source square (actor now) | board position of actor | **Yes (v18)** — `sourceX`/`sourceY` **metadata** (not who-id) | Same cell via `playerIndex` |
+| Destination square | path end / `targetCoordinate` | **Yes** — `targetX`/`targetY` (0-based pitch) | Pitch terrain / occupants |
+| Source square (actor now) | board position of actor | **Yes** — `sourceX`/`sourceY` **metadata** (not who-id) | Same cell via `playerIndex` |
 | Attached geometry bonus (Sprint/…) | `requiredBonusCard` | **Yes** — `attachedBonus` | — |
 | Challenge claim / replace slot | claim/replace actions | **Yes** — `challengeSlot` | Challenges tensor |
 | Enforcer face order | `ChooseBlockFaceOrder` | **Yes** — `face0..2` | `held_check` faces |
@@ -282,7 +292,7 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 |------|------:|----------------------|---------|
 | actor | 11 | `0..10` roster pad | Exact. |
 | kind | 41 | `AiLegalKind.entries` | Exact. |
-| boardTarget | 166 | Pitch 165 + unused | Exact pitch (+ pad). |
+| targetX / targetY | 12 / 16 | Pitch W/H + unused | 0-based pitch dest (+ pad). |
 | challengeSlot | 4 | 3 active challenges + unused | Exact. |
 | attachedBonus | 6 | 5 twins + unused | Exact. |
 | face0..2 | 6 each | unused + 5 `BlockDieFace` | Exact; pad short perms with unused. |
@@ -308,19 +318,19 @@ Intuition for **player actions that carry both actor and boardTarget** (run / ma
 
 ---
 
-## Straight free `[Actor, BoardTarget]` kinds
+## Straight free `Actor` + `target` kinds
 
-Same free-factor shape; kind is the verb. Kotlin mapping uses `perspectiveBoardIndexOf` (actor) + `perspectivePitchIndex` (target, **pitch only**).
+Same shape; kind is the verb. Kotlin mapping uses roster `Actor` + row `target` (`AiPitchSquare` via `perspectivePitchXy0`).
 
 | Kind(s) | Notes |
 |---------|--------|
-| `run` / `mark` / `sidestep` | `PathMovement` — path end → target. Eligibility partitions by board (marked → sidestep; open path → run; end adjacent enemy → mark). |
-| `declareRun` | Declare then path; target = declared square. |
-| `throw` | Target = catcher. Normal throw while acting. |
+| `run` / `mark` / `sidestep` | `PathMovement` — path end → `target`. Eligibility partitions by board (marked → sidestep; open path → run; end adjacent enemy → mark). |
+| `declareRun` | Declare then path; `target` = declared square. |
+| `throw` | `target` = catcher. Normal throw while acting. |
 | `throwTeammateSelect` | Free: thrower + teammate square. |
-| `block` / `foul` | Target = victim square. Free choice among legal victims. |
-| `standUp` | Actor + target (stand destination / square). |
-| `reserves` | Actor on **bench**; target = pitch entry square. |
+| `block` / `foul` | `target` = victim square. Free choice among legal victims. |
+| `standUp` | Actor + `target` (stand destination / square). |
+| `reserves` | Actor on **bench**; `target` = pitch entry square. |
 
 Target-only free (actor sugar): `throwTeammate`, `quickReleaseThrow`, `placeLooseBall` — see [free choices](#which-factors-are-free-choices).
 
@@ -347,16 +357,16 @@ Schema 16 keeps wire declines as **distinct kinds** (no `declineOffer` merge):
 
 Schema 9: free → `factors` (matched); pending-fixed → `sugarFactors` (not matched). `LegalActionId` still carries full identity for submit.
 
-| Kind | Free (`factors`) | Sugar |
-|------|------------------|-------|
-| `run` / `mark` / `sidestep` / `declareRun` (4) | **Actor + target** | — |
-| `throw` / `block` / `foul` / `reserves` / `standUp` (5) | **Actor + target** | — |
-| `throwTeammateSelect` | **Actor + target** | — |
-| `quickReleaseThrow` / `throwTeammate` / `placeLooseBall` (3) | **Target** | Actor |
-| `skip` / `declineBonus` / `continueBlock` / `keepOffer` / `reroll` / adjust* / `cancelThrowTeammate` | **Kind only** (`[]`) | Actor (± target) when wire had them |
-| play-bonus kinds (15) | **Kind** among offered plays | — |
-| `chooseBlockFaceOrder` | **FaceOrder** → pack face0..2 | Actor |
-| `claimChallenge` / `replaceChallenge` (2) | **Challenge slot** | — |
+| Kind | Free (`factors`) | `target` | Sugar |
+|------|------------------|----------|-------|
+| `run` / `mark` / `sidestep` / `declareRun` (4) | **Actor** | dest | — |
+| `throw` / `block` / `foul` / `reserves` / `standUp` (5) | **Actor** | dest | — |
+| `throwTeammateSelect` | **Actor** | dest | — |
+| `quickReleaseThrow` / `throwTeammate` / `placeLooseBall` (3) | `[]` | dest | Actor |
+| `skip` / `declineBonus` / `continueBlock` / `keepOffer` / `reroll` / adjust* / `cancelThrowTeammate` | **Kind only** (`[]`) | sometimes | Actor when wire had them |
+| play-bonus kinds (15) | **Kind** among offered plays | — | — |
+| `chooseBlockFaceOrder` | **FaceOrder** → pack face0..2 | — | Actor |
+| `claimChallenge` / `replaceChallenge` (2) | **Challenge slot** | — | — |
 
 **Implication:** uniqueness stats must use **free** factors only — Do-Over / decline / reroll are kind-only rows, not `actor×target` branching.
 
@@ -368,11 +378,11 @@ How we map today — candidates to treat as separate buckets in stats.
 
 ### Target only (actor sugar)
 
-| Kind | Free | Sugar | Notes |
-|------|------|-------|--------|
-| `throwTeammate` | `[BoardTarget]` | `[Actor]` | Landing after select. |
-| `quickReleaseThrow` | `[BoardTarget]` | `[Actor]` | Victim is fixed. |
-| `placeLooseBall` | `[BoardTarget]` | `[Actor]` | `from` / player from pending. |
+| Kind | Free | `target` | Sugar | Notes |
+|------|------|----------|-------|--------|
+| `throwTeammate` | `[]` | dest | `[Actor]` | Landing after select. |
+| `quickReleaseThrow` | `[]` | dest | `[Actor]` | Victim is fixed. |
+| `placeLooseBall` | `[]` | dest | `[Actor]` | `from` / player from pending. |
 
 ### Kind only (empty free factors)
 
@@ -393,7 +403,7 @@ How we map today — candidates to treat as separate buckets in stats.
 
 ### Pad / unused on the wire
 
-Harness always emits **ten** ints; axes a kind does not use get unused sentinels
-(`ATTACHED_BONUS_UNUSED`, `BLOCK_FACE_PACK_UNUSED`, actor `0`, source unused, …).
+Harness always emits **eleven** ints; axes a kind does not use get unused sentinels
+(`ATTACHED_BONUS_UNUSED`, `BLOCK_FACE_PACK_UNUSED`, actor `0`, target/source unused, …).
 Soft-mask may further **boost** preferred **rows** (never removes a legal row).
 Actor `0` means “no free actor” (kind-only / target-only free rows).

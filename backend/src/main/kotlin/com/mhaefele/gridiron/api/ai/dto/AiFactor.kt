@@ -4,32 +4,22 @@ import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 
 /**
- * One decision factor after [AiLegalChoiceDto.kind], in **question order** for that kind.
+ * Non-pitch decision factors after [AiLegalChoiceDto.kind].
  *
- * **No sentinel / NONE factor.** If a kind does not ask for a board target (or actor, slot, …),
- * that factor is simply **omitted** from [AiLegalChoiceDto.factors].
+ * Pitch dest / source are [AiLegalChoiceDto.target] / [AiLegalChoiceDto.source] ([AiPitchSquare]),
+ * not factors. [AiLegalPacker] writes factors + pitch fields into the legal-row int matrix.
  *
- * Schema 18: free choices in [AiLegalChoiceDto.factors]; pending-fixed / debug extras in
- * [AiLegalChoiceDto.sugarFactors]. [AiLegalPacker] writes both into the legal-row int matrix
- * (actor, kind, target, challenge, attachedBonus, face0..2, sourceX, sourceY) for join-score encoding.
+ * **No sentinel / NONE factor.** Omit unused questions from [AiLegalChoiceDto.factors] /
+ * [AiLegalChoiceDto.sugarFactors].
  *
- * **Index spaces differ by factor:**
- * - [Actor] — roster [playerIndex] `1 .. MAX_PLAYERS_PER_TEAM` (same id on [AiCellPlayerObs])
- * - [BoardTarget] — **pitch only** (`0 .. PITCH_SQUARE_COUNT-1`); dugouts are never targets
- * - [SourceSquare] — metadata pitch coords `x,y` 0-based (`0 .. W-1` / `0 .. H-1`); dugout → omit
- * - [FaceOrder] — pack codes `1..BlockDieFace.entries` (ordinal+1); length ≤ 3
- *
- * Wire: `@JsonTypeInfo` `kind` — `actor` / `boardTarget` / `challengeSlot` / `attachedBonus` /
- * `faceOrder` / `sourceSquare`.
+ * Wire: `@JsonTypeInfo` `kind` — `actor` / `challengeSlot` / `attachedBonus` / `faceOrder`.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "kind")
 @JsonSubTypes(
     JsonSubTypes.Type(value = AiFactor.Actor::class, name = "actor"),
-    JsonSubTypes.Type(value = AiFactor.BoardTarget::class, name = "boardTarget"),
     JsonSubTypes.Type(value = AiFactor.ChallengeSlot::class, name = "challengeSlot"),
     JsonSubTypes.Type(value = AiFactor.AttachedBonus::class, name = "attachedBonus"),
     JsonSubTypes.Type(value = AiFactor.FaceOrder::class, name = "faceOrder"),
-    JsonSubTypes.Type(value = AiFactor.SourceSquare::class, name = "sourceSquare"),
 )
 sealed interface AiFactor {
     /**
@@ -39,13 +29,6 @@ sealed interface AiFactor {
     data class Actor(val playerIndex: Int) : AiFactor {
         init {
             require(playerIndex in 1..AiObsLayout.MAX_PLAYERS_PER_TEAM) { "Actor playerIndex=$playerIndex out of range 1..${AiObsLayout.MAX_PLAYERS_PER_TEAM}" }
-        }
-    }
-
-    /** Destination / path end / block target / reserves placement / … — pitch only. */
-    data class BoardTarget(val boardIndex: Int) : AiFactor {
-        init {
-            require(boardIndex in 0 until AiObsLayout.PITCH_SQUARE_COUNT) { "BoardTarget boardIndex=$boardIndex out of pitch range 0..${AiObsLayout.PITCH_SQUARE_COUNT - 1}" }
         }
     }
 
@@ -72,19 +55,6 @@ sealed interface AiFactor {
             for (code in faces) {
                 require(code in 1 until AiObsLayout.BLOCK_FACE_PACK_SIZE) { "FaceOrder code=$code out of range 1..${AiObsLayout.BLOCK_FACE_PACK_SIZE - 1}" }
             }
-        }
-    }
-
-    /**
-     * **Metadata only** — acting player’s current **pitch** square as 0-based `(x, y)`,
-     * perspective-relative. Sugar so the join-score encoder sees from→to without decoding a
-     * linear index. Omit when the actor is on the dugout (pads unused). Who-id remains roster
-     * [Actor]. Packed last as sourceX / sourceY on the legal-row int matrix.
-     */
-    data class SourceSquare(val x: Int, val y: Int) : AiFactor {
-        init {
-            require(x in 0 until AiObsLayout.PLAY_WIDTH) { "SourceSquare x=$x out of range 0..${AiObsLayout.PLAY_WIDTH - 1}" }
-            require(y in 0 until AiObsLayout.PLAY_HEIGHT) { "SourceSquare y=$y out of range 0..${AiObsLayout.PLAY_HEIGHT - 1}" }
         }
     }
 }

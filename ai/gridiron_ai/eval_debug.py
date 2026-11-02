@@ -9,7 +9,7 @@ from __future__ import annotations
 import fcntl
 from typing import Any
 
-from gridiron_ai.constants import BOARD_SLOT_COUNT, PITCH_SQUARE_COUNT, PLAY_WIDTH
+from gridiron_ai.constants import BOARD_SLOT_COUNT, PITCH_SQUARE_COUNT, PLAY_HEIGHT, PLAY_WIDTH
 from gridiron_ai.paths import SCENARIO_DRAWS_LOG_PATH
 from gridiron_ai.reward import get_absolute_ball_pitch_index
 
@@ -22,13 +22,6 @@ def _scoring_endzone_row_y(*, policy_seat: str) -> int:
     if policy_seat == "AWAY":
         return 1
     raise ValueError(f"policy_seat must be HOME or AWAY, got {policy_seat!r}")
-
-
-def _factor_board_target(legal_choice: dict[str, Any]) -> int | None:
-    for factor in legal_choice.get("factors") or []:
-        if factor.get("kind") == "boardTarget":
-            return int(factor["boardIndex"])
-    return None
 
 
 class ScenarioEvalDebug:
@@ -74,7 +67,7 @@ class ScenarioEvalDebug:
         self._first_action_legal_count = int(first_action_legal_count)
         ball_index = get_absolute_ball_pitch_index(observation)
         if ball_index is not None:
-            self._initial_ball = _board_slot_label(ball_index)
+            self._initial_ball = _pitch_xy_label(ball_index % PLAY_WIDTH, ball_index // PLAY_WIDTH)
         us, them = _pitch_player_position_labels(observation)
         self._us_positions = ";".join(us) if us else None
         self._them_positions = ";".join(them) if them else None
@@ -246,23 +239,29 @@ class ScenarioEvalDebug:
         tag = str(legal_choice.get("kind") or "?")
 
         actor_player_index: int | None = None
-        target: int | None = None
         challenge_slot: int | None = None
         attached_bonus: int | None = None
         for factor in list(legal_choice.get("factors") or []) + list(legal_choice.get("sugarFactors") or []):
             factor_kind = factor.get("kind")
             if factor_kind == "actor":
                 actor_player_index = int(factor["playerIndex"])
-            elif factor_kind == "boardTarget":
-                target = int(factor["boardIndex"])
             elif factor_kind == "challengeSlot":
                 challenge_slot = int(factor["slot"])
             elif factor_kind == "attachedBonus":
                 attached_bonus = int(factor["index"])
 
-        source: int | None = None
+        target_xy: tuple[int, int] | None = None
+        target = legal_choice.get("target")
+        if target:
+            x = int(target["x"])
+            y = int(target["y"])
+            target_xy = (x, y) if 0 <= x < PLAY_WIDTH and 0 <= y < PLAY_HEIGHT else None
+
+        source_xy: tuple[int, int] | None = None
+        source_label: str | None = None
         if actor_player_index is not None and observation is not None:
-            source = _board_index_for_player_index(observation, actor_player_index)
+            source_label = _actor_square_label(observation, actor_player_index)
+            source_xy = _pitch_xy_for_us_player(observation, actor_player_index)
 
         extras: list[str] = []
         if challenge_slot is not None:
@@ -272,25 +271,25 @@ class ScenarioEvalDebug:
 
         suffix = ("*" if expected_move else "") + ("!" if scored_touchdown else "") + ("+" if acquired_card else "")
 
-        if source is not None and target is not None:
-            from_label = _board_slot_label(source)
-            to_label = _board_slot_label(target)
-            if source == target:
+        if source_xy is not None and target_xy is not None:
+            from_label = _pitch_xy_label(*source_xy)
+            to_label = _pitch_xy_label(*target_xy)
+            if source_xy == target_xy:
                 body = from_label
             else:
                 body = f"{from_label}->{to_label}"
-        elif source is not None:
-            body = _board_slot_label(source)
+        elif source_label is not None:
+            body = source_label
         elif actor_player_index is not None:
             body = f"p{actor_player_index}"
-        elif target is not None:
-            body = _board_slot_label(target)
+        elif target_xy is not None:
+            body = _pitch_xy_label(*target_xy)
         elif extras:
             body = ",".join(extras)
         else:
             return f"{tag}{suffix}"
 
-        if extras and (source is not None or actor_player_index is not None or target is not None):
+        if extras and (source_label is not None or actor_player_index is not None or target_xy is not None):
             body = f"{body},{','.join(extras)}"
         return f"{tag}({body}){suffix}"
 
@@ -355,7 +354,12 @@ def _format_expected_moves(
     return count, labels[:2]
 
 
-def _board_index_for_player_index(observation: dict[str, Any], player_index: int) -> int | None:
+def _pitch_xy_label(x0: int, y0: int) -> str:
+    """Rulebook-style ``x,y`` from 0-based pitch coords."""
+    return f"{x0 + 1},{y0 + 1}"
+
+
+def _cell_index_for_us_player(observation: dict[str, Any], player_index: int) -> int | None:
     """Pitch or bench slot holding US ``player_index`` (roster ids collide across teams)."""
     cells = observation.get("cells") or []
     fallback: int | None = None
@@ -371,12 +375,22 @@ def _board_index_for_player_index(observation: dict[str, Any], player_index: int
     return fallback
 
 
-def _board_slot_label(board_index: int) -> str:
-    if 0 <= board_index < PITCH_SQUARE_COUNT:
-        x = board_index % PLAY_WIDTH + 1
-        y = board_index // PLAY_WIDTH + 1
-        return f"{x},{y}"
-    return f"#{board_index}"
+def _pitch_xy_for_us_player(observation: dict[str, Any], player_index: int) -> tuple[int, int] | None:
+    """0-based pitch ``(x, y)`` for US ``player_index``, or None if dugout / missing."""
+    index = _cell_index_for_us_player(observation, player_index)
+    if index is None or not (0 <= index < PITCH_SQUARE_COUNT):
+        return None
+    return index % PLAY_WIDTH, index // PLAY_WIDTH
+
+
+def _actor_square_label(observation: dict[str, Any], player_index: int) -> str | None:
+    """Display label for the actor’s square (pitch ``x,y`` or ``#bench``)."""
+    index = _cell_index_for_us_player(observation, player_index)
+    if index is None:
+        return None
+    if 0 <= index < PITCH_SQUARE_COUNT:
+        return _pitch_xy_label(index % PLAY_WIDTH, index // PLAY_WIDTH)
+    return f"#{index}"
 
 
 def _pitch_player_position_labels(observation: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -388,7 +402,7 @@ def _pitch_player_position_labels(observation: dict[str, Any]) -> tuple[list[str
         player = cells[index].get("player")
         if not player:
             continue
-        label = _board_slot_label(index)
+        label = _pitch_xy_label(index % PLAY_WIDTH, index // PLAY_WIDTH)
         team_rel = player.get("teamRel")
         if team_rel in (0, "US"):
             us.append(label)

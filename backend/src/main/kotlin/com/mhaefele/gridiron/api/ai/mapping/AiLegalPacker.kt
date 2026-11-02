@@ -8,9 +8,9 @@ import org.springframework.stereotype.Component
 /**
  * Policy legal-row int matrix from harness rows — matches Python gym ``legal_moves``.
  *
- * Identity columns: actor, kind, boardTarget, challengeSlot, attachedBonus, face0..2
- * (who-id = roster [AiFactor.Actor], not board coordinate).
- * Metadata tail: [AiFactor.SourceSquare] as sourceX / sourceY (0-based pitch coords).
+ * Identity columns: actor, kind, targetX, targetY, challengeSlot, attachedBonus, face0..2
+ * (who-id = roster [AiFactor.Actor]; dest = [AiLegalChoiceDto.target]).
+ * Metadata tail: [AiLegalChoiceDto.source] as sourceX / sourceY.
  */
 @Component
 class AiLegalPacker {
@@ -20,22 +20,14 @@ class AiLegalPacker {
     companion object {
         fun harnessFactorKey(choice: AiLegalChoiceDto): List<Int> {
             var actor = AiObsLayout.UNUSED_PLAYER_INDEX
-            var boardTarget = AiObsLayout.PITCH_SQUARE_COUNT
             var challengeSlot = AiObsLayout.ACTIVE_CHALLENGE_SLOTS
             var attachedBonus = AiObsLayout.ATTACHED_BONUS_UNUSED
-            var sourceX = AiObsLayout.SOURCE_X_UNUSED
-            var sourceY = AiObsLayout.SOURCE_Y_UNUSED
             val faces = IntArray(AiObsLayout.MAX_HELD_BLOCK_FACES) { AiObsLayout.BLOCK_FACE_PACK_UNUSED }
             for (factor in choice.factors + choice.sugarFactors) {
                 when (factor) {
                     is AiFactor.Actor         -> actor = factor.playerIndex
-                    is AiFactor.BoardTarget   -> boardTarget = factor.boardIndex
                     is AiFactor.ChallengeSlot -> challengeSlot = factor.slot
                     is AiFactor.AttachedBonus -> attachedBonus = factor.index
-                    is AiFactor.SourceSquare  -> {
-                        sourceX = factor.x
-                        sourceY = factor.y
-                    }
                     is AiFactor.FaceOrder     -> {
                         require(factor.faces.size <= AiObsLayout.MAX_HELD_BLOCK_FACES) { "FaceOrder length ${factor.faces.size} > ${AiObsLayout.MAX_HELD_BLOCK_FACES}" }
                         for (i in factor.faces.indices) {
@@ -44,17 +36,20 @@ class AiLegalPacker {
                     }
                 }
             }
+            val target = choice.target
+            val source = choice.source
             return listOf(
                 actor,
                 choice.kindIndex,
-                boardTarget,
+                target?.x ?: AiObsLayout.TARGET_X_UNUSED,
+                target?.y ?: AiObsLayout.TARGET_Y_UNUSED,
                 challengeSlot,
                 attachedBonus,
                 faces[0],
                 faces[1],
                 faces[2],
-                sourceX,
-                sourceY,
+                source?.x ?: AiObsLayout.SOURCE_X_UNUSED,
+                source?.y ?: AiObsLayout.SOURCE_Y_UNUSED,
             )
         }
     }

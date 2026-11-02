@@ -3,11 +3,12 @@ package com.mhaefele.gridiron.api.ai.mapping
 import com.mhaefele.gridiron.api.ai.dto.AiFactor
 import com.mhaefele.gridiron.api.ai.dto.AiLegalChoiceDto
 import com.mhaefele.gridiron.api.ai.dto.AiLegalKind
-import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
+import com.mhaefele.gridiron.api.ai.dto.AiPitchSquare
 import com.mhaefele.gridiron.api.ai.training.TrainingScenarios
 import com.mhaefele.gridiron.api.ai.training.TrainingSolvableMoveSearch
 import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.model.MatchState
+import com.mhaefele.gridiron.model.board.PlayerStatus
 import com.mhaefele.gridiron.shared.Coordinate
 import com.mhaefele.gridiron.shared.PlayerId
 import com.mhaefele.gridiron.shared.TeamSide
@@ -55,23 +56,24 @@ class AiLegalChoiceMapper(
         softMaskLegal: Boolean = false,
     ): AiLegalChoiceDto {
         val kind = action.toAiLegalKind()
-        val (free, sugar) = action.toAiFreeAndSugarFactors(perspectiveSeat)
-        val sugarWithBonus = buildList {
-            addAll(sugar)
+        val parts = action.toAiRowParts(perspectiveSeat)
+        val sugar = buildList {
+            addAll(parts.sugar)
             action.requiredBonusCard?.let { add(AiFactor.AttachedBonus(AttachedBonusEncoding.indexFor(it))) }
-            playerIdOrNull(action)?.let { playerId ->
-                val boardIndex = gameState.perspectiveBoardIndexOf(state.board, playerId, perspectiveSeat)
-                if (AiObsLayout.isPitchIndex(boardIndex)) {
-                    val (x1, y1) = AiObsLayout.coordinate(boardIndex)
-                    add(AiFactor.SourceSquare(x = x1 - 1, y = y1 - 1))
-                }
+        }
+        val source = playerIdOrNull(action)?.let { playerId ->
+            when (state.board.player(playerId).status) {
+                PlayerStatus.STANDING, PlayerStatus.PRONE -> gameState.perspectivePitchXy0(state.board.findSquare(playerId).coordinate, perspectiveSeat)
+                PlayerStatus.RESERVES                     -> null
             }
         }
         return AiLegalChoiceDto(
             kind = kind,
             kindIndex = kind.ordinal,
-            factors = free,
-            sugarFactors = sugarWithBonus,
+            factors = parts.free,
+            sugarFactors = sugar,
+            target = parts.target,
+            source = source,
             legalActionId = action.id,
             potentialChallengeClaims = action.potentialChallengeClaims,
             passingLegal = passingLegal,
@@ -133,39 +135,37 @@ class AiLegalChoiceMapper(
             is LegalAction.ReplaceChallenge     -> AiLegalKind.replaceChallenge
         }
 
-    /** Free factors (row-defining) + sugar (pending-fixed / attached bonus). */
-    private fun LegalAction.toAiFreeAndSugarFactors(
-        perspectiveSeat: TeamSide,
-    ): Pair<List<AiFactor>, List<AiFactor>> {
+    /** Free / sugar non-pitch factors + optional dest [AiPitchSquare]. */
+    private fun LegalAction.toAiRowParts(perspectiveSeat: TeamSide): RowParts {
         fun actorOf(playerId: PlayerId) = AiFactor.Actor(gameState.aiPlayerIndex(playerId))
-        fun pitchOf(coord: Coordinate) = AiFactor.BoardTarget(gameState.perspectivePitchIndex(coord, perspectiveSeat))
+        fun pitchOf(coord: Coordinate) = gameState.perspectivePitchXy0(coord, perspectiveSeat)
 
         return when (this) {
-            is LegalAction.PathMovement         -> listOf(actorOf(playerId), pitchOf(path.squares.last())) to emptyList()
-            is LegalAction.DeclareRun           -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.Throw                -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.ThrowTeammateSelect  -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.ThrowTeammate        -> listOf(pitchOf(targetCoordinate)) to listOf(actorOf(playerId))
-            is LegalAction.CancelThrowTeammate  -> emptyList<AiFactor>() to listOf(actorOf(playerId))
-            is LegalAction.Block                -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.Foul                 -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.StandUp              -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.Reserves             -> listOf(actorOf(playerId), pitchOf(targetCoordinate)) to emptyList()
-            is LegalAction.Skip                 -> emptyList<AiFactor>() to listOf(actorOf(playerId))
-            is LegalAction.DeclineBonus         -> emptyList<AiFactor>() to emptyList()
-            is LegalAction.ContinueBlock        -> emptyList<AiFactor>() to listOf(actorOf(playerId), pitchOf(targetCoordinate))
-            is LegalAction.PlaceLooseBall       -> listOf(pitchOf(to)) to listOf(actorOf(playerId))
-            is LegalAction.ChooseBlockReroll    -> emptyList<AiFactor>() to listOf(actorOf(playerId))
-            is LegalAction.ChooseThrowReroll    -> emptyList<AiFactor>() to listOf(actorOf(playerId))
+            is LegalAction.PathMovement         -> RowParts(listOf(actorOf(playerId)), emptyList(), pitchOf(path.squares.last()))
+            is LegalAction.DeclareRun           -> RowParts(listOf(actorOf(playerId)), emptyList(), pitchOf(targetCoordinate))
+            is LegalAction.Throw                -> RowParts(listOf(actorOf(playerId)), emptyList(), pitchOf(targetCoordinate))
+            is LegalAction.ThrowTeammateSelect  -> RowParts(listOf(actorOf(playerId)), emptyList(), pitchOf(targetCoordinate))
+            is LegalAction.ThrowTeammate        -> RowParts(emptyList(), listOf(actorOf(playerId)), pitchOf(targetCoordinate))
+            is LegalAction.CancelThrowTeammate  -> RowParts(emptyList(), listOf(actorOf(playerId)))
+            is LegalAction.Block                -> RowParts(listOf(actorOf(playerId)), emptyList(), pitchOf(targetCoordinate))
+            is LegalAction.Foul                 -> RowParts(listOf(actorOf(playerId)), emptyList(), pitchOf(targetCoordinate))
+            is LegalAction.StandUp              -> RowParts(listOf(actorOf(playerId)), emptyList(), pitchOf(targetCoordinate))
+            is LegalAction.Reserves             -> RowParts(listOf(actorOf(playerId)), emptyList(), pitchOf(targetCoordinate))
+            is LegalAction.Skip                 -> RowParts(emptyList(), listOf(actorOf(playerId)))
+            is LegalAction.DeclineBonus         -> RowParts(emptyList(), emptyList())
+            is LegalAction.ContinueBlock        -> RowParts(emptyList(), listOf(actorOf(playerId)), pitchOf(targetCoordinate))
+            is LegalAction.PlaceLooseBall       -> RowParts(emptyList(), listOf(actorOf(playerId)), pitchOf(to))
+            is LegalAction.ChooseBlockReroll    -> RowParts(emptyList(), listOf(actorOf(playerId)))
+            is LegalAction.ChooseThrowReroll    -> RowParts(emptyList(), listOf(actorOf(playerId)))
             is LegalAction.ChooseBlockFaceOrder ->
-                listOf(AiFactor.FaceOrder(orderedFaces.map { it.ordinal + 1 })) to listOf(actorOf(playerId))
-            is LegalAction.AdjustThrowByDoOver  -> emptyList<AiFactor>() to listOf(actorOf(playerId), pitchOf(destination))
-            is LegalAction.AdjustBlockByDoOver  -> emptyList<AiFactor>() to listOf(actorOf(playerId), pitchOf(destination))
-            is LegalAction.AdjustArmourByDoOver -> emptyList<AiFactor>() to listOf(actorOf(targetId))
-            is LegalAction.QuickReleaseThrow    -> listOf(pitchOf(targetCoordinate)) to listOf(actorOf(playerId))
-            is LegalAction.PlayBonusCard        -> emptyList<AiFactor>() to emptyList()
-            is LegalAction.ClaimChallenge       -> listOf(AiFactor.ChallengeSlot(slotIndex)) to emptyList()
-            is LegalAction.ReplaceChallenge     -> listOf(AiFactor.ChallengeSlot(slotIndex)) to emptyList()
+                RowParts(listOf(AiFactor.FaceOrder(orderedFaces.map { it.ordinal + 1 })), listOf(actorOf(playerId)))
+            is LegalAction.AdjustThrowByDoOver  -> RowParts(emptyList(), listOf(actorOf(playerId)), pitchOf(destination))
+            is LegalAction.AdjustBlockByDoOver  -> RowParts(emptyList(), listOf(actorOf(playerId)), pitchOf(destination))
+            is LegalAction.AdjustArmourByDoOver -> RowParts(emptyList(), listOf(actorOf(targetId)))
+            is LegalAction.QuickReleaseThrow    -> RowParts(emptyList(), listOf(actorOf(playerId)), pitchOf(targetCoordinate))
+            is LegalAction.PlayBonusCard        -> RowParts(emptyList(), emptyList())
+            is LegalAction.ClaimChallenge       -> RowParts(listOf(AiFactor.ChallengeSlot(slotIndex)), emptyList())
+            is LegalAction.ReplaceChallenge     -> RowParts(listOf(AiFactor.ChallengeSlot(slotIndex)), emptyList())
         }
     }
 
@@ -178,4 +178,10 @@ class AiLegalChoiceMapper(
             check(prior == null) { "Duplicate legal-row pack $key for ${prior!!.kind}/${prior.legalActionId} and ${choice.kind}/${choice.legalActionId}" }
         }
     }
+
+    private data class RowParts(
+        val free: List<AiFactor>,
+        val sugar: List<AiFactor>,
+        val target: AiPitchSquare? = null,
+    )
 }

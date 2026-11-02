@@ -4,6 +4,7 @@ import com.mhaefele.gridiron.api.ai.dto.HarnessRewardCellDto
 import com.mhaefele.gridiron.api.ai.dto.HarnessRewardPlayerDto
 import com.mhaefele.gridiron.api.ai.dto.HarnessRewardSnapshotDto
 import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
+import com.mhaefele.gridiron.api.ai.dto.AiPitchSquare
 import com.mhaefele.gridiron.api.ai.dto.AiTeamRel
 import com.mhaefele.gridiron.api.ai.dto.AiTerrain
 import com.mhaefele.gridiron.api.ai.dto.nested.AiCellObs
@@ -149,6 +150,10 @@ class AiGameStateMapper {
 
     fun perspectivePitchIndex(coord: Coordinate, perspectiveSeat: TeamSide): Int =
         AiObsLayout.toPerspectiveIndex(pitchIndex(coord), perspectiveSeat)
+
+    /** Perspective-relative [AiPitchSquare] for [AiLegalChoiceDto.target] / [AiLegalChoiceDto.source]. */
+    fun perspectivePitchXy0(coord: Coordinate, perspectiveSeat: TeamSide): AiPitchSquare =
+        AiObsLayout.toPerspectivePitchXy0(coord, perspectiveSeat)
 
     private fun requirePitchMatchesAiLayout(state: MatchState) {
         val def = PitchCatalog.definition(state.config.pitchDefinitionId)

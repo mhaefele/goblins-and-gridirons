@@ -337,17 +337,27 @@ def endzone_proximity(pitch_index: int) -> float:
     return (y - 1) / _MAX_END_ZONE_ROW_DIST
 
 
-def is_scoring_endzone_index(pitch_index: int) -> bool:
-    """True when ``pitch_index`` is on the perspective scoring end-zone row."""
-    return 0 <= pitch_index < PITCH_SQUARE_COUNT and pitch_index // PLAY_WIDTH == PLAY_HEIGHT - 1
+def is_scoring_endzone_xy(x: int, y: int) -> bool:
+    """True when 0-based pitch ``(x, y)`` is on the perspective scoring end-zone row."""
+    return 0 <= x < PLAY_WIDTH and y == PLAY_HEIGHT - 1
 
 
-def is_loose_ball_pitch_index(observation_from_server: dict[str, Any], pitch_index: int) -> bool:
-    """True when the ball is loose (hasBall, no occupant) on that pitch square."""
+def _cell_at_xy(observation_from_server: dict[str, Any], x: int, y: int) -> dict[str, Any] | None:
+    """Nested obs ``cells`` are still a flat pitch+bench list — only lookup site for dest xy."""
+    if not (0 <= x < PLAY_WIDTH and 0 <= y < PLAY_HEIGHT):
+        return None
     cells = observation_from_server.get("cells") or []
-    if pitch_index < 0 or pitch_index >= min(len(cells), PITCH_SQUARE_COUNT):
+    index = y * PLAY_WIDTH + x
+    if index >= len(cells):
+        return None
+    return cells[index]
+
+
+def is_loose_ball_at_xy(observation_from_server: dict[str, Any], x: int, y: int) -> bool:
+    """True when the ball is loose (hasBall, no occupant) on that pitch square."""
+    cell = _cell_at_xy(observation_from_server, x, y)
+    if cell is None:
         return False
-    cell = cells[pitch_index]
     return bool(cell.get("hasBall")) and cell.get("player") is None
 
 
@@ -362,10 +372,10 @@ def is_run_onto_loose_ball(
         return False
     if us_holds_ball(observation_before_move):
         return False
-    target = _factor_board_target(legal_choice)
+    target = _factor_board_target_xy(legal_choice)
     if target is None:
         return False
-    return is_loose_ball_pitch_index(observation_before_move, target)
+    return is_loose_ball_at_xy(observation_before_move, target[0], target[1])
 
 
 def them_in_dugout(observation_from_server: dict[str, Any]) -> int:
@@ -390,12 +400,17 @@ def _claims_all_uncertain(legal_choice: dict[str, Any] | None) -> bool:
     return all(claim.get("certainty") in ("POTENTIAL", 1) for claim in claims)
 
 
-def _factor_board_target(legal_choice: dict[str, Any] | None) -> int | None:
+def _factor_board_target_xy(legal_choice: dict[str, Any] | None) -> tuple[int, int] | None:
+    """0-based pitch ``(x, y)`` from harness ``target``, or None if absent / out of range."""
     if not legal_choice:
         return None
-    for factor in legal_choice.get("factors") or []:
-        if factor.get("kind") == "boardTarget":
-            return int(factor["boardIndex"])
+    target = legal_choice.get("target")
+    if not target:
+        return None
+    x = int(target["x"])
+    y = int(target["y"])
+    if 0 <= x < PLAY_WIDTH and 0 <= y < PLAY_HEIGHT:
+        return x, y
     return None
 
 
@@ -422,11 +437,11 @@ def _us_ball_carrier_player_index(observation_from_server: dict[str, Any]) -> in
     return int(player["playerIndex"])
 
 
-def _them_ball_carrier_at_pitch_index(observation_from_server: dict[str, Any], pitch_index: int) -> bool:
-    cells = observation_from_server.get("cells") or []
-    if pitch_index < 0 or pitch_index >= min(len(cells), PITCH_SQUARE_COUNT):
+def _them_ball_carrier_at_xy(observation_from_server: dict[str, Any], x: int, y: int) -> bool:
+    cell = _cell_at_xy(observation_from_server, x, y)
+    if cell is None:
         return False
-    player = _player_on_ball(cells[pitch_index])
+    player = _player_on_ball(cell)
     return bool(player and _is_them_team_rel(player.get("teamRel")))
 
 
@@ -437,10 +452,10 @@ def is_block_on_them_ball_carrier(
     """True when ``legal_choice`` is a block whose target holds the ball for Them."""
     if not legal_choice or str(legal_choice.get("kind")) != "block":
         return False
-    target = _factor_board_target(legal_choice)
+    target = _factor_board_target_xy(legal_choice)
     if target is None:
         return False
-    return _them_ball_carrier_at_pitch_index(observation_before_move, target)
+    return _them_ball_carrier_at_xy(observation_before_move, target[0], target[1])
 
 
 def shaping_reward(
@@ -462,7 +477,7 @@ def shaping_reward(
     before_turn = int(observation_before_move["turnNumber"])
     after_turn = int(next_observation["turnNumber"])
     kind = str(legal_choice.get("kind")) if legal_choice else ""
-    target = _factor_board_target(legal_choice)
+    target = _factor_board_target_xy(legal_choice)
 
     if shaping.idle_turn_penalty > 0.0 and after_turn > before_turn:
         if int(next_observation["scoreUs"]) <= turn_start_score_us:
@@ -502,7 +517,7 @@ def shaping_reward(
         shaping.empty_scoring_endzone_penalty > 0.0
         and kind in ("run", "sidestep")
         and target is not None
-        and is_scoring_endzone_index(target)
+        and is_scoring_endzone_xy(target[0], target[1])
         and not us_holds_ball(observation_before_move)
     ):
         extra -= shaping.empty_scoring_endzone_penalty

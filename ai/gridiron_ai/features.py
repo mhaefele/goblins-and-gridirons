@@ -84,8 +84,8 @@ _HELD_CHECK_WIDTH = EMBED_DIM + 1 + MAX_HELD_BLOCK_FACES * EMBED_DIM
 LEGAL_ROW_FEATURE_DIM = (
     EMBED_DIM  # actor
     + EMBED_DIM  # kind
-    + 3  # target xy + gate (decoded from pitch index)
-    + 3  # source xy + gate (0-based ints from Kotlin; no index decode)
+    + 3  # target xy + gate (0-based ints from Kotlin)
+    + 3  # source xy + gate (0-based ints from Kotlin)
     + (EMBED_DIM + 1)  # challenge condition + points
     + EMBED_DIM  # attached bonus
     + MAX_HELD_BLOCK_FACES * EMBED_DIM  # face0..2
@@ -151,26 +151,26 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
     def encode_legal_rows(self, legal_moves: th.Tensor, challenges: th.Tensor) -> th.Tensor:
         """Encode each legal-row int tuple like board channels — shared embs + pitch xy.
 
-        ``legal_moves``: (N, R, 10) actor, kind, boardTarget, challengeSlot, attachedBonus,
+        ``legal_moves``: (N, R, 11) actor, kind, targetX, targetY, challengeSlot, attachedBonus,
         face0..2, sourceX, sourceY (−1 pad rows). ``challenges``: (N, 3, 2) board challenge slots.
         Unused axes → zeros (no pad-id embedding).
         """
         actors = legal_moves[..., 0].long()
         kinds = legal_moves[..., 1].long()
-        targets = legal_moves[..., 2].long()
-        slots = legal_moves[..., 3].long()
-        bonuses = legal_moves[..., 4].long()
-        faces = legal_moves[..., 5:8].long()
-        source_xs = legal_moves[..., 8].long()
-        source_ys = legal_moves[..., 9].long()
+        target_xs = legal_moves[..., 2].long()
+        target_ys = legal_moves[..., 3].long()
+        slots = legal_moves[..., 4].long()
+        bonuses = legal_moves[..., 5].long()
+        faces = legal_moves[..., 6:9].long()
+        source_xs = legal_moves[..., 9].long()
+        source_ys = legal_moves[..., 10].long()
 
         actor_e = self.player_index_emb(self._enum_index(actors.clamp(min=0).float(), PLAYER_INDEX_VOCAB))
         kind_e = self.kind_emb(kinds.clamp(min=0, max=LEGAL_ACTION_KIND_COUNT - 1))
 
-        has_target = (targets >= 0) & (targets < PITCH_SQUARE_COUNT)
-        safe_t = targets.clamp(0, PITCH_SQUARE_COUNT - 1)
-        y_norm = (safe_t // PLAY_WIDTH).float() / float(PLAY_HEIGHT - 1)
-        x_norm = (safe_t % PLAY_WIDTH).float() / float(PLAY_WIDTH - 1)
+        has_target = (target_xs >= 0) & (target_xs < PLAY_WIDTH) & (target_ys >= 0) & (target_ys < PLAY_HEIGHT)
+        x_norm = target_xs.clamp(0, PLAY_WIDTH - 1).float() / float(PLAY_WIDTH - 1)
+        y_norm = target_ys.clamp(0, PLAY_HEIGHT - 1).float() / float(PLAY_HEIGHT - 1)
         gate_t = has_target.to(dtype=x_norm.dtype)
         target_feat = th.stack([x_norm * gate_t, y_norm * gate_t, gate_t], dim=-1)
 
