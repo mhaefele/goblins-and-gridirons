@@ -4,7 +4,7 @@ Phased plan for teaching the MaskablePPO policy. **Keep this file current** as g
 move — if a phase starts growing extra incentives, curricula knobs, or special cases,
 that is a signal we are adding complexity too early.
 
-**Owners / file map:** [`OWNERSHIP.md`](OWNERSHIP.md). Soft-mask / action heads:
+**Owners / file map:** [`OWNERSHIP.md`](OWNERSHIP.md). Soft-mask / legal-row sampling:
 [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md). Run commands: [`README.md`](README.md).
 
 Related code: `reward.py`, `scenario_curriculum.py`, `training_phases.py`,

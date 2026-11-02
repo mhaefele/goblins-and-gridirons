@@ -28,7 +28,7 @@ from gridiron_ai.constants import (
     BLOCK_FACE_PACK_UNUSED,
     BONUS_HAND_SLOTS,
     BONUS_PLAY_VOCAB,
-    KIND_HEAD_SIZE,
+    LEGAL_ACTION_KIND_COUNT,
     CELL_CH_ABILITY,
     CELL_CH_ARMOUR,
     CELL_CH_BLOCK_DICE,
@@ -80,12 +80,12 @@ _OCCUPANT_WIDTH = 5 * EMBED_DIM + 16
 _PITCH_EXTRA = 3
 # heldCheck: kind emb + d6/6 + 3 face embs.
 _HELD_CHECK_WIDTH = EMBED_DIM + 1 + MAX_HELD_BLOCK_FACES * EMBED_DIM
-# Legal row: actor + kind + (x,y,has_tgt) + (x,y,has_src) + challenge + bonus + faces.
+# Legal row: actor + kind + (x,y,has_tgt) + (src_x,src_y,has_src) + challenge + bonus + faces.
 LEGAL_ROW_FEATURE_DIM = (
     EMBED_DIM  # actor
     + EMBED_DIM  # kind
-    + 3  # target xy + gate
-    + 3  # source xy + gate (pitch only; dugout sources gate off)
+    + 3  # target xy + gate (decoded from pitch index)
+    + 3  # source xy + gate (0-based ints from Kotlin; no index decode)
     + (EMBED_DIM + 1)  # challenge condition + points
     + EMBED_DIM  # attached bonus
     + MAX_HELD_BLOCK_FACES * EMBED_DIM  # face0..2
@@ -120,7 +120,7 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         self.held_kind_emb = nn.Embedding(AI_HELD_CHECK_KIND_VOCAB, EMBED_DIM)
         self.block_face_emb = nn.Embedding(BLOCK_DIE_FACE_VOCAB, EMBED_DIM)
         # Action-menu kind / attached-bonus index — same emb width as board enums.
-        self.kind_emb = nn.Embedding(KIND_HEAD_SIZE, EMBED_DIM)
+        self.kind_emb = nn.Embedding(LEGAL_ACTION_KIND_COUNT, EMBED_DIM)
         self.attached_bonus_emb = nn.Embedding(ATTACHED_BONUS_UNUSED + 1, EMBED_DIM)
 
         # Pitch (row, col) in 0..H-1 / 0..W-1 — buffers move with .to(device).
@@ -151,8 +151,8 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
     def encode_legal_rows(self, legal_moves: th.Tensor, challenges: th.Tensor) -> th.Tensor:
         """Encode each legal-row int tuple like board channels — shared embs + pitch xy.
 
-        ``legal_moves``: (N, R, 9) actor, kind, boardTarget, challengeSlot, attachedBonus,
-        face0..2, sourceSquare (−1 pad rows). ``challenges``: (N, 3, 2) board challenge slots.
+        ``legal_moves``: (N, R, 10) actor, kind, boardTarget, challengeSlot, attachedBonus,
+        face0..2, sourceX, sourceY (−1 pad rows). ``challenges``: (N, 3, 2) board challenge slots.
         Unused axes → zeros (no pad-id embedding).
         """
         actors = legal_moves[..., 0].long()
@@ -161,10 +161,11 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         slots = legal_moves[..., 3].long()
         bonuses = legal_moves[..., 4].long()
         faces = legal_moves[..., 5:8].long()
-        sources = legal_moves[..., 8].long()
+        source_xs = legal_moves[..., 8].long()
+        source_ys = legal_moves[..., 9].long()
 
         actor_e = self.player_index_emb(self._enum_index(actors.clamp(min=0).float(), PLAYER_INDEX_VOCAB))
-        kind_e = self.kind_emb(kinds.clamp(min=0, max=KIND_HEAD_SIZE - 1))
+        kind_e = self.kind_emb(kinds.clamp(min=0, max=LEGAL_ACTION_KIND_COUNT - 1))
 
         has_target = (targets >= 0) & (targets < PITCH_SQUARE_COUNT)
         safe_t = targets.clamp(0, PITCH_SQUARE_COUNT - 1)
@@ -173,12 +174,10 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         gate_t = has_target.to(dtype=x_norm.dtype)
         target_feat = th.stack([x_norm * gate_t, y_norm * gate_t, gate_t], dim=-1)
 
-        # Metadata geometry (pack tail): pitch sources get xy; dugout gate off.
-        # Who-id remains roster actor — sourceSquare does not identify the legal choice.
-        has_source = (sources >= 0) & (sources < PITCH_SQUARE_COUNT)
-        safe_src = sources.clamp(0, PITCH_SQUARE_COUNT - 1)
-        src_y = (safe_src // PLAY_WIDTH).float() / float(PLAY_HEIGHT - 1)
-        src_x = (safe_src % PLAY_WIDTH).float() / float(PLAY_WIDTH - 1)
+        # Metadata (pack tail): 0-based pitch x/y shipped from Kotlin — normalize only.
+        has_source = (source_xs >= 0) & (source_xs < PLAY_WIDTH) & (source_ys >= 0) & (source_ys < PLAY_HEIGHT)
+        src_x = source_xs.clamp(0, PLAY_WIDTH - 1).float() / float(PLAY_WIDTH - 1)
+        src_y = source_ys.clamp(0, PLAY_HEIGHT - 1).float() / float(PLAY_HEIGHT - 1)
         gate_src = has_source.to(dtype=src_x.dtype)
         source_feat = th.stack([src_x * gate_src, src_y * gate_src, gate_src], dim=-1)
 

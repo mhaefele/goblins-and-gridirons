@@ -1,6 +1,11 @@
-# Action sampling — heads, factor maps, inventory
+# Action sampling — legal rows, factor pack, inventory
 
-Source of truth for **how the policy encodes and samples actions**. Schema 16+ scores complete legal rows ([Policy action](#policy-action-schema-16)); older factor-head inventory below is historical context for packing widths. Backlog stub: [AI2.11](BACKLOG.md#ai211--action-sampling--factor-space-inventory). **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md).
+Source of truth for **how the policy encodes and samples actions**. Schema 16+
+**join-scores complete legal rows** ([Policy action](#policy-action-schema-18));
+there are no independent MultiDiscrete factor heads on the live path. Older
+factor-head inventory below is **historical** (schema ≤15) for packing archaeology
+only. Backlog stub: [AI2.11](BACKLOG.md#ai211--action-sampling--factor-space-inventory).
+**Owners:** [`OWNERSHIP.md`](OWNERSHIP.md).
 
 Mapping truth: [`AiLegalChoiceMapping.kt`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/mapping/AiLegalChoiceMapping.kt) (+ [`AiLegalKind`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiLegalKind.kt)).
 
@@ -8,32 +13,44 @@ Mapping truth: [`AiLegalChoiceMapping.kt`](../backend/src/main/kotlin/com/mhaefe
 
 ## Inventory
 
-**Next steps to improve action representation & sampling** — what each packed factor means, and how we pick among legal rows. Goal: make legal choices easier to learn and score correctly, not richer board obs ([AI2.8](BACKLOG.md#ai28--evaluate-obs-enrichment-vs-truncated-legals) / [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape)) or reward ([AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2)).
+**Next steps to improve action representation & sampling** — what each packed
+factor means, and how we pick among legal rows. Goal: make legal choices easier
+to learn and score correctly, not richer board obs
+([AI2.8](BACKLOG.md#ai28--evaluate-obs-enrichment-vs-fix-legals) /
+[AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape)) or reward
+([AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2)).
 
 Two levers:
 
-1. **Representation** — shrink or re-basis packed row factors so indices mean the right thing (pitch-only targets, bonus-play identity **once**, optional path merges / roster actor).
-2. **Sampling procedure** — **schema 16:** join-score each legal row given the board latent (`Discrete` + MaskablePPO). Soft preference bias toward `expectedScenarioMove` rows (schema 12, row-level under 16). Factor MultiDiscrete remask / head conditioning was removed.
+1. **Representation** — shrink or re-basis packed row factors so columns mean the
+   right thing (pitch-only targets, bonus-play identity **once**, optional path
+   merges / relative dest encoding).
+2. **Sampling procedure** — **schema 16+:** join-score each legal row given the
+   board latent (`Discrete(MAX_LEGAL_MOVES)` + MaskablePPO). Soft preference bias
+   toward `expectedScenarioMove` rows (schema 12, row-level under 16). Factor
+   MultiDiscrete remask / head conditioning is **gone** (schema 15 fork only).
 
-Schema bumps + checkpoint breaks expected for representation items. Measure before spending on sampling-procedure upgrades.
+Schema bumps + checkpoint breaks expected for representation items. Measure
+before spending on sampling-procedure upgrades.
 
-### Train mix vs action heads
+### Train mix vs shared pack / embeddings
 
-Action heads are shared across drills. Wrong mix → wrong kind priors (e.g. throw/claim
-bleeding into TD_RUN). **Phase order, gates, and checkpoints** live in
-[`TRAINING_ROADMAP.md`](TRAINING_ROADMAP.md) (`scenario_curriculum.py` /
-`training_phases.py`) — not duplicated here.
+The same legal-row pack and shared embeddings train across drills. Wrong mix →
+wrong kind priors (e.g. throw/claim bleeding into TD_RUN). **Phase order, gates,
+and checkpoints** live in [`TRAINING_ROADMAP.md`](TRAINING_ROADMAP.md)
+(`scenario_curriculum.py` / `training_phases.py`) — not duplicated here.
 
-Soft-mask (below) applies whenever the server flags preferred rows — board *and* claim
-openings — without hard-removing distractors (hard mask already failed transfer).
+Soft-mask (below) applies whenever the server flags preferred rows — board *and*
+claim openings — without hard-removing distractors (hard mask already failed
+transfer).
 
 ### Soft-mask preference
 
 **Landed (schema 12; row-level under schema 16).** Gym key `preferred_legal` /
 `soft_mask_legal` parallels `legal_moves` rows (`1` = `expectedScenarioMove`). The
 join-score policy adds `SOFT_MASK_LOGIT_BIAS` (**2.5**) to preferred **row** logits
-before the categorical. Illegal / pad rows stay hard-masked at 0; non-preferred
-legals stay available (soft tilt, not a hard filter).
+before the categorical over the menu. Illegal / pad rows stay hard-masked at 0;
+non-preferred legals stay available (soft tilt, not a hard filter).
 
 Same bias on rollout sample and `evaluate_actions` replay (flags ride in obs) so
 importance ratios stay consistent.
@@ -63,54 +80,65 @@ For *this* problem (smarter action choices), almost everything collapses to two 
 
 | Lever | What it changes | Inventory home |
 |-------|-----------------|----------------|
-| **1. Encode moves better** | What each head/index **means**, how wide it is, deadweight removed, kinds merged | Yes-do + most Maybes (path merge, roster actor, relative target, joint heads as re-indexing) |
-| **2. Sample among legal rows** | How we **pick** among packed rows — schema 16 join-score + soft preferred bias | Soft-mask (landed); further row encoders / attention are optional |
+| **1. Encode moves better** | What each pack column **means**, how wide its vocab is, deadweight removed, kinds merged | Yes-do + Maybes (path merge, relative dest, …) |
+| **2. Sample among legal rows** | How we **pick** among packed rows — join-score + soft preferred bias | Soft-mask (landed); further row encoders / attention are optional |
 
-**Default path:** Schema 10 packing (roster actor) → soft-mask (schema 12) → **schema 17 legal-row join scores** (sourceSquare + shuffled menu; replaces factor remask / joint index). Measure uniqueness before more representation shrinks.
+**Default path:** Schema 10 packing (roster actor) → soft-mask (schema 12) →
+**schema 18 legal-row join scores** (source x/y metadata + shuffled menu). Measure
+uniqueness before more representation shrinks.
 
-**Landed (was “third direction”):** score the legal set directly — join board latent to each encoded row (`LegalRowActorCriticPolicy` / ONNX row scores). Remaining [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape) work is whether the value net / features should see richer legal-menu summaries beyond the action head.
+**Landed:** score the legal set directly — join board latent to each encoded row
+(`LegalRowActorCriticPolicy` / ONNX row scores). Remaining
+[AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape) work is whether the
+value net / features should see richer legal-menu summaries beyond join-scoring
+the action.
 
-**Not substitutes for 1–2:** held mid-check rolls (**prime [AI2.12](BACKLOG.md#ai212--held-dice--mid-check-obs--scenarios)**), other board obs ([AI2.8](BACKLOG.md#ai28--evaluate-obs-enrichment-vs-truncated-legals)), reward shaping ([AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2)), more PPO steps alone. Train-*mix* / phase gates → [`TRAINING_ROADMAP.md`](TRAINING_ROADMAP.md), not action-head geometry.
+**Not substitutes for 1–2:** held mid-check rolls (**prime [AI2.12](BACKLOG.md#ai212--held-dice--mid-check-obs--scenarios)**), other board obs ([AI2.8](BACKLOG.md#ai28--evaluate-obs-enrichment-vs-fix-legals)), reward shaping ([AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2)), more PPO steps alone. Train-*mix* / phase gates → [`TRAINING_ROADMAP.md`](TRAINING_ROADMAP.md), not pack-column geometry.
 
 ### Yes — do
 
-Committed representation work. Engine wire kinds stay distinct for submit; policy kinds / factors are the learning contract.
+Committed representation work. Engine wire kinds stay distinct for submit; policy
+kinds / factors are the learning contract. Wording like “head” below is **historical
+MultiDiscrete** naming from when that item landed.
 
-- [x] **Pitch-only `boardTarget` head.** Landed (schema 8): target width `PITCH_SQUARE_COUNT+1` (**166**); actor was pitch+bench (**186**) until schema 10.
+- [x] **Pitch-only `boardTarget` pack column.** Landed (schema 8): target width `PITCH_SQUARE_COUNT+1` (**166**); actor was pitch+bench (**186**) until schema 10.
 - [x] **Bonus plays: encode identity once; drop `HandSlot`.** Landed (schema 8, option **A**): per-play `AiLegalKind`s; empty factors on play-bonus rows; hand MultiDiscrete axis removed.
 - [x] **Factors = free choices only; mark sugar; match on free factors.** Landed (schema 9): `AiLegalChoiceDto.factors` = free only; `sugarFactors` = pending-fixed (not MultiDiscrete-matched). `resolve_action` matches free factors → submit full `legalActionId` (sugar stays in the id).
 - [x] **`declineOffer` coarse kind.** Landed (schema 9); **undone schema 16** — distinct `skip` / `declineBonus` / `continueBlock` / `keepOffer` again (join-score rows don’t need the MultiDiscrete merge).
 - [x] **Exclude `cancelThrowTeammate` from the policy.** Landed (schema 9); **restored schema 16** — cancel is a legal-row kind again.
-- [x] **Rerolls: one do-it kind + keep, no boolean.** Landed (schema 9): `Choose*Reroll(true)` → `reroll`; keep → `keepOffer` (was `declineOffer`). `AiFactor.Reroll` and the MultiDiscrete reroll head removed.
+- [x] **Rerolls: one do-it kind + keep, no boolean.** Landed (schema 9): `Choose*Reroll(true)` → `reroll`; keep → `keepOffer` (was `declineOffer`). `AiFactor.Reroll` and the MultiDiscrete reroll axis removed.
 - [x] **Combine Do-Over adjusts.** Landed (schema 9); **undone schema 16** — `adjustThrowByDoOver` / `adjustBlockByDoOver` / `adjustArmourByDoOver` are distinct kinds again.
-- [x] **Actor by roster playerIndex + joint `(actor, kind)` head.** Landed (schema 10); **superseded schema 16** — separate actor + kind pack columns; gym action is Discrete row index.
+- [x] **Actor by roster playerIndex** (schema 10). Joint `(actor, kind)` MultiDiscrete product landed then **superseded schema 16** — separate actor + kind pack columns; gym action is Discrete row index.
+
 ### Measure first (cheap stats → decide)
 
-Evidence for whether representation merges or sampling-procedure upgrades are worth it. Hypotheses: [Uniqueness hypotheses](#uniqueness-hypotheses-to-measure). Bucket **player `[Actor, BoardTarget]` rows** separately from card/challenge/follow-up shapes.
+Evidence for whether representation merges are worth it. Hypotheses:
+[Uniqueness hypotheses](#uniqueness-hypotheses-to-measure). Bucket **player
+`[Actor, BoardTarget]` rows** separately from card/challenge/follow-up shapes.
 
 - [ ] **`(actor, boardTarget) → #kinds`.** Expect **~1** for path/throw/block-style rows (run vs sidestep for the same end usually don’t both appear). Confirm rarer collisions.
-- [ ] **`(actor, kind) → #targets`.** Expect **many** — main branching after actor+kind; shared target-logit quality matters here.
+- [ ] **`(actor, kind) → #targets`.** Expect **many** — main branching after actor+kind; join-score still has to rank many dests for the same verb.
 - [ ] **`(actor, boardTarget)` or target → #kinds`.** Expect **few** (e.g. run vs sidestep by marked). Cross-check against first bullet.
 - [ ] **Exclude / separately bucket** rows with no target or no player actor (`play*`, claim/replace, decline, reroll-only shapes) so they don’t distort the table.
 
 ### Evaluate / Maybe (preference / architecture)
 
-Optional representation shrinks and sampling-procedure upgrades — pick after Measure first (and after Yes-do where noted).
+Optional representation shrinks — pick after Measure first (and after Yes-do where noted).
+**Won’t do under join-score:** resurrecting MultiDiscrete remask, sequential factor
+heads, or “kind-conditioned target logits” as separate policy axes.
 
-- [ ] **Bonus-play identity: kind vs factor (XOR).** Schema 8 chose **A** (per-play kinds, no hand/BonusPlay factor). Revisit only if we want **B** (one `playBonus` + `BonusPlay` head) instead — still XOR, not both.
-- [ ] **Combine similar path / “move” kinds (`run` / `sidestep` / `mark`).** Same `[Actor, BoardTarget]` shape; engine already partitions by board (marked → sidestep, open → run, end adjacent enemy → mark). One `move` (or `path`) kind would shrink the kind head and treat verb as masked eligibility rather than a learned class. Tradeoff: less direct “I want to mark” prior on the kind head — policy must recover intent from obs + destination. Extend the idea only carefully to other near-synonyms (don’t merge throw/block).
+- [ ] **Bonus-play identity: kind vs factor (XOR).** Schema 8 chose **A** (per-play kinds, no hand/BonusPlay factor). Revisit only if we want **B** (one `playBonus` + `BonusPlay` pack column) instead — still XOR, not both.
+- [ ] **Combine similar path / “move” kinds (`run` / `sidestep` / `mark`).** Same `[Actor, BoardTarget]` shape; engine already partitions by board (marked → sidestep, open → run, end adjacent enemy → mark). One `move` (or `path`) kind would shrink the kind vocab; verb becomes eligibility / obs rather than a packed class. Tradeoff: less direct “I want to mark” signal on the kind embedding — policy must recover intent from obs + destination. Extend only carefully to other near-synonyms (don’t merge throw/block).
 - [ ] **Throw vs `quickReleaseThrow`.** Free factors differ: **throw** = actor + target; **quickReleaseThrow** = target only (actor sugar). Don’t merge. Quick Release is also an interrupt window — obs `phase` is only coarse `TurnPhase`, not `BlockStage.HANDLE_QUICK_RELEASE`.
 - [x] **Actor by player id / roster slot instead of board index.** Landed (schema 10): `1..10` + `0` unused; cell `playerIndex` binds id↔square.
-- [ ] **Sequential conditioning vs masking.** Today: remask + soft preferred bias. Upgrade path: feed prior picks so later heads score `P(factor \| …)` (full autoregressive, or cheaper kind-sliced target logits). Cost: APS, `evaluate_actions` teacher-force, ONNX, checkpoint break. Prefer after uniqueness stats.
-- [x] **Joint `(actor, kind)` head.** Landed (schema 10): fixed product `11×34=374` (roster actor × kinds), not board×kind. Sample/mask that axis first, then target / challenge / face.
 - [x] **Soft-mask preferred rows.** Landed (schema 12): `preferred_legal` + logit bias on values from `expectedScenarioMove` rows — see [Soft-mask preference](#soft-mask-preference). Not a hard legal filter.
-- [ ] **Kind-conditioned target logits** (middle ground). Emit per-kind (or kind-embedded) target scores without a full sequential trunk. Higher relevance if `(actor, kind)` often has many targets (see Measure first).
-- [ ] **Relative `boardTarget` (Δx / Δy from actor) instead of absolute pitch index.** Shrinks the *path* fan-out if the window tracks Move (e.g. ±4 → 9×9=81, or ±7 → 15×15=225) and can transfer “step forward” across the board. Costs: (1) model clarity — end-zone / sideline geography is no longer in the action index; (2) **throws and Hail Mary** can already aim near board-wide, so a shared relative head needs a window ≈ full pitch (**no shrink** vs pitch-166) or kind-specific target encodings; (3) reserves entry / place-loose-ball / absolute tactics get awkward. Likely a win only for path-like kinds, not one global relative target head.
+- [ ] **Relative `boardTarget` (Δx / Δy from actor) instead of absolute pitch index.** Could shrink *path* fan-out if the window tracks Move (e.g. ±4 → 9×9) and transfer “step forward” across the board. Costs: (1) end-zone / sideline geography leaves the packed dest; (2) throws / Hail Mary aim near board-wide, so a shared relative encoding needs a window ≈ full pitch (**no shrink**) or kind-specific dest encodings; (3) reserves / place-loose-ball / absolute tactics get awkward. Likely a win only for path-like kinds, not one global relative dest column.
+- [x] ~~Sequential factor conditioning / kind-conditioned target logits / joint `(actor, kind)` MultiDiscrete~~ — **won’t do.** Schema 16 join-score replaced those sampling procedures.
 
 ### Out / don’t confuse with
 
-- Naive flat catalog of all factor combos (~29M schema-9 pad product) — not a goal. See [Move space](#move-space).
-- Board-obs enrichment or feeding the legal menu into the net — [AI2.8](BACKLOG.md#ai28--evaluate-obs-enrichment-vs-truncated-legals) / [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape) (the “third direction” above).
+- Naive flat MultiDiscrete catalog of all factor combos (~29M schema-9 pad product) — **historical**; live gym action is `Discrete(MAX_LEGAL_MOVES)`. See [Move space](#move-space).
+- Board-obs enrichment or feeding the legal menu into the value net — [AI2.8](BACKLOG.md#ai28--evaluate-obs-enrichment-vs-fix-legals) / [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape).
 - Reward shaping — [AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2).
 - Per-step max legal rows — mask/APS metric; not structural distinct-move size.
 
@@ -120,50 +148,36 @@ Optional representation shrinks and sampling-procedure upgrades — pick after M
 
 Three different notions — don’t mix them.
 
-1. **Naive head product** — allocate all MultiDiscrete widths as if every action used every axis (**~29M** schema 9; was ~104M in schema 8). Softmax fatness, not game size.
-2. **Structural distinct actions** — enumerate by kind using **only that kind’s free factors** (~0.5M swag with pad actor×pitch). Kind-only declines / bonus / challenge are not ×165.
-3. **Per-step legal set size** — how many rows are legal *right now* (mask / APS). Separate question.
+1. **Per-step legal menu** — how many rows are legal *right now* (`legal_move_count` / APS). **This is what the join-score policy ranks.**
+2. **Structural distinct actions** — enumerate by kind using **only that kind’s free factors** (upper bound on encoding, not rules-legality).
+3. **Historical MultiDiscrete product** — allocate all factor widths as if every action used every axis. Softmax fatness of the **old** policy; **not** the live action space.
 
-### 1. Naive head product (allocation size)
+### 1. Per-step legal set (what the policy samples)
 
-Fixed MultiDiscrete widths multiplied together. Almost every slot is masked every step; this is **not** “how many moves the game has.” Useful only as “how fat is the softmax we allocate.”
+Working intuition: tens–hundreds of legal rows per step (pad `MAX_LEGAL_MOVES` = 1024).
+Soft-mask tilts preferred rows; hard mask zeros pad / illegal indices.
 
-| Config | Widths | Product |
-|--------|--------|--------:|
-| **Current (schema 10)** | 374 × 166 × 4 × 7 | **~1.7M** |
-| Schema 9 (historical) | 34 × 186 × 166 × 4 × 7 | ~29M |
-| Schema 8 (historical) | 40 × 186 × 166 × 4 × 7 × 3 | ~104M |
-| Schema 7 (historical) | 40 × 186 × 186 × 4 × 7 × 7 × 3 | ~814M |
-| **B:** one `playBonus` + `BonusPlay`~21 | 26 × 11 × 166 × 4 × 21 × 7 | (if kinds shrink) |
-| Relative target swag (±4 → 9×9) on schema 10 | 374 × **81** × 4 × 7 | ~0.85M |
+### 2. Distinct actions (encoding catalog swag)
 
-Notes:
-
-- Schema 10: joint actor×kind (roster `0..10` × 34 kinds), pitch-only target, free-factor matching, no reroll/hand heads.
-- Schema 9 baseline: free-factor matching, kind merges, separate actor board index (186).
-- Further shrinks: path-kind merge, relative target (path-only), option **B**.
-
-### 2. Distinct actions (what “actual move space” means here)
-
-Not “max legal rows in one step.” That is a different statistic (mask width / APS). Here: **how many distinct choices exist if we enumerated only the free factors each kind actually uses** — so `skip` / `playHailMary` / `claimChallenge` are **not** multiplied by 165 targets.
+Not “max legal rows in one step.” Here: **how many distinct choices exist if we
+enumerated only the free factors each kind actually uses** — so `skip` /
+`playHailMary` / `claimChallenge` are **not** multiplied by 165 targets.
 
 #### Structural catalog (pad widths, unused axes omitted)
 
-Sum over kinds of (product of that kind’s free factors). Still an **upper bound on encoding**, not rules-legality — e.g. every actor index × every pitch square for `throw`, including empty/illegal.
+Sum over kinds of (product of that kind’s free factors). Still an **upper bound on
+encoding**, not rules-legality — e.g. every actor index × every pitch square for
+`throw`, including empty/illegal.
 
 | Family | Shape | Swag count |
 |--------|--------|----------:|
-| ~14 `[Actor, BoardTarget]` kinds | 186 × 165 each | ~430k |
+| ~14 `[Actor, BoardTarget]` kinds | ~10 × 165 each (roster actor) | ~23k |
 | Target-only (`throwTeammate`, `quickReleaseThrow`, `placeLooseBall`) | 165 each | ~0.5k |
 | Face-order | 6 | 6 |
 | Play-bonus (**A:** per-play kinds) | 15 × 1 | 15 |
 | Challenge claim/replace | 2 × 3 slots | 6 |
 | Kind-only (`skip`, `keepOffer`, `reroll`, adjust*, …) | 1 each | few |
-| **Structural total (order of magnitude)** | | **~0.4M** |
-
-Vs naive head product **~29M** because the product pretends every kind always has actor × target × face × ….
-
-With roster actor (~10) instead of 186, the same structural sum drops further (almost all still `[Actor, BoardTarget]`).
+| **Structural total (order of magnitude)** | | **~10⁴–10⁵** |
 
 Rules-reachable is **smaller still** (only occupied eligible actors, legal path ends, etc.).
 
@@ -171,30 +185,29 @@ Rules-reachable is **smaller still** (only occupied eligible actors, legal path 
 
 | Question | Worth it? |
 |----------|-----------|
-| Structural sum above (by kind family) | Optional — can refine from `AiLegalKind` + factor table; the ~0.4M swag is enough to see the gap vs ~29M. |
+| Structural sum above (by kind family) | Optional — refine from `AiLegalKind` + factor table. |
 | **Union of distinct encoded tuples over N games / expert dump** | **Yes, cheap-medium** — best “actual support” number for training. |
-| Max / p50 / p95 **per-step** legal rows | Yes, but that’s **mask pressure**, not distinct-move catalog size. |
+| Max / p50 / p95 **per-step** legal rows | Yes — **mask pressure** for the join-score menu. |
 | Exhaustive rules-reachable set over all states | **No.** |
 
-Working intuition: learning ranks among **tens–hundreds of legal rows per step**, drawn from a structural catalog on the order of **~10⁵** padded combinations (or ~10⁴ with roster actor) — not the ~29M pad product. Remaining representation Maybes matter for meaning / further shrink, not because softmax is hundreds of millions wide anymore.
+### 3. Historical MultiDiscrete product (schema ≤15)
 
-### 3. After further inventory reductions
+Fixed factor widths multiplied together. Almost every slot was masked every step;
+this was **not** “how many moves the game has.” Kept only so old schema notes still
+parse.
 
-Baseline is schema 9 (~29M product). Remaining Maybes relative to that:
+| Config | Widths | Product |
+|--------|--------|--------:|
+| Schema 10 (last MultiDiscrete-ish packing) | 374 × 166 × 4 × 7 | **~1.7M** |
+| Schema 9 | 34 × 186 × 166 × 4 × 7 | ~29M |
+| Schema 8 | 40 × 186 × 166 × 4 × 7 × 3 | ~104M |
+| Schema 7 | 40 × 186 × 186 × 4 × 7 × 7 × 3 | ~814M |
 
-| Change | Naive product | Structural distinct (swag) | Notes |
-|--------|---------------|----------------------------|-------|
-| Free factors + kind merges + drop reroll head | — | — | **Done** (schema 9). |
-| Pitch-only target + drop hand | — | — | **Done** (schema 8). |
-| **B** instead of **A** | Can rise | ~same (15 vs ~20) | Only if we want one `playBonus` kind. |
-| Combine path kinds | Modest | fewer AT-kinds | Evaluate. |
-| Roster actor | → **~1.6M** | much smaller | Biggest remaining allocation win. |
-| Relative target | e.g. ~14M with 9×9 | Path shrink; throws need large window | Kind-split or skip for throws. |
-| Sequential conditioning | Unchanged | Unchanged | Preferences among the same set. |
+Schema 16+ gym action width is **`MAX_LEGAL_MOVES` (1024)**, not these products.
+Remaining representation Maybes matter for meaning / further shrink of **pack
+columns**, not because a MultiDiscrete softmax is hundreds of millions wide.
 
----
-
-## Policy action (schema 17)
+## Policy action (schema 18)
 
 **Gym action:** `Discrete(MAX_LEGAL_MOVES)` — index into this step’s packed `legal_moves` menu.
 The policy **join-scores** each live row with the board latent (`LegalRowActorCriticPolicy`):
@@ -205,34 +218,36 @@ step. Packed `legalMoves`, harness `legalRows` (incl. soft-mask / passing flags)
 `chosenFactors`, and the Discrete/ONNX **row index** all refer to that same shuffled order —
 no separate remap table. Prevents latching onto catalog / generation order.
 
-Each packed row is **nine** ints (storage / ONNX legal-matrix input). Python
+Each packed row is **ten** ints (storage / ONNX legal-matrix input). Python
 `encode_legal_rows` embeds them the same way board channels are embedded
-(shared `player_index` / challenge / block-face embs + pitch xy for target **and** source)
+(shared `player_index` / challenge / block-face embs + pitch xy)
 — it does **not** re-pack:
 
 | Slot | Factor | Role | Width | Who uses it |
 |------|--------|------|------:|-------------|
 | 0 | actor | **identity (who)** | 11 | roster `playerIndex` — same id as cell occupant; `0` when kind has no free actor |
 | 1 | kind | identity | 41 | `AiLegalKind.ordinal` |
-| 2 | boardTarget | identity (dest) | 166 | **pitch only** `0..164` + unused |
+| 2 | boardTarget | identity (dest) | 166 | **pitch only** linear index `0..164` + unused (encoder decodes → xy for continuous features) |
 | 3 | challengeSlot | identity | 4 | claim / replace |
 | 4 | attachedBonus | identity | 6 | Sprint/Weave/… twin (`0..4` + unused) |
 | 5..7 | face0..2 | identity | 6 each | Enforcer order pack codes (`0` unused; `1..5` = face) |
-| 8 | sourceSquare | **metadata** (tail) | 186 | actor’s current pitch/dugout — geometry hint only; not who-id |
+| 8 | sourceX | **metadata** (tail) | 12 | 0-based pitch x from Kotlin (`0..10` + unused) |
+| 9 | sourceY | **metadata** (tail) | 16 | 0-based pitch y from Kotlin (`0..14` + unused) |
 
 Wire still sends `kind` + `kindIndex` + typed factors (`Actor.playerIndex`, …).
-Kotlin `AiLegalPacker` writes the nine ints; Python only pads for the gym Dict
-and embeds. Source xy is gated to **pitch** in the encoder (dugout sources keep roster
-actor, xy gate off). **Who** on a path/throw/block row is always roster `actor`, never
-`sourceSquare`.
+Kotlin `AiLegalPacker` writes the ten ints; Python only pads for the gym Dict
+and embeds. Source x/y are shipped as coords (normalize only); dugout / no-actor → unused
+pads. **Who** on a path/throw/block row is always roster `actor`, never source coords.
 
 Unused axes on a row are unused sentinels; the Kotlin DTO **omits** unused free
 factors (pending-fixed / source metadata stay in `sugarFactors`).
 
-**Schema 17:** schema-16 join-score + `sourceSquare` column + per-step menu shuffle.
+**Schema 18:** schema-17 + source metadata as pitch `(x,y)` ints (no index→xy for source).
 Schema 15 remains the only dual-path ONNX fork — bump/mutate 16+ freely (re-export ONNX).
 
-**Schema 16 (historical):** 8-col pack (no sourceSquare); catalog menu order.
+**Schema 17 (historical):** single `sourceSquare` board index + menu shuffle.
+
+**Schema 16 (historical):** 8-col pack (no source); catalog menu order.
 
 **Schema 15 (historical):** MultiDiscrete remask; joint actor×kind; 4-col pack;
 faceOrder / cancel-TT omitted; Enforcer order humans-only.
@@ -247,7 +262,7 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 | Action kind (`run` / `throw` / …) | `LegalAction` / `AiLegalKind` | **Yes** — kind column | — |
 | Acting player identity | `playerId` | **Yes** — roster `Actor` | Cell `playerIndex` |
 | Destination square | path end / `targetCoordinate` | **Yes** — `boardTarget` (pitch) | Pitch terrain / occupants |
-| Source square (actor now) | board position of actor | **Yes (v17)** — `sourceSquare` **metadata** (not who-id) | Same cell via `playerIndex` |
+| Source square (actor now) | board position of actor | **Yes (v18)** — `sourceX`/`sourceY` **metadata** (not who-id) | Same cell via `playerIndex` |
 | Attached geometry bonus (Sprint/…) | `requiredBonusCard` | **Yes** — `attachedBonus` | — |
 | Challenge claim / replace slot | claim/replace actions | **Yes** — `challengeSlot` | Challenges tensor |
 | Enforcer face order | `ChooseBlockFaceOrder` | **Yes** — `face0..2` | `held_check` faces |
@@ -271,7 +286,7 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 | challengeSlot | 4 | 3 active challenges + unused | Exact. |
 | attachedBonus | 6 | 5 twins + unused | Exact. |
 | face0..2 | 6 each | unused + 5 `BlockDieFace` | Exact; pad short perms with unused. |
-| sourceSquare | 186 | Board 185 + unused | Pitch + both dugouts (+ pad). |
+| sourceX / sourceY | 12 / 16 | Pitch W/H + unused | 0-based pitch metadata (+ pad). |
 
 **playerIndex:** `0` = empty / no free actor; `1..10` = roster slot + 1 (catalog max 10). Same id on the occupied cell (`AiCellPlayerObs.playerIndex`) and on `AiFactor.Actor`. Both teams reuse `1..10`; `teamRel` on the cell separates us/them.
 
@@ -284,10 +299,10 @@ Intuition for **player actions that carry both actor and boardTarget** (run / ma
 | Slice | Expected pattern | Why it matters |
 |-------|------------------|----------------|
 | **(actor, boardTarget) → kinds** | **Usually 1 kind** | Same square as destination rarely legal under two verbs at once. Classic near-miss: run vs sidestep for the *same* path end — engine usually offers one based on marked status, not both. |
-| **(actor, kind) → targets** | **Many targets** | Path / throw / block fans out. This is where most of the branching lives after actor+kind. |
+| **(actor, kind) → targets** | **Many targets** | Path / throw / block fans out. Join-score still ranks many dests for the same verb. |
 | **(boardTarget) → kinds** (given actor, or globally) | **Few kinds** | e.g. that square is a run *or* a sidestep depending on marked; not a long list of verbs. |
 
-**Implication for shared target logits:** after actor→kind remask, the target head often still has a **large** legal set — preference among targets *does* matter. Bleed across kinds for the *same* `(actor, target)` is probably **rare** if the first row of the table holds.
+**Implication:** most of the hard ranking is among **destinations** for a given actor+kind (or among whole rows that differ mainly in dest). Bleed across kinds for the *same* `(actor, target)` is probably **rare** if the first row of the table holds — useful for whether path-kind merges are safe, not for resurrecting a target MultiDiscrete head.
 
 **Non-player / no-target rows** (bonus play, challenge claim, decline, …) should be **excluded or bucketed separately** when measuring the table above — they often have no actor and/or no target.
 
@@ -378,7 +393,7 @@ How we map today — candidates to treat as separate buckets in stats.
 
 ### Pad / unused on the wire
 
-Harness always emits **eight** ints; axes a kind does not use get unused sentinels
-(`ATTACHED_BONUS_UNUSED`, `BLOCK_FACE_PACK_UNUSED`, actor `0`, …). Soft-mask may
-further **boost** preferred **rows** (never removes a legal row). Actor `0` means
-“no free actor” (kind-only / target-only free rows).
+Harness always emits **ten** ints; axes a kind does not use get unused sentinels
+(`ATTACHED_BONUS_UNUSED`, `BLOCK_FACE_PACK_UNUSED`, actor `0`, source unused, …).
+Soft-mask may further **boost** preferred **rows** (never removes a legal row).
+Actor `0` means “no free actor” (kind-only / target-only free rows).

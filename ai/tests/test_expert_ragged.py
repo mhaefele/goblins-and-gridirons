@@ -40,9 +40,9 @@ def _record(legal_rows: list[list[int]], *, preferred: list[bool] | None = None)
 
 
 def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
-    row_a = [1, 0, 10, 3, 5, 0, 0, 0, 20]
-    row_b = [2, 1, 11, 3, 5, 0, 0, 0, 21]
-    row_c = [1, 2, 12, 4, 5, 0, 0, 0, 22]
+    row_a = [1, 0, 10, 3, 5, 0, 0, 0, 2, 3]
+    row_b = [2, 1, 11, 3, 5, 0, 0, 0, 4, 5]
+    row_c = [1, 2, 12, 4, 5, 0, 0, 0, 6, 7]
     jsonl = tmp_path / "tiny.jsonl"
     lines = [
         _record([row_a, row_b], preferred=[True, False]),

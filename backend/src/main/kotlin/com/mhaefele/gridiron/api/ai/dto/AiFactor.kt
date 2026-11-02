@@ -9,14 +9,14 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo
  * **No sentinel / NONE factor.** If a kind does not ask for a board target (or actor, slot, …),
  * that factor is simply **omitted** from [AiLegalChoiceDto.factors].
  *
- * Schema 17: free choices in [AiLegalChoiceDto.factors]; pending-fixed / debug extras in
+ * Schema 18: free choices in [AiLegalChoiceDto.factors]; pending-fixed / debug extras in
  * [AiLegalChoiceDto.sugarFactors]. [AiLegalPacker] writes both into the legal-row int matrix
- * (actor, kind, target, challenge, attachedBonus, face0..2, sourceSquare) for join-score encoding.
+ * (actor, kind, target, challenge, attachedBonus, face0..2, sourceX, sourceY) for join-score encoding.
  *
  * **Index spaces differ by factor:**
  * - [Actor] — roster [playerIndex] `1 .. MAX_PLAYERS_PER_TEAM` (same id on [AiCellPlayerObs])
  * - [BoardTarget] — **pitch only** (`0 .. PITCH_SQUARE_COUNT-1`); dugouts are never targets
- * - [SourceSquare] — actor’s current pitch **or** dugout index (`0 .. BOARD_SLOT_COUNT-1`)
+ * - [SourceSquare] — metadata pitch coords `x,y` 0-based (`0 .. W-1` / `0 .. H-1`); dugout → omit
  * - [FaceOrder] — pack codes `1..BlockDieFace.entries` (ordinal+1); length ≤ 3
  *
  * Wire: `@JsonTypeInfo` `kind` — `actor` / `boardTarget` / `challengeSlot` / `attachedBonus` /
@@ -76,14 +76,15 @@ sealed interface AiFactor {
     }
 
     /**
-     * **Metadata only** — acting player’s current square (pitch or dugout), perspective-relative.
-     * Sugar on player-scoped rows so the join-score encoder sees from→to geometry.
-     * Does **not** identify the legal choice; who-id remains roster [Actor].
-     * Packed last on the legal-row int matrix. Pad unused with [AiObsLayout.SOURCE_SQUARE_UNUSED].
+     * **Metadata only** — acting player’s current **pitch** square as 0-based `(x, y)`,
+     * perspective-relative. Sugar so the join-score encoder sees from→to without decoding a
+     * linear index. Omit when the actor is on the dugout (pads unused). Who-id remains roster
+     * [Actor]. Packed last as sourceX / sourceY on the legal-row int matrix.
      */
-    data class SourceSquare(val boardIndex: Int) : AiFactor {
+    data class SourceSquare(val x: Int, val y: Int) : AiFactor {
         init {
-            require(boardIndex in 0 until AiObsLayout.BOARD_SLOT_COUNT) { "SourceSquare boardIndex=$boardIndex out of board range 0..${AiObsLayout.BOARD_SLOT_COUNT - 1}" }
+            require(x in 0 until AiObsLayout.PLAY_WIDTH) { "SourceSquare x=$x out of range 0..${AiObsLayout.PLAY_WIDTH - 1}" }
+            require(y in 0 until AiObsLayout.PLAY_HEIGHT) { "SourceSquare y=$y out of range 0..${AiObsLayout.PLAY_HEIGHT - 1}" }
         }
     }
 }

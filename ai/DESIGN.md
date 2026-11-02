@@ -2,7 +2,7 @@
 
 Locked decisions and contract rationale for the trainable model. **Tasks:** [`BACKLOG.md`](BACKLOG.md).
 **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md). **Phases / knobs:** [`TRAINING_ROADMAP.md`](TRAINING_ROADMAP.md).
-**Action heads:** [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md).
+**Action sampling / legal-row pack:** [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md).
 
 Root [`BACKLOG.md`](../BACKLOG.md) defers AI2 work to the checklist.
 
@@ -19,7 +19,7 @@ Root [`BACKLOG.md`](../BACKLOG.md) defers AI2 work to the checklist.
 | API | Dedicated `/api/ai/...` — obs/actions for learning, not GUI DTOs. |
 | Obs wire | **Kotlin packs** (`AiObsPacker` / `…/step/packed`): `obs` float vector + legal matrix. Python **slices** into the gym Dict. Nested `…/step` for curl/tests only. Binary = [AI2.opt](BACKLOG.md#ai2opt--binary-observation-wire). |
 | Python processing | Thin on facts — no invented eligibility. Gym Dict: slice packed obs; extractor embeds enums + pitch coords; policy join-scores packed legal rows. `schemaVersion` versions packing + gym + action together. |
-| Submit | Policy picks among legal rows via typed [`AiFactor`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiFactor.kt)s + `LegalActionId` sidecar. Conditional heads: [AI2.9](BACKLOG.md#ai29--conditional-action-heads-follow-up) / [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md). |
+| Submit | Policy join-scores packed legal rows → Discrete index → `LegalActionId` sidecar ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md); MultiDiscrete factor heads superseded — [AI2.9](BACKLOG.md#ai29--conditional-action-heads-follow-up)). |
 | Reward | Harness: Δ score margin + terminal W/L/D from consecutive game-state / scoring delta. Profile shaping = [AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2). Phases: [TRAINING_ROADMAP.md](TRAINING_ROADMAP.md). |
 | Eval | Vs built-in computer (lookahead + heuristic) early in the cycle. |
 | Teams | Single team both seats first; multi-team later ([AI2.5](BACKLOG.md#ai25--multi-team-curriculum)). |

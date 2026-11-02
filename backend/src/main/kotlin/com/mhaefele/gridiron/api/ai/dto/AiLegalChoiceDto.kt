@@ -6,13 +6,13 @@ import com.mhaefele.gridiron.shared.LegalActionId
 /**
  * One legal choice in AI form — [kind] + ordered free [factors] + [sugarFactors] + submit sidecar.
  *
- * ## Factors (schema 17+)
+ * ## Factors (schema 18+)
  *
  * [factors] = free choices (packed into [AiLegalPacker] legal-row ints).
- * [sugarFactors] = pending-fixed identity / attached bonus / source square — also packed onto the row.
+ * [sugarFactors] = pending-fixed identity / attached bonus / source coords — also packed onto the row.
  * [legalActionId] still encodes full domain identity for submit.
  * Pack columns: identity (actor, kindIndex, boardTarget, challengeSlot, attachedBonus, face0..2)
- * then metadata (sourceSquare). Who-id = roster actor, not source coordinate.
+ * then metadata (sourceX, sourceY). Who-id = roster actor, not source coords.
  *
  * | kind | free factors |
  * |------|--------------|

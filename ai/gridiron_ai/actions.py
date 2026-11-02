@@ -15,7 +15,7 @@ from typing import Any, NamedTuple, TypeAlias
 
 import numpy as np
 
-from gridiron_ai.constants import ACTION_HEAD_SIZES, LEGAL_ROW_SCORE_WIDTH, MAX_LEGAL_MOVES
+from gridiron_ai.constants import ACTION_FACTOR_WIDTHS, LEGAL_ROW_SCORE_WIDTH, MAX_LEGAL_MOVES
 
 # Canonical index in the factor tuple packed on each legal row.
 # Slots 0..7 = row identity (kind + free/sugar that distinguish the legal choice).
@@ -28,12 +28,13 @@ FACTOR_ATTACHED_BONUS = 4
 FACTOR_FACE0 = 5
 FACTOR_FACE1 = 6
 FACTOR_FACE2 = 7
-# Metadata only (always last): actor's current square for from→to geometry in the
-# row encoder. Not part of legal-choice identity — identity who = FACTOR_ACTOR.
-FACTOR_SOURCE_SQUARE = 8
+# Metadata only (always last): 0-based pitch x/y from Kotlin for from→to geometry.
+# Not legal-choice identity — who = FACTOR_ACTOR.
+FACTOR_SOURCE_X = 8
+FACTOR_SOURCE_Y = 9
 
-# One legal move: nine ints in canonical slot order (identity…, then metadata).
-EncodedLegalMove: TypeAlias = tuple[int, int, int, int, int, int, int, int, int]
+# One legal move: ten ints in canonical slot order (identity…, then metadata).
+EncodedLegalMove: TypeAlias = tuple[int, int, int, int, int, int, int, int, int, int]
 
 # Legal moves this step — shape (n, 3), dtype int64 (from packed HTTP / expert).
 EncodedLegalMoves: TypeAlias = np.ndarray
@@ -48,11 +49,6 @@ class ResolvedAction(NamedTuple):
     legal_action_id: str
     sampled_kind: str
     legal_choice: dict[str, Any]
-
-
-def action_head_sizes() -> list[int]:
-    """Factor widths packed on each legal row (not the gym Discrete action width)."""
-    return list(ACTION_HEAD_SIZES)
 
 
 def legal_row_action_n() -> int:
@@ -85,7 +81,7 @@ def pad_legal_moves(legal_moves: EncodedLegalMoves) -> tuple[PaddedLegalMoves, i
             f"Step has {legal_move_count} legal moves > MAX_LEGAL_MOVES={MAX_LEGAL_MOVES} "
             "— bump constants.py"
         )
-    padded_legal_moves: PaddedLegalMoves = np.full((MAX_LEGAL_MOVES, len(ACTION_HEAD_SIZES)), -1, dtype=np.int64)
+    padded_legal_moves: PaddedLegalMoves = np.full((MAX_LEGAL_MOVES, len(ACTION_FACTOR_WIDTHS)), -1, dtype=np.int64)
     if legal_move_count:
         padded_legal_moves[:legal_move_count] = legal_moves
     return padded_legal_moves, legal_move_count
@@ -96,13 +92,13 @@ def match_legal_row_index(
     legal_moves: np.ndarray | list[list[int]],
 ) -> int:
     """Index of the unique packed row equal to ``factors``. Raises if missing/duplicate."""
-    moves = np.asarray(legal_moves, dtype=np.int64).reshape(-1, len(ACTION_HEAD_SIZES))
+    moves = np.asarray(legal_moves, dtype=np.int64).reshape(-1, len(ACTION_FACTOR_WIDTHS))
     if moves.shape[0] == 0:
         raise RuntimeError("No legal moves to match")
-    target = np.asarray(factors, dtype=np.int64).reshape(len(ACTION_HEAD_SIZES))
-    if target.size != len(ACTION_HEAD_SIZES):
+    target = np.asarray(factors, dtype=np.int64).reshape(len(ACTION_FACTOR_WIDTHS))
+    if target.size != len(ACTION_FACTOR_WIDTHS):
         raise RuntimeError(
-            f"Expected {len(ACTION_HEAD_SIZES)} action factors, got size={target.size} "
+            f"Expected {len(ACTION_FACTOR_WIDTHS)} action factors, got size={target.size} "
             f"value={factors!r}"
         )
     matches = np.flatnonzero(np.all(moves == target, axis=1))
@@ -125,7 +121,7 @@ def resolve_legal_row_index(
     legal_rows: list[dict[str, Any]],
 ) -> ResolvedAction:
     """Map a legal-row index → legalActionId using harness rows."""
-    moves = np.asarray(legal_moves, dtype=np.int64).reshape(-1, len(ACTION_HEAD_SIZES))
+    moves = np.asarray(legal_moves, dtype=np.int64).reshape(-1, len(ACTION_FACTOR_WIDTHS))
     if moves.shape[0] != len(legal_rows):
         raise RuntimeError(
             f"legalMoves rows {moves.shape[0]} != legalRows length {len(legal_rows)}"

@@ -217,7 +217,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 **Notes**
 
 - Distinct from [AI2.8](#ai28--evaluate-obs-enrichment-vs-truncated-legals): that item is extra *game-state* affordance hints on the DTO; this one is feeding the *legal menu* to the net and reshaping the Python obs Dict.
-- **Dict-shape half (landed, schema 7):** gym keys `scalars` / `challenges` / `deck` / `hand` / `pitch` `(C,15,11)` / `benches` `(2,10,C)` + enum embeddings + pitch `(x,y,dist-to-ball)`; MLP concat, no CNN. Kotlin `AiObsDto.cells[185]` is unchanged; `schemaVersion` bumped because the gym/model packing changed. **Schema 8:** pitch-only `boardTarget` head; play-bonus `HandSlot` removed (identity in kind). **Schema 9:** free factors + `sugarFactors`; `declineOffer` / `reroll` / `adjustByDoOver`; drop reroll MultiDiscrete head; omit `cancelThrowTeammate` from AI legals. Prior schema checkpoints/npz are incompatible.
+- **Dict-shape half (landed, schema 7):** gym keys `scalars` / `challenges` / `deck` / `hand` / `pitch` `(C,15,11)` / `benches` `(2,10,C)` + enum embeddings + pitch `(x,y,dist-to-ball)`; MLP concat, no CNN. Kotlin `AiObsDto.cells[185]` is unchanged; `schemaVersion` bumped because the gym/model packing changed. **Schema 8:** pitch-only `boardTarget` pack column; play-bonus `HandSlot` removed (identity in kind). **Schema 9:** free factors + `sugarFactors`; `declineOffer` / `reroll` / `adjustByDoOver`; drop reroll MultiDiscrete axis; omit `cancelThrowTeammate` from AI legals. Prior schema checkpoints/onnx are incompatible.
 - Remaining: whether the policy/value nets should see legal-row content beyond masking; CNN vs this MLP concat (ablate later). Raw padded legal matrix into an MLP is still a candidate to reject early.
 - Renaming `board` → something like `game_state` (or splitting into scalars / grid / cards / hand) is in scope for the dict-shape half of this item.
 
@@ -227,10 +227,10 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 | Field | Detail |
 |-------|--------|
-| **Goal** | Next steps to improve **action representation & sampling** (factor heads + how we pick them). Checklist lives in [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#inventory). |
+| **Goal** | Next steps to improve **action representation & sampling** (legal-row pack columns + how we pick among rows). Checklist lives in [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#inventory). |
 | **Depends on** | Schema 16 legal-row join scores in use. |
 | **Files** | Checklist + factor maps + uniqueness notes: **[`ACTION_SAMPLING.md`](ACTION_SAMPLING.md)**. Implementation touches `ai/gridiron_ai/actions.py`, `constants.py`, `legal_row_policy.py`; Kotlin `AiFactor` / `AiLegalKind` / mapping as needed; `schemaVersion`. |
-| **Acceptance** | Inventory in `ACTION_SAMPLING.md` triaged (done / won’t do / deferred with reason); any Yes-do item either shipped or explicitly deferred; eval notes for conditioning/joint-head experiments. |
+| **Acceptance** | Inventory in `ACTION_SAMPLING.md` triaged (done / won’t do / deferred with reason); any Yes-do item either shipped or explicitly deferred; eval notes for pack / join-score experiments (not MultiDiscrete head revival). |
 | **Rulebook** | n/a |
 
 **Do not** duplicate the Yes-do / Measure / Maybe lists here — edit [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#inventory).

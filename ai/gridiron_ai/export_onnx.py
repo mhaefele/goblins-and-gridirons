@@ -17,7 +17,7 @@ import torch as th
 from torch import nn
 
 from gridiron_ai.constants import (
-    ACTION_HEAD_SIZES,
+    ACTION_FACTOR_WIDTHS,
     ACTIVE_CHALLENGE_SLOTS,
     BENCH_SLOTS,
     BOARD_SLOT_COUNT,
@@ -191,7 +191,7 @@ def export_policy_onnx(
         "observationVectorLength": OBSERVATION_VECTOR_LENGTH,
         "maxLegalMoves": MAX_LEGAL_MOVES,
         "actionFactorCount": FACTORS_PER_LEGAL_MOVE,
-        "actionHeadSizes": list(ACTION_HEAD_SIZES),
+        "actionFactorWidths": list(ACTION_FACTOR_WIDTHS),
         "actionSpaceN": LEGAL_ROW_SCORE_WIDTH,
         "inputObsName": INPUT_OBS_NAME,
         "inputLegalName": INPUT_LEGAL_NAME,

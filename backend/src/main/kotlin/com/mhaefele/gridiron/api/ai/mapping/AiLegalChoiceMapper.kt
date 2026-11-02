@@ -3,6 +3,7 @@ package com.mhaefele.gridiron.api.ai.mapping
 import com.mhaefele.gridiron.api.ai.dto.AiFactor
 import com.mhaefele.gridiron.api.ai.dto.AiLegalChoiceDto
 import com.mhaefele.gridiron.api.ai.dto.AiLegalKind
+import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 import com.mhaefele.gridiron.api.ai.training.TrainingScenarios
 import com.mhaefele.gridiron.api.ai.training.TrainingSolvableMoveSearch
 import com.mhaefele.gridiron.api.dto.response.LegalAction
@@ -59,7 +60,11 @@ class AiLegalChoiceMapper(
             addAll(sugar)
             action.requiredBonusCard?.let { add(AiFactor.AttachedBonus(AttachedBonusEncoding.indexFor(it))) }
             playerIdOrNull(action)?.let { playerId ->
-                add(AiFactor.SourceSquare(gameState.perspectiveBoardIndexOf(state.board, playerId, perspectiveSeat)))
+                val boardIndex = gameState.perspectiveBoardIndexOf(state.board, playerId, perspectiveSeat)
+                if (AiObsLayout.isPitchIndex(boardIndex)) {
+                    val (x1, y1) = AiObsLayout.coordinate(boardIndex)
+                    add(AiFactor.SourceSquare(x = x1 - 1, y = y1 - 1))
+                }
             }
         }
         return AiLegalChoiceDto(
