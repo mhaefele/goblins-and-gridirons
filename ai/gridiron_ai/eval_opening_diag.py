@@ -90,8 +90,15 @@ def snapshot_opening_mispick(
     }
 
 
-def diagnose_opening_mispick(policy: Any, snapshot: dict[str, Any]) -> dict[str, Any]:
+def diagnose_opening_mispick(
+    policy: Any,
+    snapshot: dict[str, Any],
+    *,
+    all_rows: bool = False,
+) -> dict[str, Any]:
     """Score the opening legal-row menu (plain vs soft-mask-biased) at the mispick."""
+    from gridiron_ai.eval_debug import ScenarioEvalDebug
+
     policy.set_training_mode(False)
     obs_tensor, _ = policy.obs_to_tensor(snapshot["policy_obs"])
     with th.no_grad():
@@ -123,15 +130,18 @@ def diagnose_opening_mispick(policy: Any, snapshot: dict[str, Any]) -> dict[str,
     biased[:legal_count][soft_mask] += SOFT_MASK_LOGIT_BIAS
     prob_plain = _masked_softmax(plain, mask)
     prob_biased = _masked_softmax(biased, mask)
+    acting_biased = bool(obs_soft.any())
 
-    def _row_kind(index: int) -> str:
+    def _row_action(index: int) -> dict[str, Any]:
         if 0 <= index < len(legal_row_meta):
             row = legal_row_meta[index]
             action = row["action"] if isinstance(row.get("action"), dict) else row
-            return str(action.get("kind") or "?")
-        if 0 <= index < legal_count:
-            return f"k{int(legal_moves[index, FACTOR_KIND])}"
-        return "?"
+            if isinstance(action, dict):
+                return action
+        return {"kind": f"k{int(legal_moves[index, FACTOR_KIND])}"}
+
+    def _row_kind(index: int) -> str:
+        return str(_row_action(index).get("kind") or "?")
 
     def _row_actor(index: int) -> int:
         if 0 <= index < legal_count:
@@ -140,20 +150,29 @@ def diagnose_opening_mispick(policy: Any, snapshot: dict[str, Any]) -> dict[str,
 
     rows: list[dict[str, Any]] = []
     for index in range(legal_count):
+        action = _row_action(index)
         rows.append(
             {
                 "index": index,
                 "actor": _row_actor(index),
                 "kind": _row_kind(index),
+                "label": ScenarioEvalDebug.format_action(
+                    action,
+                    rewards=rewards,
+                    expected_move=bool(passing[index]),
+                ),
                 "p_plain": float(prob_plain[index]),
                 "p_biased": float(prob_biased[index]),
                 "logit": float(plain[index]),
+                "logit_acting": float(acting[index]),
                 "soft_mask": bool(soft_mask[index]),
                 "passing": bool(passing[index]),
             }
         )
     # Top list follows acting ranking (biased when episode_mode=TRAIN packed soft flags).
-    rows.sort(key=lambda row: row["p_biased"] if obs_soft.any() else row["p_plain"], reverse=True)
+    rows.sort(key=lambda row: row["p_biased"] if acting_biased else row["p_plain"], reverse=True)
+    for rank, row in enumerate(rows, start=1):
+        row["rank"] = rank
 
     carrier = ball_carrier_player_index(rewards)
     carrier_kinds: dict[str, dict[str, float]] = {}
@@ -192,6 +211,8 @@ def diagnose_opening_mispick(policy: Any, snapshot: dict[str, Any]) -> dict[str,
         "ball_carrier_player_index": carrier,
         "carrier_kind_mass": carrier_kinds,
         "top_rows": rows[:6],
+        "ranked_rows": list(rows) if all_rows else None,
+        "acting_biased": acting_biased,
         "soft_mask_bias": SOFT_MASK_LOGIT_BIAS,
         "legal_count": legal_count,
         "passing_row_count": int(passing.sum()),
@@ -200,7 +221,7 @@ def diagnose_opening_mispick(policy: Any, snapshot: dict[str, Any]) -> dict[str,
 
 
 def format_opening_mispick_diag(diag: dict[str, Any]) -> str:
-    """One log line after ``turn1=`` when diagnostics ran."""
+    """Summary line after ``turn1=``; optional full ranked menu when ``ranked_rows`` present."""
     if diag.get("error"):
         return f"\n            policy_diag=error:{diag['error']}"
     chosen = diag.get("chosen_row") or {}
@@ -244,4 +265,26 @@ def format_opening_mispick_diag(diag: dict[str, Any]) -> str:
     if top:
         leader = top[0]
         parts.append(f"top={leader['kind']}@{leader['p_plain']:.2f}")
-    return "\n            policy_diag=" + " ".join(parts)
+    out = "\n            policy_diag=" + " ".join(parts)
+    ranked = diag.get("ranked_rows") or []
+    if not ranked:
+        return out
+    acting_biased = bool(diag.get("acting_biased"))
+    chosen_index = chosen.get("index")
+    lines = [out, "\n            policy_menu="]
+    for row in ranked:
+        flags: list[str] = []
+        if row.get("passing"):
+            flags.append("*")
+        if row.get("soft_mask"):
+            flags.append("sm")
+        if chosen_index is not None and row.get("index") == chosen_index:
+            flags.append("<<<")
+        flag_bit = f" {' '.join(flags)}" if flags else ""
+        p_act = row["p_biased"] if acting_biased else row["p_plain"]
+        lines.append(
+            f"\n              #{row['rank']} idx={row['index']} {row.get('label') or row.get('kind')} "
+            f"p={p_act:.4f} plain={row['p_plain']:.4f} sm={row['p_biased']:.4f} "
+            f"logit={row.get('logit_acting', row.get('logit', 0)):.3f}{flag_bit}"
+        )
+    return "".join(lines)

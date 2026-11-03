@@ -532,12 +532,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval-only", action="store_true", help="Skip all train; eval pass without eval JSON (eval.sh sets this)")
     p.add_argument("--eval-episode-mode", choices=("EVAL", "TRAIN"), default="EVAL", help="Scenario/full-game eval: EVAL=unaided (soft-mask bias off); TRAIN=soft-mask logit bias on (+ claim reachability soft-mask search)")
     p.add_argument("--verbose", action="store_true", help="Scenario eval: score opening mispicks (expected/soft row rank + plain vs soft-mask probs) on THEM games")
+    p.add_argument("--super-verbose", action="store_true", help="Implies --verbose; also dumps the full ranked legal menu (idx + probs) on THEM opening mispicks")
     p.add_argument("--phase", choices=EVAL_PHASE_CHOICES, default=None, help="Eval-only: load the zip that phase produced (seed / scenario_a / scenario_b); read-only; one pass")
     p.add_argument("--scenario", default=None, help="One drill only — skips full-game train/eval (default: cycle all from server)")
     p.add_argument("--force-promote", action="store_true", help="Persist next phase gate without live curriculum (at profiles: sticky full-game unlock); fail if checkpoint missing")
     p.add_argument("--continue-on-submit-error", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--reset-long-running", action="store_true", help="Delete long-running checkpoints and TensorBoard logs for the selected profile(s), then exit (start_over.sh)")
-    return p.parse_args()
+    args = p.parse_args()
+    if args.super_verbose:
+        args.verbose = True
+    return args
 
 
 def _reset_long_running(checkpoint_dir: Path, tb_log: Path, *, eval_dir: Path | None = None) -> None:
@@ -1206,7 +1210,12 @@ def _format_eval_game_line(
     return line
 
 
-def _attach_opening_mispick_diag(model: MaskablePPO, summary: dict[str, Any]) -> None:
+def _attach_opening_mispick_diag(
+    model: MaskablePPO,
+    summary: dict[str, Any],
+    *,
+    all_rows: bool = False,
+) -> None:
     """Score plain vs soft-mask-biased legal-row mass for the first lesson mispick — THEM only."""
     snapshot = summary.pop("_opening_mispick_snapshot", None)
     if snapshot is None:
@@ -1216,7 +1225,11 @@ def _attach_opening_mispick_diag(model: MaskablePPO, summary: dict[str, Any]) ->
         summary.pop("opening_mispick_chosen", None)
         return
     try:
-        summary["opening_mispick_diag"] = diagnose_opening_mispick(model.policy, snapshot)
+        summary["opening_mispick_diag"] = diagnose_opening_mispick(
+            model.policy,
+            snapshot,
+            all_rows=all_rows,
+        )
     except Exception as exc:
         summary["opening_mispick_diag"] = {"error": str(exc)}
 
@@ -1316,7 +1329,11 @@ def _eval_segment(
                 truncated = bool(summary.get("truncated")) if summary is not None else bool(info.get("TimeLimit.truncated"))
                 if summary is not None:
                     if args.verbose and scenario is not None:
-                        _attach_opening_mispick_diag(model, summary)
+                        _attach_opening_mispick_diag(
+                            model,
+                            summary,
+                            all_rows=bool(args.super_verbose),
+                        )
                     else:
                         _drop_opening_mispick_snapshot(summary)
                 _log_eval_game(

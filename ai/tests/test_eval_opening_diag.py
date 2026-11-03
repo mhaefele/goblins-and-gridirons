@@ -78,3 +78,42 @@ def test_format_opening_mispick_diag_includes_ranks() -> None:
     assert "gap=+2.15" in line
     assert "carrier_p4:" in line
     assert "rank=1/311" in line
+    assert "policy_menu=" not in line
+
+
+def test_format_opening_mispick_diag_super_verbose_menu() -> None:
+    line = format_opening_mispick_diag(
+        {
+            "chosen": "throw(2,9->1,7)",
+            "chosen_row": {"index": 3, "kind": "throw", "rank": 1, "p_plain": 0.5, "p_biased": 0.4},
+            "acting_biased": False,
+            "legal_count": 2,
+            "ranked_rows": [
+                {
+                    "rank": 1,
+                    "index": 3,
+                    "label": "throw(2,9->1,7)",
+                    "p_plain": 0.5,
+                    "p_biased": 0.4,
+                    "logit_acting": 1.2,
+                    "passing": False,
+                    "soft_mask": False,
+                },
+                {
+                    "rank": 2,
+                    "index": 7,
+                    "label": "run(2,9->5,15)*",
+                    "p_plain": 0.3,
+                    "p_biased": 0.45,
+                    "logit_acting": 0.8,
+                    "passing": True,
+                    "soft_mask": True,
+                },
+            ],
+        }
+    )
+    assert "policy_menu=" in line
+    assert "#1 idx=3 throw(2,9->1,7)" in line
+    assert "<<<" in line
+    assert "#2 idx=7 run(2,9->5,15)*" in line
+    assert "sm" in line.split("#2", 1)[1]
