@@ -2,6 +2,9 @@
 
 Owner: dump line → npz tensors (``scripts/import_expert``). Kotlin writes packed
 ``ExpertStepRecord`` lines; clone pads per minibatch. No HTTP. See ``ai/OWNERSHIP.md``.
+
+Soft-mask is not part of the expert dump (or is ignored if an old line still has
+``softMaskLegal``). Clone scores plain logits; PPO soft-mask comes from the live env.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ NPZ_KEY_ACTION = "action"
 NPZ_KEY_SCHEMA_VERSION = "schema_version"
 # Ragged legal rows: flat[offset[i]:offset[i+1]] belongs to step i.
 NPZ_KEY_LEGAL_MOVES_FLAT = "legal_moves_flat"
+# Legacy npz key — ignored on load; clone never applies soft-mask from the dump.
 NPZ_KEY_SOFT_MASK_LEGAL_FLAT = "preferred_legal_flat"
 NPZ_KEY_LEGAL_ROW_OFFSET = "legal_row_offset"
 
@@ -54,8 +58,8 @@ def load_jsonl_records(path: Path) -> Iterator[dict[str, Any]]:
             yield record
 
 
-def pack_record(record: dict[str, Any]) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray, np.ndarray]:
-    """One dump line → (game-state Dict, ragged legal rows, preferred flags, chosen row index)."""
+def pack_record(record: dict[str, Any]) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray]:
+    """One dump line → (game-state Dict, ragged legal rows, chosen row index)."""
     schema = int(record.get("schemaVersion") or 0)
     if schema != SCHEMA_VERSION:
         raise ValueError(f"expert schemaVersion={schema} (harness expects {SCHEMA_VERSION})")
@@ -65,12 +69,12 @@ def pack_record(record: dict[str, Any]) -> tuple[dict[str, np.ndarray], np.ndarr
             "packed ExpertStepRecord change"
         )
     game_obs = obs_flat_to_dict(record["obs"])
-    legal_rows, preferred = _ragged_legals(record)
+    legal_rows = _ragged_legals(record)
     factors = np.asarray(record["chosenFactors"], dtype=np.int64).reshape(-1)
     if factors.size != FACTORS_PER_LEGAL_MOVE:
         raise ValueError(f"chosenFactors length {factors.size} != {FACTORS_PER_LEGAL_MOVE}")
     action = np.asarray([match_legal_row_index(factors, legal_rows)], dtype=np.int64)
-    return game_obs, legal_rows, preferred, action
+    return game_obs, legal_rows, action
 
 
 def count_dump(path: Path) -> tuple[int, int]:
@@ -105,20 +109,18 @@ def records_to_arrays(jsonl_path: Path) -> dict[str, np.ndarray]:
         for key in OBS_KEYS_GAME_STATE
     }
     legal_flat = np.empty((n_rows, FACTORS_PER_LEGAL_MOVE), dtype=np.int64)
-    preferred_flat = np.empty((n_rows,), dtype=np.int8)
     offsets = np.empty((n_steps + 1,), dtype=np.int64)
     actions = np.empty((n_steps,), dtype=np.int64)
     offsets[0] = 0
     row_cursor = 0
     for index, record in enumerate(load_jsonl_records(jsonl_path)):
-        game_obs, legal_rows, preferred, action = pack_record(record)
+        game_obs, legal_rows, action = pack_record(record)
         for key in OBS_KEYS_GAME_STATE:
             arrays[key][index] = game_obs[key]
         n = int(legal_rows.shape[0])
         end = row_cursor + n
         if n:
             legal_flat[row_cursor:end] = legal_rows
-            preferred_flat[row_cursor:end] = preferred
         row_cursor = end
         offsets[index + 1] = row_cursor
         actions[index] = int(action.reshape(-1)[0])
@@ -127,7 +129,6 @@ def records_to_arrays(jsonl_path: Path) -> dict[str, np.ndarray]:
     if row_cursor != n_rows:
         raise RuntimeError(f"legal row count drifted: filled {row_cursor} vs counted {n_rows}")
     arrays[NPZ_KEY_LEGAL_MOVES_FLAT] = legal_flat
-    arrays[NPZ_KEY_SOFT_MASK_LEGAL_FLAT] = preferred_flat
     arrays[NPZ_KEY_LEGAL_ROW_OFFSET] = offsets
     arrays[NPZ_KEY_ACTION] = actions
     arrays[NPZ_KEY_SCHEMA_VERSION] = np.int32(SCHEMA_VERSION)
@@ -167,7 +168,7 @@ def load_npz(path: Path) -> dict[str, np.ndarray]:
     missing_game = [key for key in OBS_KEYS_GAME_STATE if key not in arrays]
     if missing_game:
         raise ValueError(f"{path} missing game-state keys {missing_game}")
-    for key in (NPZ_KEY_LEGAL_MOVES_FLAT, NPZ_KEY_SOFT_MASK_LEGAL_FLAT, NPZ_KEY_LEGAL_ROW_OFFSET, NPZ_KEY_ACTION):
+    for key in (NPZ_KEY_LEGAL_MOVES_FLAT, NPZ_KEY_LEGAL_ROW_OFFSET, NPZ_KEY_ACTION):
         if key not in arrays:
             raise ValueError(f"{path} missing ragged-legal key {key!r}; re-run import_expert")
     n = int(arrays[NPZ_KEY_ACTION].shape[0])
@@ -180,11 +181,13 @@ def load_npz(path: Path) -> dict[str, np.ndarray]:
 
 
 def batch_gym_obs(arrays: dict[str, np.ndarray], idx: np.ndarray) -> dict[str, np.ndarray]:
-    """Index steps and pad ragged legals to ``MAX_LEGAL_MOVES`` for the policy Dict."""
+    """Index steps and pad ragged legals to ``MAX_LEGAL_MOVES`` for the policy Dict.
+
+    Soft-mask obs is always zeros — expert dumps do not carry preference flags into clone.
+    """
     obs = {key: arrays[key][idx] for key in OBS_KEYS_GAME_STATE}
     offsets = arrays[NPZ_KEY_LEGAL_ROW_OFFSET]
     flat = arrays[NPZ_KEY_LEGAL_MOVES_FLAT]
-    preferred_flat = arrays[NPZ_KEY_SOFT_MASK_LEGAL_FLAT]
     batch = int(idx.shape[0])
     legal = np.full((batch, MAX_LEGAL_MOVES, FACTORS_PER_LEGAL_MOVE), -1, dtype=np.int64)
     preferred = np.zeros((batch, MAX_LEGAL_MOVES), dtype=np.int8)
@@ -197,7 +200,6 @@ def batch_gym_obs(arrays: dict[str, np.ndarray], idx: np.ndarray) -> dict[str, n
             raise ValueError(f"step {int(step_i)} has {n} legal rows > MAX_LEGAL_MOVES={MAX_LEGAL_MOVES}")
         if n:
             legal[j, :n] = flat[start:end]
-            preferred[j, :n] = preferred_flat[start:end]
         counts[j, 0] = n
     obs[OBS_KEY_LEGAL_MOVES] = legal
     obs[OBS_KEY_SOFT_MASK_LEGAL] = preferred
@@ -205,7 +207,7 @@ def batch_gym_obs(arrays: dict[str, np.ndarray], idx: np.ndarray) -> dict[str, n
     return obs
 
 
-def _ragged_legals(record: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+def _ragged_legals(record: dict[str, Any]) -> np.ndarray:
     encoded = np.asarray(record["legalMoves"], dtype=np.int64).reshape(-1, FACTORS_PER_LEGAL_MOVE)
     if encoded.shape[0] == 0:
         raise ValueError("expert step has zero legal moves")
@@ -213,19 +215,8 @@ def _ragged_legals(record: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
         raise ValueError(
             f"Step has {encoded.shape[0]} legal moves > MAX_LEGAL_MOVES={MAX_LEGAL_MOVES}"
         )
-    mask = record.get("softMaskLegal")
-    if not isinstance(mask, list):
-        raise ValueError("expert record missing softMaskLegal list")
-    if len(mask) != encoded.shape[0]:
-        raise ValueError(
-            f"softMaskLegal length {len(mask)} != legalMoves rows {encoded.shape[0]}"
-        )
-    preferred_src = np.asarray(mask, dtype=np.bool_).reshape(-1)
-    preferred = np.zeros((encoded.shape[0],), dtype=np.int8)
-    n_pref = min(encoded.shape[0], preferred_src.size)
-    if n_pref:
-        preferred[:n_pref] = preferred_src[:n_pref]
-    return encoded, preferred
+    # Old dumps may still include softMaskLegal; ignore — not used for clone.
+    return encoded
 
 
 def _is_gzip(path: Path) -> bool:

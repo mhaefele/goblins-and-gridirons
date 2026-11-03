@@ -3,6 +3,9 @@
 Owner: npz → checkpoint weights via ``evaluate_actions`` (not ``learn()``). No HTTP.
 Called by ``scripts/clone_expert``. See ``ai/OWNERSHIP.md``.
 
+Soft-mask is forced off during clone (zeros in obs) so NLL fits weights without the
+train-time ``+SOFT_MASK_LOGIT_BIAS`` crutch. PPO rollouts still use soft-mask via the env.
+
 # DEVIATION: we call ``evaluate_actions`` ourselves instead of ``MaskablePPO.learn()``.
 """
 
@@ -22,6 +25,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 
 from gridiron_ai.actions import legal_row_action_mask, legal_row_action_n
 from gridiron_ai.checkpoints import atomic_model_save
+from gridiron_ai.constants import OBS_KEY_SOFT_MASK_LEGAL
 from gridiron_ai.expert import NPZ_KEY_ACTION, batch_gym_obs, load_npz
 from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
 from gridiron_ai.obs import dict_observation_space, empty_step_observation
@@ -155,6 +159,8 @@ def fit_behavioral_clone(
 def _batch_nll(model: MaskablePPO, arrays: dict[str, np.ndarray], idx: np.ndarray) -> th.Tensor:
     """Loss for one minibatch: how unlikely the recorded moves currently are (lower is better)."""
     obs_np = batch_gym_obs(arrays, idx)
+    # Clone ignores dump/npz soft-mask flags — imitate Lookahead under plain logits.
+    obs_np[OBS_KEY_SOFT_MASK_LEGAL] = np.zeros_like(obs_np[OBS_KEY_SOFT_MASK_LEGAL])
     obs_tensor, _ = model.policy.obs_to_tensor(obs_np)
     actions = th.as_tensor(arrays[NPZ_KEY_ACTION][idx], device=model.device)
     _values, log_prob, _entropy = model.policy.evaluate_actions(obs_tensor, actions)

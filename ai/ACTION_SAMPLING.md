@@ -73,8 +73,9 @@ working as designed.
 to one target. Optional `expectedScenarioMove` on throws would be a separate, explicit
 Kotlin choice — not the same knob as soft-mask on unambiguous board/claim openings.
 
-**Expert clone vs runtime preference:** behavioral clone copies lookahead **choices**;
-soft-mask is a **training-time tilt** toward server-flagged rows. See
+**Expert clone vs runtime preference:** behavioral clone copies lookahead **choices**
+with soft-mask **off** (dump omits `softMaskLegal`; clone zeros `soft_mask_legal` in
+obs). Soft-mask remains a **PPO train-time** tilt toward server-flagged rows. See
 [`scenario_curriculum.py`](gridiron_ai/scenario_curriculum.py) gate/demotion policy separately.
 
 ### Strategic directions

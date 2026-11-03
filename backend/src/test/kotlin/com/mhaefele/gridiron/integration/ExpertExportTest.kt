@@ -60,8 +60,8 @@ class ExpertExportTest : BaseApiTest() {
             val first = jsonMapper.readValue(lines.first(), ExpertStepRecord::class.java)
             assertThat(first.schemaVersion).isEqualTo(AiObsLayout.SCHEMA_VERSION)
             assertThat(first.policy.obs.values).hasSize(AiObsLayout.OBSERVATION_VECTOR_LENGTH)
-            assertThat(first.softMaskLegal).hasSize(first.policy.legalMoves.size)
             assertThat(first.chosenFactors).hasSize(AiObsLayout.ACTION_FACTOR_COUNT)
+            assertThat(lines.first()).doesNotContain("softMaskLegal")
             val chosenIndex = first.policy.legalMoves.indexOfFirst { it == first.chosenFactors }
             assertThat(chosenIndex).isGreaterThanOrEqualTo(0)
             assertThat(first.policy.legalMoves[chosenIndex]).isEqualTo(first.chosenFactors)

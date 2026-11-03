@@ -27,16 +27,17 @@ from gridiron_ai.expert import (
 )
 
 
-def _record(legal_rows: list[list[int]], *, preferred: list[bool] | None = None) -> dict:
-    pref = preferred if preferred is not None else [False] * len(legal_rows)
-    return {
+def _record(legal_rows: list[list[int]], *, soft_mask: list[bool] | None = None) -> dict:
+    out: dict = {
         "schemaVersion": SCHEMA_VERSION,
         "obs": [0.0] * OBSERVATION_VECTOR_LENGTH,
         "legalMoves": legal_rows,
-        "softMaskLegal": pref,
         "chosenFactors": legal_rows[0],
         "chosenLegalActionId": 0,
     }
+    if soft_mask is not None:
+        out["softMaskLegal"] = soft_mask
+    return out
 
 
 def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
@@ -45,8 +46,8 @@ def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
     row_c = [1, 2, 1, 1, 4, 5, 0, 0, 0, 6, 7]
     jsonl = tmp_path / "tiny.jsonl"
     lines = [
-        _record([row_a, row_b], preferred=[True, False]),
-        _record([row_c], preferred=[False]),
+        _record([row_a, row_b]),
+        _record([row_c]),
     ]
     jsonl.write_text("\n".join(json.dumps(line) for line in lines) + "\n", encoding="utf-8")
     npz = tmp_path / "tiny.npz"
@@ -56,7 +57,7 @@ def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
     assert arrays[NPZ_KEY_ACTION].shape == (2,)
     assert arrays[NPZ_KEY_ACTION].tolist() == [0, 0]
     assert arrays[NPZ_KEY_LEGAL_MOVES_FLAT].shape == (3, FACTORS_PER_LEGAL_MOVE)
-    assert arrays[NPZ_KEY_SOFT_MASK_LEGAL_FLAT].tolist() == [1, 0, 0]
+    assert NPZ_KEY_SOFT_MASK_LEGAL_FLAT not in arrays
     assert arrays[NPZ_KEY_LEGAL_ROW_OFFSET].tolist() == [0, 2, 3]
     assert OBS_KEY_LEGAL_MOVES not in arrays
 
@@ -67,4 +68,33 @@ def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
     np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][0, :2], [row_a, row_b])
     np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][0, 2], [-1] * FACTORS_PER_LEGAL_MOVE)
     np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][1, :1], [row_c])
-    assert obs[OBS_KEY_SOFT_MASK_LEGAL][0, 0] == 1
+    assert int(obs[OBS_KEY_SOFT_MASK_LEGAL].sum()) == 0
+
+
+def test_jsonl_ignores_legacy_soft_mask_legal(tmp_path: Path) -> None:
+    row_a = [1, 0, 10, 0, 3, 5, 0, 0, 0, 2, 3]
+    jsonl = tmp_path / "legacy.jsonl"
+    jsonl.write_text(
+        json.dumps(_record([row_a], soft_mask=[True])) + "\n",
+        encoding="utf-8",
+    )
+    npz = tmp_path / "legacy.npz"
+    jsonl_to_npz(jsonl, npz)
+    arrays = load_npz(npz)
+    obs = batch_gym_obs(arrays, np.asarray([0], dtype=np.int64))
+    assert int(obs[OBS_KEY_SOFT_MASK_LEGAL].sum()) == 0
+
+
+def test_load_npz_tolerates_legacy_preferred_flat(tmp_path: Path) -> None:
+    row_a = [1, 0, 10, 0, 3, 5, 0, 0, 0, 2, 3]
+    jsonl = tmp_path / "tiny.jsonl"
+    jsonl.write_text(json.dumps(_record([row_a])) + "\n", encoding="utf-8")
+    npz = tmp_path / "tiny.npz"
+    jsonl_to_npz(jsonl, npz)
+    arrays = dict(load_npz(npz))
+    n_rows = int(arrays[NPZ_KEY_LEGAL_MOVES_FLAT].shape[0])
+    arrays[NPZ_KEY_SOFT_MASK_LEGAL_FLAT] = np.ones((n_rows,), dtype=np.int8)
+    np.savez_compressed(npz, **arrays)
+    loaded = load_npz(npz)
+    obs = batch_gym_obs(loaded, np.asarray([0], dtype=np.int64))
+    assert int(obs[OBS_KEY_SOFT_MASK_LEGAL].sum()) == 0

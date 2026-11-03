@@ -30,7 +30,6 @@ class ExpertExportStepRecorder(
         check(chosenIndex >= 0) { "chosen ${chosen.id.value} missing from legalRows" }
         return ExpertStepRecord(
             policy = packed.pack(step).policy,
-            softMaskLegal = step.harness.legalRows.map { it.softMaskLegal },
             chosenLegalActionId = chosen.id,
             chosenFactors = step.policy.legalMoves[chosenIndex],
         )
