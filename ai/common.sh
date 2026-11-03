@@ -105,7 +105,8 @@ Options:
   --eval-heuristic N               eval games vs HEURISTIC (train: every 4 visits/profile; eval-only: each pass; 0 = skip)
   --eval-lookahead N               eval games vs LOOKAHEAD (train: every 4 visits/profile; eval-only: each pass; 0 = skip)
   --eval-onnx N                    eval games per ONNX profile (general,defense; same cadence; 0 = skip)
-  --eval-episode-mode EVAL|TRAIN   eval episodeMode (default EVAL; TRAIN = claim reachability soft-mask flags only; policy soft-mask bias is always off on eval)
+  --eval-episode-mode EVAL|TRAIN   eval episodeMode (default EVAL=unaided; TRAIN=soft-mask logit bias on + claim soft-mask search)
+  --verbose                          scenario eval: opening-mispick policy_diag (expected/soft row ranks) on THEM games
   --phase seed|scenario_a|scenario_b  eval.sh only: load the zip that phase produced (seed end =
                                    scenario_a start; scenario_a end = scenario_b start); read-only; one pass
   --skip-scenarios                   skip scenario train; on eval.sh skip scenario eval too
@@ -136,7 +137,7 @@ train_cli_parse() {
         profile_names "$TRAIN_CLI_PROFILE" >/dev/null
         shift 2
         ;;
-      --force-promote|--skip-scenarios)
+      --force-promote|--skip-scenarios|--verbose)
         TRAIN_CLI_FORWARD+=("$1")
         shift
         ;;

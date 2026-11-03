@@ -1,0 +1,247 @@
+"""Policy diagnostics when scenario eval mispicks the opening coach turn.
+
+Owner: throwaway eval instrumentation — not part of the learning contract.
+Join-score port of the pre-schema-16 factor-head opening mispick diag.
+See ``eval_debug.py`` / ``ai/OWNERSHIP.md``.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+import torch as th
+
+from gridiron_ai.actions import FACTOR_ACTOR, FACTOR_KIND
+from gridiron_ai.constants import OBS_KEY_LEGAL_MOVE_COUNT, OBS_KEY_SOFT_MASK_LEGAL, SOFT_MASK_LOGIT_BIAS
+from gridiron_ai.reward import us_ball_carrier
+
+
+def _masked_softmax(logits: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    masked = np.full_like(logits, -1.0e8, dtype=np.float64)
+    masked[mask] = logits[mask].astype(np.float64)
+    masked = masked - masked.max()
+    exp = np.exp(masked)
+    exp[~mask] = 0.0
+    total = exp.sum()
+    if total <= 0.0:
+        return np.zeros_like(exp)
+    return exp / total
+
+
+def _snapshot_policy_obs(policy_obs: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    return {key: np.asarray(value).copy() for key, value in policy_obs.items()}
+
+
+def ball_carrier_player_index(rewards: dict[str, Any]) -> int | None:
+    """US ball-carrier roster ``playerIndex`` from harness rewards, if any."""
+    carrier = us_ball_carrier(rewards)
+    if carrier is None:
+        return None
+    return int(carrier["playerIndex"])
+
+
+def preferred_row_rank(*, logits: np.ndarray, legal_count: int, preferred: np.ndarray) -> dict[str, Any] | None:
+    """Best preferred live row by logit rank (1 = argmax). None when no preferred flags."""
+    n = int(legal_count)
+    if n <= 0:
+        return None
+    live = np.asarray(logits[:n], dtype=np.float64)
+    pref = np.asarray(preferred[:n], dtype=bool)
+    pref_idx = np.flatnonzero(pref)
+    if pref_idx.size == 0:
+        return None
+    order = np.argsort(-live)
+    ranks = np.empty(n, dtype=np.int32)
+    ranks[order] = np.arange(1, n + 1)
+    best_i = int(pref_idx[np.argmin(ranks[pref_idx])])
+    argmax_i = int(order[0])
+    return {
+        "best_rank": int(ranks[best_i]),
+        "best_index": best_i,
+        "n_preferred": int(pref_idx.size),
+        "legal_count": n,
+        "argmax_index": argmax_i,
+        "logit_gap": float(live[argmax_i] - live[best_i]),
+    }
+
+
+def snapshot_opening_mispick(
+    *,
+    rewards: dict[str, Any],
+    policy_obs: dict[str, np.ndarray],
+    legal_moves: np.ndarray,
+    passing_legal: list[bool],
+    soft_mask_legal: list[bool],
+    legal_row_meta: list[dict[str, Any]],
+    chosen_row_index: int,
+    chosen_label: str,
+) -> dict[str, Any]:
+    """Frozen decision state for ``diagnose_opening_mispick`` after the episode."""
+    return {
+        "policy_obs": _snapshot_policy_obs(policy_obs),
+        "rewards": rewards,
+        "legal_moves": np.asarray(legal_moves, dtype=np.int64).copy(),
+        "passing_legal": np.asarray(passing_legal, dtype=np.int8).copy(),
+        "soft_mask_legal": np.asarray(soft_mask_legal, dtype=np.int8).copy(),
+        "legal_row_meta": list(legal_row_meta),
+        "chosen_row_index": int(chosen_row_index),
+        "chosen_label": chosen_label,
+    }
+
+
+def diagnose_opening_mispick(policy: Any, snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Score the opening legal-row menu (plain vs soft-mask-biased) at the mispick."""
+    policy.set_training_mode(False)
+    obs_tensor, _ = policy.obs_to_tensor(snapshot["policy_obs"])
+    with th.no_grad():
+        _values, logits_t = policy._board_and_row_logits(obs_tensor)
+    logits = logits_t[0].detach().cpu().numpy()
+
+    legal_moves = snapshot["legal_moves"]
+    count_arr = snapshot["policy_obs"].get(OBS_KEY_LEGAL_MOVE_COUNT)
+    legal_count = int(np.asarray(count_arr).reshape(-1)[0]) if count_arr is not None else int(legal_moves.shape[0])
+    legal_count = min(legal_count, int(legal_moves.shape[0]), logits.shape[0])
+    soft_mask = snapshot["soft_mask_legal"][:legal_count].astype(bool)
+    passing = snapshot["passing_legal"][:legal_count].astype(bool)
+    legal_row_meta = snapshot["legal_row_meta"]
+    chosen_i = int(snapshot["chosen_row_index"])
+    rewards = snapshot["rewards"]
+
+    mask = np.zeros(logits.shape[0], dtype=bool)
+    mask[:legal_count] = True
+    # Forward logits already include obs soft-mask bias when eval episode_mode=TRAIN.
+    # Strip whatever was in obs, then re-apply server flags for a clean plain vs biased pair.
+    acting = logits.astype(np.float64)
+    obs_soft_src = snapshot["policy_obs"].get(OBS_KEY_SOFT_MASK_LEGAL)
+    obs_soft = np.zeros(legal_count, dtype=bool)
+    if obs_soft_src is not None:
+        obs_soft = np.asarray(obs_soft_src).reshape(-1)[:legal_count] > 0
+    plain = acting.copy()
+    plain[:legal_count][obs_soft] -= SOFT_MASK_LOGIT_BIAS
+    biased = plain.copy()
+    biased[:legal_count][soft_mask] += SOFT_MASK_LOGIT_BIAS
+    prob_plain = _masked_softmax(plain, mask)
+    prob_biased = _masked_softmax(biased, mask)
+
+    def _row_kind(index: int) -> str:
+        if 0 <= index < len(legal_row_meta):
+            row = legal_row_meta[index]
+            action = row["action"] if isinstance(row.get("action"), dict) else row
+            return str(action.get("kind") or "?")
+        if 0 <= index < legal_count:
+            return f"k{int(legal_moves[index, FACTOR_KIND])}"
+        return "?"
+
+    def _row_actor(index: int) -> int:
+        if 0 <= index < legal_count:
+            return int(legal_moves[index, FACTOR_ACTOR])
+        return 0
+
+    rows: list[dict[str, Any]] = []
+    for index in range(legal_count):
+        rows.append(
+            {
+                "index": index,
+                "actor": _row_actor(index),
+                "kind": _row_kind(index),
+                "p_plain": float(prob_plain[index]),
+                "p_biased": float(prob_biased[index]),
+                "logit": float(plain[index]),
+                "soft_mask": bool(soft_mask[index]),
+                "passing": bool(passing[index]),
+            }
+        )
+    # Top list follows acting ranking (biased when episode_mode=TRAIN packed soft flags).
+    rows.sort(key=lambda row: row["p_biased"] if obs_soft.any() else row["p_plain"], reverse=True)
+
+    carrier = ball_carrier_player_index(rewards)
+    carrier_kinds: dict[str, dict[str, float]] = {}
+    if carrier is not None:
+        for row in rows:
+            if row["actor"] != carrier:
+                continue
+            bucket = carrier_kinds.setdefault(row["kind"], {"p_plain": 0.0, "p_biased": 0.0})
+            bucket["p_plain"] = max(bucket["p_plain"], row["p_plain"])
+            bucket["p_biased"] = max(bucket["p_biased"], row["p_biased"])
+
+    chosen_ok = 0 <= chosen_i < legal_count
+    # Ranks / gap use acting logits (what deterministic predict actually ranked).
+    order = np.argsort(-acting[:legal_count]) if legal_count else np.zeros(0, dtype=np.int64)
+    ranks = np.empty(legal_count, dtype=np.int32)
+    if legal_count:
+        ranks[order] = np.arange(1, legal_count + 1)
+
+    expected_rank = preferred_row_rank(logits=acting, legal_count=legal_count, preferred=passing)
+    soft_rank = preferred_row_rank(logits=acting, legal_count=legal_count, preferred=soft_mask)
+
+    return {
+        "chosen": snapshot.get("chosen_label"),
+        "chosen_row": {
+            "index": chosen_i,
+            "actor": _row_actor(chosen_i) if chosen_ok else None,
+            "kind": _row_kind(chosen_i) if chosen_ok else None,
+            "rank": int(ranks[chosen_i]) if chosen_ok else None,
+            "p_plain": float(prob_plain[chosen_i]) if chosen_ok else 0.0,
+            "p_biased": float(prob_biased[chosen_i]) if chosen_ok else 0.0,
+            "soft_mask": bool(soft_mask[chosen_i]) if chosen_ok else False,
+            "passing": bool(passing[chosen_i]) if chosen_ok else False,
+        },
+        "expected_rank": expected_rank,
+        "soft_rank": soft_rank,
+        "ball_carrier_player_index": carrier,
+        "carrier_kind_mass": carrier_kinds,
+        "top_rows": rows[:6],
+        "soft_mask_bias": SOFT_MASK_LOGIT_BIAS,
+        "legal_count": legal_count,
+        "passing_row_count": int(passing.sum()),
+        "soft_mask_row_count": int(soft_mask.sum()),
+    }
+
+
+def format_opening_mispick_diag(diag: dict[str, Any]) -> str:
+    """One log line after ``turn1=`` when diagnostics ran."""
+    if diag.get("error"):
+        return f"\n            policy_diag=error:{diag['error']}"
+    chosen = diag.get("chosen_row") or {}
+    parts = [
+        f"picked={diag.get('chosen')}",
+        f"kind={chosen.get('kind')}",
+        f"rank={chosen.get('rank')}/{diag.get('legal_count')}",
+        f"p={chosen.get('p_plain', 0):.3f}({chosen.get('p_biased', 0):.3f}sm)",
+    ]
+    expected = diag.get("expected_rank")
+    if expected is not None:
+        parts.append(
+            f"expected_best={expected['best_rank']}/{expected['legal_count']}"
+            f"(n={expected['n_preferred']} gap={expected['logit_gap']:+.2f})"
+        )
+    soft = diag.get("soft_rank")
+    if soft is not None:
+        parts.append(
+            f"soft_best={soft['best_rank']}/{soft['legal_count']}"
+            f"(n={soft['n_preferred']} gap={soft['logit_gap']:+.2f})"
+        )
+    sm_rows = diag.get("soft_mask_row_count")
+    legal_rows = diag.get("legal_count")
+    if sm_rows is not None and legal_rows is not None:
+        parts.append(f"sm={sm_rows}/{legal_rows}")
+    if chosen.get("soft_mask"):
+        parts.append("picked_sm")
+    if chosen.get("passing"):
+        parts.append("picked_pass")
+    carrier = diag.get("ball_carrier_player_index")
+    masses = diag.get("carrier_kind_mass") or {}
+    if carrier is not None and masses:
+        kind_bits = []
+        for kind in ("sidestep", "run", "block", "mark", "throw"):
+            if kind in masses:
+                m = masses[kind]
+                kind_bits.append(f"{kind}={m['p_plain']:.2f}/{m['p_biased']:.2f}")
+        if kind_bits:
+            parts.append(f"carrier_p{carrier}:" + ",".join(kind_bits))
+    top = diag.get("top_rows") or []
+    if top:
+        leader = top[0]
+        parts.append(f"top={leader['kind']}@{leader['p_plain']:.2f}")
+    return "\n            policy_diag=" + " ".join(parts)

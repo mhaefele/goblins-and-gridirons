@@ -136,7 +136,7 @@ class GridironEnv(gym.Env):
         self.scenario = scenario
         self.scenario_difficulty = scenario_difficulty
         self.episode_mode = episode_mode
-        # Train rollouts only: policy +SOFT_MASK_LOGIT_BIAS from obs. Eval/gates keep False.
+        # Policy +SOFT_MASK_LOGIT_BIAS from obs. Train rollouts True; eval follows episode_mode (TRAIN=on).
         self.soft_mask_bias = soft_mask_bias
 
         self.observation_space = dict_observation_space()
@@ -249,7 +249,13 @@ class GridironEnv(gym.Env):
             self._action_stats.record(resolved.sampled_kind)
             self._action_stats.record_legal_count(len(self._legal_action_ids))
 
-            reward, submit_error = self._submit_resolved_action(resolved)
+            row_i = int(np.asarray(chosen_row_index, dtype=np.int64).reshape(-1)[0])
+            policy_obs = self._build_observation()
+            reward, submit_error = self._submit_resolved_action(
+                resolved,
+                chosen_row_index=row_i,
+                policy_obs=policy_obs,
+            )
             if submit_error is not None:
                 return self._finish_after_submit_error(submit_error)
 
@@ -313,12 +319,17 @@ class GridironEnv(gym.Env):
         return [str(row["action"]["id"]) for row in self._legal_rows]
 
     @property
+    def _server_soft_mask_legal(self) -> list[bool]:
+        """Harness ``softMaskLegal`` flags (diagnostics / grading); independent of obs bias."""
+        return [bool(row["softMaskLegal"]) for row in self._legal_rows]
+
+    @property
     def _soft_mask_legal(self) -> list[bool]:
         """Flags packed into obs for policy logit bias. Zeros when ``soft_mask_bias`` is off (eval)."""
         rows = self._legal_rows
         if not self.soft_mask_bias:
             return [False] * len(rows)
-        return [bool(row["softMaskLegal"]) for row in rows]
+        return self._server_soft_mask_legal
 
     @property
     def _passing_legal(self) -> list[bool]:
@@ -430,6 +441,9 @@ class GridironEnv(gym.Env):
     def _submit_resolved_action(
         self,
         resolved: ResolvedAction,
+        *,
+        chosen_row_index: int | None = None,
+        policy_obs: dict[str, np.ndarray] | None = None,
     ) -> tuple[float, GridironApiError | None]:
         assert self.match_id is not None and self._current_step_dto is not None
 
@@ -472,6 +486,12 @@ class GridironEnv(gym.Env):
                 scored_touchdown=scored_td,
                 expected_move=was_expected,
                 acquired_card=acquired_card,
+                policy_obs=policy_obs,
+                legal_moves=self._legal_moves,
+                passing_legal=passing,
+                soft_mask_legal=self._server_soft_mask_legal,
+                legal_row_meta=self._legal_row_meta,
+                chosen_row_index=chosen_row_index,
             )
         self._action_stats.record_ball_gain(observation_before_move, after_obs)
         reward = step_reward(
@@ -589,6 +609,9 @@ class GridironEnv(gym.Env):
                 summary["first_kind"] = self._action_stats.first_kind
         if self._scenario_eval_debug is not None:
             summary.update(self._scenario_eval_debug.episode_fields())
+            snapshot = self._scenario_eval_debug.opening_mispick_snapshot()
+            if snapshot is not None:
+                summary["_opening_mispick_snapshot"] = snapshot
             assert self.scenario is not None
             append_scenario_draw_log(
                 self._scenario_eval_debug.format_scenario_draw_log(

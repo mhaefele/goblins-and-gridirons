@@ -81,6 +81,7 @@ from gridiron_ai.env import (
     opponent_metrics_label,
 )
 from gridiron_ai.eval_debug import ScenarioEvalDebug
+from gridiron_ai.eval_opening_diag import diagnose_opening_mispick
 from gridiron_ai.metrics import aggregate_episodes, print_metrics
 from gridiron_ai.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
@@ -529,7 +530,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval-lookahead", type=int, default=DEFAULT_EVAL_LOOKAHEAD, help=f"Deterministic eval games vs LOOKAHEAD (train: every {FULL_GAME_EVAL_EVERY_CYCLES} visits/profile; eval-only: each pass; 0 = skip)")
     p.add_argument("--eval-onnx", type=int, default=DEFAULT_EVAL_ONNX, help=f"Deterministic eval games per ONNX profile ({', '.join(FULL_GAME_ONNX_OPPONENT_PROFILES)}; same cadence as heuristic/lookahead; 0 = skip)")
     p.add_argument("--eval-only", action="store_true", help="Skip all train; eval pass without eval JSON (eval.sh sets this)")
-    p.add_argument("--eval-episode-mode", choices=("EVAL", "TRAIN"), default="EVAL", help="Scenario/full-game eval episodeMode (EVAL=default; TRAIN enables claim reachability soft-mask flags only — policy soft-mask logit bias stays off on all evals)")
+    p.add_argument("--eval-episode-mode", choices=("EVAL", "TRAIN"), default="EVAL", help="Scenario/full-game eval: EVAL=unaided (soft-mask bias off); TRAIN=soft-mask logit bias on (+ claim reachability soft-mask search)")
+    p.add_argument("--verbose", action="store_true", help="Scenario eval: score opening mispicks (expected/soft row rank + plain vs soft-mask probs) on THEM games")
     p.add_argument("--phase", choices=EVAL_PHASE_CHOICES, default=None, help="Eval-only: load the zip that phase produced (seed / scenario_a / scenario_b); read-only; one pass")
     p.add_argument("--scenario", default=None, help="One drill only — skips full-game train/eval (default: cycle all from server)")
     p.add_argument("--force-promote", action="store_true", help="Persist next phase gate without live curriculum (at profiles: sticky full-game unlock); fail if checkpoint missing")
@@ -1204,6 +1206,29 @@ def _format_eval_game_line(
     return line
 
 
+def _attach_opening_mispick_diag(model: MaskablePPO, summary: dict[str, Any]) -> None:
+    """Score plain vs soft-mask-biased legal-row mass for the first lesson mispick — THEM only."""
+    snapshot = summary.pop("_opening_mispick_snapshot", None)
+    if snapshot is None:
+        return
+    if summary.get("result_winner_rel") != "THEM":
+        summary.pop("opening_mispick", None)
+        summary.pop("opening_mispick_chosen", None)
+        return
+    try:
+        summary["opening_mispick_diag"] = diagnose_opening_mispick(model.policy, snapshot)
+    except Exception as exc:
+        summary["opening_mispick_diag"] = {"error": str(exc)}
+
+
+def _drop_opening_mispick_snapshot(summary: dict[str, Any]) -> None:
+    """Eval JSON / logs stay lean when ``--verbose`` is off."""
+    summary.pop("_opening_mispick_snapshot", None)
+    summary.pop("opening_mispick", None)
+    summary.pop("opening_mispick_chosen", None)
+    summary.pop("opening_mispick_diag", None)
+
+
 def _log_eval_game(
     summary: dict[str, Any] | None,
     *,
@@ -1239,7 +1264,7 @@ def _eval_segment(
     scenario: str | None = None,
     scenario_difficulty: int = 0,
 ) -> dict[str, Any]:
-    """Deterministic games; shaping + soft-mask bias off so metrics are unaided outcomes."""
+    """Deterministic games; shaping off. Soft-mask bias follows ``eval_episode_mode`` (TRAIN=on)."""
     workers = min(games, DEFAULT_N_ENVS)
     opp_label = opponent_metrics_label(computer_opponent, onnx_profile)
     if scenario is not None:
@@ -1248,8 +1273,10 @@ def _eval_segment(
         label = f"vs-{opp_label}"
     tagged = f"[{profile}] {label}"
     episode_mode = args.eval_episode_mode
+    soft_mask_bias = episode_mode == "TRAIN"
+    bias_bit = "soft-mask bias on" if soft_mask_bias else "soft-mask bias off"
     header = (
-        f"Eval {tagged}: {games} games (deterministic, shaping off, soft-mask bias off, "
+        f"Eval {tagged}: {games} games (deterministic, shaping off, {bias_bit}, "
         f"episode_mode={episode_mode}, n_envs={workers})…"
     )
     quiet_scenario = scenario is not None
@@ -1269,7 +1296,7 @@ def _eval_segment(
         scenario=scenario,
         scenario_difficulty=scenario_difficulty,
         episode_mode=episode_mode,
-        soft_mask_bias=False,
+        soft_mask_bias=soft_mask_bias,
     )
     configure_s = clk.lap("configure workers", echo=echo_laps)
     env = pool.vec_env(workers)
@@ -1287,6 +1314,11 @@ def _eval_segment(
                 completions += 1
                 summary = info.get("bb_episode")
                 truncated = bool(summary.get("truncated")) if summary is not None else bool(info.get("TimeLimit.truncated"))
+                if summary is not None:
+                    if args.verbose and scenario is not None:
+                        _attach_opening_mispick_diag(model, summary)
+                    else:
+                        _drop_opening_mispick_snapshot(summary)
                 _log_eval_game(
                     summary,
                     game_num=completions,
