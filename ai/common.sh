@@ -98,6 +98,7 @@ Usage (from ai/; backend must be up — ./dev.sh from repo root):
 Options:
   --profile baseline|general|spread|td|defense|all   profile (default: all)
   --scenario NAME                  one drill only (skips full-game train/eval)
+  --difficulty N                   eval-only: pin drill difficulty 0–5 (requires --scenario; ignores curriculum JSON)
   --cycles N                       stop after N train/eval cycles (default: forever)
   --train-heuristic N              PPO timesteps vs HEURISTIC per cycle (0 = skip)
   --train-lookahead N              PPO timesteps vs LOOKAHEAD per cycle (0 = skip)
@@ -142,7 +143,7 @@ train_cli_parse() {
         TRAIN_CLI_FORWARD+=("$1")
         shift
         ;;
-      --scenario|--cycles|--train-heuristic|--train-lookahead|--train-onnx|--eval-heuristic|--eval-lookahead|--eval-onnx|--eval-episode-mode|--train-scenario-learning|--train-scenario-mastered|--phase)
+      --scenario|--difficulty|--cycles|--train-heuristic|--train-lookahead|--train-onnx|--eval-heuristic|--eval-lookahead|--eval-onnx|--eval-episode-mode|--train-scenario-learning|--train-scenario-mastered|--phase)
         TRAIN_CLI_FORWARD+=("$1" "${2:?missing value for $1}")
         shift 2
         ;;

@@ -535,12 +535,26 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--super-verbose", action="store_true", help="Implies --verbose; also dumps the full ranked legal menu (idx + probs) on THEM opening mispicks")
     p.add_argument("--phase", choices=EVAL_PHASE_CHOICES, default=None, help="Eval-only: load the zip that phase produced (seed / scenario_a / scenario_b); read-only; one pass")
     p.add_argument("--scenario", default=None, help="One drill only — skips full-game train/eval (default: cycle all from server)")
+    p.add_argument(
+        "--difficulty",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Eval-only: pin drill difficulty 0–5 (requires --scenario; ignores curriculum JSON; never writes levels)",
+    )
     p.add_argument("--force-promote", action="store_true", help="Persist next phase gate without live curriculum (at profiles: sticky full-game unlock); fail if checkpoint missing")
     p.add_argument("--continue-on-submit-error", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--reset-long-running", action="store_true", help="Delete long-running checkpoints and TensorBoard logs for the selected profile(s), then exit (start_over.sh)")
     args = p.parse_args()
     if args.super_verbose:
         args.verbose = True
+    if args.difficulty is not None:
+        if args.scenario is None:
+            raise SystemExit("--difficulty requires --scenario")
+        if not 0 <= args.difficulty <= MAX_DIFFICULTY:
+            raise SystemExit(f"--difficulty must be 0–{MAX_DIFFICULTY}, got {args.difficulty}")
+        if not args.eval_only:
+            raise SystemExit("--difficulty is eval-only (use with ./eval.sh / --eval-only)")
     return args
 
 
@@ -1436,21 +1450,29 @@ def _eval_scenarios_segment(
     levels = load_levels(curriculum_path)
     gate_failures = load_gate_failures(path_for_gate_failures(save_stem))
     active = scenarios_for_eval(levels, scenarios, gate_failures)
+    pin_difficulty = args.difficulty
+    # Forced --difficulty must not bump/demote curriculum levels.
+    write_curriculum = update_curriculum and pin_difficulty is None
     _eval_section_break()
-    if update_curriculum:
+    if pin_difficulty is not None:
+        print(
+            f"Eval scenarios ({len(active)} drills, difficulty pin d{pin_difficulty}, curriculum off)",
+            flush=True,
+        )
+    elif write_curriculum:
         print(f"Eval scenarios ({len(active)} drills, curriculum on)", flush=True)
     else:
         print(f"Eval scenarios ({len(active)} drills, curriculum off)", flush=True)
     row: dict[str, Any] = {}
-    drill_stats = load_drill_stats(path_for_drill_stats(save_stem)) if update_curriculum else {}
+    drill_stats = load_drill_stats(path_for_drill_stats(save_stem)) if write_curriculum else {}
     gate_failures_path = path_for_gate_failures(save_stem)
     drill_stats_path = path_for_drill_stats(save_stem)
     for scenario in active:
-        difficulty = get_difficulty(levels, scenario)
+        difficulty = pin_difficulty if pin_difficulty is not None else get_difficulty(levels, scenario)
         stats = _eval_one_scenario(
             model, args=args, pool=pool, profile=profile, scenario=scenario, difficulty=difficulty
         )
-        if update_curriculum:
+        if write_curriculum:
             levels, gate_failures, drill_stats = _apply_scenario_after_eval(
                 scenario=scenario,
                 difficulty=difficulty,
