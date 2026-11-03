@@ -290,14 +290,16 @@ class LookaheadSearch(
         timedOut: Boolean,
     ) {
         // Hitting the think deadline on a full-ish search is normal (esp. parallel expert export).
-        // WARN only on anomalies: wall overrun past the deadline, hot us/node, or shallow/few nodes.
+        // WARN only on anomalies: wall overrun past the deadline, hot us/node on a long search,
+        // or shallow/few nodes after timeout. Tiny menus (e.g. ReplaceChallenge ×3) inflate
+        // us/node via fixed overhead — ignore that unless wall time is also hot.
         val usPerNode = if (nodes > 0) elapsedNanos / nodes / 1_000L else 0L
         val anomalous = when {
-            budgetNanos == null                                    -> elapsedNanos >= SLOW_NANOS
-            elapsedNanos > budgetNanos + OVERRUN_SLACK_NANOS       -> true
-            nodes > 0 && usPerNode >= HOT_US_PER_NODE              -> true
-            timedOut && reachedDepth <= 1 && nodes < rootCount / 2 -> true
-            else                                                   -> false
+            budgetNanos == null                                            -> elapsedNanos >= SLOW_NANOS
+            elapsedNanos > budgetNanos + OVERRUN_SLACK_NANOS               -> true
+            elapsedNanos >= HOT_WALL_NANOS && usPerNode >= HOT_US_PER_NODE -> true
+            timedOut && reachedDepth <= 1 && nodes < rootCount / 2         -> true
+            else                                                           -> false
         }
         if (!anomalous) return
         val pending = state.currentTurnState.pendingDecision?.let { deepestDelegate(it)::class.simpleName } ?: "none"
@@ -783,6 +785,8 @@ class LookaheadSearch(
         private const val SLOW_NANOS = 200_000_000L
         /** WARN if wall time exceeds think budget by more than this (GC / scheduler stall). */
         private const val OVERRUN_SLACK_NANOS = 50_000_000L
+        /** Floor before us/node can WARN — small menus inflate µs/node without being slow. */
+        private const val HOT_WALL_NANOS = 50_000_000L
         /** WARN when dry-run cost per node is well above typical ~0.7–1ms under load. */
         private const val HOT_US_PER_NODE = 2_000L
     }
