@@ -2,7 +2,8 @@
 """Pack a Kotlin expert JSONL dump into an npz clone_expert can load.
 
 JSONL lines are already packed (obs float[] + ragged legalMoves); this slices game-state
-into gym Dict arrays and keeps legals ragged (flat + offsets) for RAM.
+into gym Dict arrays and keeps legals ragged (flat + offsets) for RAM. Also writes
+``{out.stem}_kind_stats.txt`` (chosen-move wire-kind counts + %).
 
 Usage (from ai/):
   .venv/bin/python -m scripts.import_expert --in output/expert/lookahead.jsonl.gz --out output/expert/lookahead.npz
@@ -41,7 +42,9 @@ def main() -> None:
         raise SystemExit(f"expert dump not found: {jsonl_path}")
     out_path = args.out.expanduser().resolve()
     jsonl_to_npz(jsonl_path, out_path)
+    stats_path = out_path.with_name(f"{out_path.stem}_kind_stats.txt")
     print(f"wrote {out_path}", flush=True)
+    print(f"wrote {stats_path}", flush=True)
 
 
 if __name__ == "__main__":

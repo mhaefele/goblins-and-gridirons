@@ -68,7 +68,8 @@ mvn spring-boot:run -Dspring-boot.run.arguments="--export-expert --games=4 --thr
 mvn spring-boot:run -Dspring-boot.run.arguments="--export-expert --games=506 --out=../ai/output/expert/lookahead.jsonl.gz"
 ```
 
-**2. Pack** from `ai/` (ragged legals in npz; **overwrites** `--out`; keeps jsonl.gz):
+**2. Pack** from `ai/` (ragged legals in npz; **overwrites** `--out`; keeps jsonl.gz; writes
+`lookahead_kind_stats.txt` with chosen-move kind counts/% — also via `scripts.summarize_expert`):
 
 ```bash
 .venv/bin/python -m scripts.import_expert --in output/expert/lookahead.jsonl.gz --out output/expert/lookahead.npz

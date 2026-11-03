@@ -194,7 +194,7 @@ step_dump() {
 }
 
 step_pack() {
-  log "Pack expert dump → $NPZ"
+  log "Pack expert dump → $NPZ (also writes chosen-move kind stats)"
   ensure_python
   [[ -f "$JSONL" ]] || die "expert dump not found: $JSONL"
   (

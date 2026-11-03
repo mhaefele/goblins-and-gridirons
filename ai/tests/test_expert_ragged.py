@@ -27,13 +27,18 @@ from gridiron_ai.expert import (
 )
 
 
-def _record(legal_rows: list[list[int]], *, soft_mask: list[bool] | None = None) -> dict:
+def _record(
+    legal_rows: list[list[int]],
+    *,
+    soft_mask: list[bool] | None = None,
+    action_id: str = "RUN_h0_1x1",
+) -> dict:
     out: dict = {
         "schemaVersion": SCHEMA_VERSION,
         "obs": [0.0] * OBSERVATION_VECTOR_LENGTH,
         "legalMoves": legal_rows,
         "chosenFactors": legal_rows[0],
-        "chosenLegalActionId": 0,
+        "chosenLegalActionId": action_id,
     }
     if soft_mask is not None:
         out["softMaskLegal"] = soft_mask
@@ -46,8 +51,8 @@ def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
     row_c = [1, 2, 1, 1, 4, 5, 0, 0, 0, 6, 7]
     jsonl = tmp_path / "tiny.jsonl"
     lines = [
-        _record([row_a, row_b]),
-        _record([row_c]),
+        _record([row_a, row_b], action_id="RUN_h0_1x1"),
+        _record([row_c], action_id="BLOCK_h1_2x2"),
     ]
     jsonl.write_text("\n".join(json.dumps(line) for line in lines) + "\n", encoding="utf-8")
     npz = tmp_path / "tiny.npz"
@@ -69,6 +74,11 @@ def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
     np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][0, 2], [-1] * FACTORS_PER_LEGAL_MOVE)
     np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][1, :1], [row_c])
     assert int(obs[OBS_KEY_SOFT_MASK_LEGAL].sum()) == 0
+
+    stats = (tmp_path / "tiny_kind_stats.txt").read_text(encoding="utf-8")
+    assert "RUN" in stats and "BLOCK" in stats
+    assert "50.00%" in stats
+    assert "TOTAL" in stats
 
 
 def test_jsonl_ignores_legacy_soft_mask_legal(tmp_path: Path) -> None:

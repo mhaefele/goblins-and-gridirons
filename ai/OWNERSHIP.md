@@ -90,6 +90,6 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `scenario_training.py` | Pointer: grading is Kotlin |
 | `metrics.py` / `tb_callback.py` | Episode aggregates / TensorBoard |
 | `paths.py` | `output/` roots |
-| `expert.py` / `clone.py` | Dump → npz → seed zip |
+| `expert.py` / `expert_stats.py` / `clone.py` | Dump → npz (+ kind stats) → seed zip |
 | `eval_debug.py` | Throwaway scenario-eval logging |
 | `scripts/train_self_play.py` | Train/eval loop entrypoint |
