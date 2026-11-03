@@ -88,7 +88,7 @@ For *this* problem (smarter action choices), almost everything collapses to two 
 | **2. Sample among legal rows** | How we **pick** among packed rows — join-score + soft preferred bias | Soft-mask (landed); further row encoders / attention are optional |
 
 **Default path:** Schema 10 packing (roster actor) → soft-mask (schema 12) →
-**schema 19 legal-row join scores** (dest + source as pitch x/y + shuffled menu). Measure
+**schema 19 legal-row join scores** (dest + source as pitch x/y). Measure
 uniqueness before more representation shrinks.
 
 **Landed:** score the legal set directly — join board latent to each encoded row
@@ -221,10 +221,11 @@ columns**, not because a MultiDiscrete softmax is hundreds of millions wide.
 The policy **join-scores** each live row with the board latent (`LegalRowActorCriticPolicy`):
 one preference over complete moves (not independent factor heads + remask).
 
-**Menu order:** Kotlin `AiLegalChoiceMapper.toLegalChoices` **shuffles** the live set each
-step. Packed `legalMoves`, harness `legalRows` (incl. soft-mask / passing flags), expert
-`chosenFactors`, and the Discrete/ONNX **row index** all refer to that same shuffled order —
-no separate remap table. Prevents latching onto catalog / generation order.
+**Menu order:** Kotlin `AiLegalChoiceMapper.toLegalChoices` keeps **generator / catalog
+order** (no per-step shuffle). Packed `legalMoves`, harness `legalRows` (incl. soft-mask /
+passing flags), expert `chosenFactors`, and the Discrete/ONNX **row index** share that
+order — no separate remap table. Join-score is seat-invariant (shared row scorer); shuffle
+was removed as non-load-bearing.
 
 Each packed row is **eleven** ints (storage / ONNX legal-matrix input). Python
 `encode_legal_rows` embeds them the same way board channels are embedded

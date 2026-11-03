@@ -34,10 +34,10 @@ class AiLegalChoiceMapper(
             )
         }
         checkDistinctPackedRows(choices, state, perspectiveSeat)
-        // Shuffle so join-score / soft-mask cannot latch onto catalog order. Packed legalMoves,
-        // harness legalRows, soft-mask flags, and the chosen row index all share this order —
-        // resolve by index into the shuffled menu (ONNX + Python env).
-        return choices.shuffled()
+        // Keep generator order. Join-score shares row weights (no seat features); menu shuffle
+        // does not change the learning signal. Packed legalMoves / harness rows / Discrete index
+        // stay aligned on this list.
+        return choices
     }
 
     /** Packed legal-row ints must be unique within one legal set (submit identity via action.id). */
