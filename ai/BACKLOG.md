@@ -2,7 +2,7 @@
 
 Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) defers here.
 
-**Status:** Open — AI2.0–AI2.4 + AI2.7 done; [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) **obs landed** (schema 11; scenarios still open); [AI2.13](#ai213--scenario-catalog-metadata-api) catalog metadata done; [AI2.15](#ai215--coachcontrol-seat-semantics) seat naming done; [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) blind-spot taxonomy open. Then [AI2.5](#ai25--multi-team-curriculum). Sampling follow-ups: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) ([AI2.11](#ai211--action-sampling--factor-space-inventory)). **Next:** review staged [AI2.21](#ai221--harness-legalrows-wrap-legalaction) (schema 20). Harness hygiene: [AI2.14](#ai214--split-train_self_play). Optimize (not next): [AI2.opt](#ai2opt--binary-observation-wire), [AI2.18](#ai218--one-bonus-play-action-kind-retrain), [AI2.19](#ai219--fold-ai-action-vocabulary-investigate). Ship AI1 done; see [archive/BACKLOG-done.md](../archive/BACKLOG-done.md).
+**Status:** Open — AI2.0–AI2.4 + AI2.7 done; [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) **obs landed** (schema 11; scenarios still open); [AI2.13](#ai213--scenario-catalog-metadata-api) catalog metadata done; [AI2.15](#ai215--coachcontrol-seat-semantics) seat naming done; [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) blind-spot taxonomy open. Then [AI2.5](#ai25--multi-team-curriculum). Sampling follow-ups: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) ([AI2.11](#ai211--action-sampling--factor-space-inventory)). **Next:** [AI2.22](#ai222--python-typeddicts-for-harness-wire) TypedDict expand. Optional stock-layout: [AI2.23](#ai223--flat-cell-table-drop-pitch-chw) → [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice). Harness hygiene: [AI2.14](#ai214--split-train_self_play). Optimize (not next): [AI2.opt](#ai2opt--binary-observation-wire), [AI2.18](#ai218--one-bonus-play-action-kind-retrain), [AI2.19](#ai219--fold-ai-action-vocabulary-investigate). Ship AI1 done; see [archive/BACKLOG-done.md](../archive/BACKLOG-done.md).
 
 **Design:** [`DESIGN.md`](DESIGN.md) · **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md) · **Architecture:** [Backend § Long-term product goals](../backend/ARCHITECTURE.md#long-term-product-goals).
 
@@ -40,8 +40,10 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [ ] [AI2.18](#ai218--one-bonus-play-action-kind-retrain) — One bonus-play action kind *(retrain; bundle with the next layout change)*
 - [ ] [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) — Shared wire kind on `LegalAction` DTOs *(investigate; not next)*
 - [ ] [AI2.20](#ai220--remove-local-sb3-pickle-aliases) — Remove local SB3 pickle-alias shim *(after resume zips re-saved)*
-- [ ] [AI2.21](#ai221--harness-legalrows-wrap-legalaction) — Harness `legalRows` wrap `LegalAction` *(schema 20+ — staged for review)*
+- [x] [AI2.21](#ai221--harness-legalrows-wrap-legalaction) — Harness `legalRows` wrap `LegalAction` *(schema 21)*
 - [ ] [AI2.22](#ai222--python-typeddicts-for-harness-wire) — TypedDict aliases for harness wire (`dict[str, Any]` hygiene)
+- [ ] [AI2.23](#ai223--flat-cell-table-drop-pitch-chw) — Flat cell table; drop pitch `(C,H,W)`
+- [ ] [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) — Packed `Box` obs (+ legals) instead of gym Dict slice
 
 ---
 
@@ -459,7 +461,7 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 | Field | Detail |
 |-------|--------|
-| **Status** | **In progress (schema 21) — stage for review; not committed.** |
+| **Status** | **Done (schema 21).** Follow-on: schema 22 raw pitch ints on the cell wire. |
 | **Problem** | Harness rows were a factor / kind / pitch mirror of [`LegalAction`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt). Join-score only needs packed `legalMoves`; typed harness work should reuse the engine action. Reward board facts were jammed onto rows / HxW cells. |
 | **Goal** | `legalRows` ≈ `{ action: LegalAction, softMaskLegal, passingLegal }`. Absolute engine coords on `action`; packer (+ obs) own perspective / 0-based. Harness `rewards.players` + single `ballCoordinate` (null if none on pitch; Kotlin fails if >1). Join by `playerId` / absolute coords — no pitch-index remap, no `hasBall` on every player. |
 | **Depends on** | Schema-19 dest xy committed. Pairs with [AI2.19](#ai219--fold-ai-action-vocabulary-investigate). |
@@ -473,13 +475,43 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 | Field | Detail |
 |-------|--------|
-| **Status** | Beachhead started (`harness_wire.py`); expand call sites after AI2.21 lands. |
+| **Status** | Beachhead started (`harness_wire.py`); expand call sites. |
 | **Problem** | Harness JSON is threaded as bare `dict[str, Any]` — readers cannot tell rewards snapshot vs LegalAction vs legal row vs step envelope. |
 | **Goal** | Named `TypedDict` (or equivalent) aliases matching Kotlin harness DTOs (`HarnessRewardSnapshotDto`, `HarnessPlayerDto`, `AiLegalChoiceDto` / `LegalAction`, packed step/submit). Runtime can stay dict; the **name** is the point. Prefer one module (`harness_wire.py`) over scattering. |
-| **Depends on** | [AI2.21](#ai221--harness-legalrows-wrap-legalaction) wire settle (players list + lean legal rows). |
+| **Depends on** | [AI2.21](#ai221--harness-legalrows-wrap-legalaction) (done). |
 | **Files** | `gridiron_ai/harness_wire.py`; call sites in `reward.py` / `env.py` / `client.py` / `eval_debug.py` / `actions.py`. |
 | **Acceptance** | Public helpers annotate harness payloads with named types; `dict[str, Any]` not used as the primary name for those shapes; mypy/pyright optional but types importable. |
 | **Rulebook** | n/a |
+
+---
+
+## AI2.23 — Flat cell table; drop pitch `(C,H,W)`
+
+| Field | Detail |
+|-------|--------|
+| **Status** | Open — optional hygiene toward stock SB3 (no CNN). |
+| **Problem** | Gym Dict keeps `pitch` as `(C,H,W)` for a spatial layout we do not convolve. Feature extractor already treats cells as a table; H×W is ceremony and duplicates the linear pack index space. |
+| **Goal** | Observe all board slots as one table `(BOARD_SLOT_COUNT, C)` (or pitch `(165,C)` + benches `(2,10,C)` without H×W). Drop transpose / `(C,H,W)` in `obs.py` / `export_onnx.py` / `features.py`. |
+| **Depends on** | Schema 22 cell channels settled. Bundle with a retrain / schema bump if gym Dict shapes change. |
+| **Files** | `obs.py`, `features.py`, `export_onnx.py`, `constants.py`; tests that hard-code pitch shape. |
+| **Acceptance** | No `(C,H,W)` pitch in the gym Dict; extractor encodes a flat cell table; ONNX slice matches; train/eval green after retrain. |
+| **Rulebook** | n/a |
+
+---
+
+## AI2.24 — Packed `Box` obs instead of gym Dict slice
+
+| Field | Detail |
+|-------|--------|
+| **Status** | Open — optional; closer to ONNX / stock Box envs. |
+| **Problem** | Kotlin packs one float vector; Python slices into a multi-key Dict for readability. ONNX already consumes the packed vector. Dict slicing + key plumbing is overhead once cells are a flat table and there is no CNN. |
+| **Goal** | Primary game-state obs = `Box(OBSERVATION_VECTOR_LENGTH)` (plus padded `legal_moves` / masks as today). Feature extractor indexes enum/numeric channels by `AiObsLayout` offsets instead of Dict keys. Optionally keep a debug Dict view for humans, not for the policy. |
+| **Depends on** | [AI2.23](#ai223--flat-cell-table-drop-pitch-chw) (or do both together). Retrain / schema bump. |
+| **Files** | `obs.py`, `features.py`, `env.py`, `export_onnx.py`, `legal_row_policy.py`, clone/expert paths. |
+| **Acceptance** | Policy train/predict/ONNX share one packed obs tensor layout; Dict slice not on the hot path; MaskablePPO still works with legal-row Discrete + masks. |
+| **Rulebook** | n/a |
+
+**Keep (not todos):** `nn.Embedding` for enum channels and `LegalRowActorCriticPolicy` join-score — those are the product architecture, not leftover glue.
 
 ---
 
