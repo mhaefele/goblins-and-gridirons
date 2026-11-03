@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * the computer coach. Search already allocates a fresh scripted roller per `evaluate()`,
  * so concurrent games do not share dice queues. Both seats are [CoachControl.HARNESS] (external
  * chooser — no in-process agent). Lookahead / scripted settle Enforcer face-order when offered;
- * think budget is the 100ms AI-vs-AI seat limit.
+ * think budget for LOOKAHEAD seats is [LookaheadOpponentStrategy.EXPERT_EXPORT_THINK_NANOS] (150ms).
  *
  * Expert schedule repeats in blocks: [SCENARIO_PASSES_PER_BLOCK] passes of every [TrainingScenarioEnum]
  * at each difficulty 0–5, then [REGULAR_GAMES_PER_BLOCK] regular kickoff games (scenario drill counts
@@ -334,7 +334,9 @@ class ExpertGameExporter(
     private fun strategy(kind: ComputerOpponentKind): OpponentStrategy =
         when (kind) {
             ComputerOpponentKind.HEURISTIC -> heuristic
-            ComputerOpponentKind.LOOKAHEAD -> lookahead
+            ComputerOpponentKind.LOOKAHEAD -> OpponentStrategy { state, legal ->
+                lookahead.chooseAction(state, legal, LookaheadOpponentStrategy.EXPERT_EXPORT_THINK_NANOS).action
+            }
             ComputerOpponentKind.ONNX      -> onnxFactory.forProfile(OnnxPolicySession.DEFAULT_PROFILE)
         }
 

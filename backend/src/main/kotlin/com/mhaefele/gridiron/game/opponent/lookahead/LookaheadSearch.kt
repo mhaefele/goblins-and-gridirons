@@ -289,12 +289,17 @@ class LookaheadSearch(
         stop: String,
         timedOut: Boolean,
     ) {
-        // Within a think budget, only noise when we actually hit the deadline. Absolute floor is
-        // for unbounded evaluate() calls (no deadlineNanos).
-        val overBudget = timedOut || (budgetNanos != null && elapsedNanos >= budgetNanos)
-        val noBudgetButSlow = budgetNanos == null && elapsedNanos >= SLOW_NANOS
-        if (!overBudget && !noBudgetButSlow) return
+        // Hitting the think deadline on a full-ish search is normal (esp. parallel expert export).
+        // WARN only on anomalies: wall overrun past the deadline, hot us/node, or shallow/few nodes.
         val usPerNode = if (nodes > 0) elapsedNanos / nodes / 1_000L else 0L
+        val anomalous = when {
+            budgetNanos == null                                    -> elapsedNanos >= SLOW_NANOS
+            elapsedNanos > budgetNanos + OVERRUN_SLACK_NANOS       -> true
+            nodes > 0 && usPerNode >= HOT_US_PER_NODE              -> true
+            timedOut && reachedDepth <= 1 && nodes < rootCount / 2 -> true
+            else                                                   -> false
+        }
+        if (!anomalous) return
         val pending = state.currentTurnState.pendingDecision?.let { deepestDelegate(it)::class.simpleName } ?: "none"
         log.warn(
             "Slow lookahead: {}ms budget={}ms depth={} nodes={}/{} us/node={} stop={} timedOut={} match={} team={} phase={} pending={} roots={} candidates={} mix={}",
@@ -776,5 +781,9 @@ class LookaheadSearch(
         private val log = LoggerFactory.getLogger(LookaheadSearch::class.java)
         /** Absolute floor when evaluate() has no think deadline (live seats always pass one). */
         private const val SLOW_NANOS = 200_000_000L
+        /** WARN if wall time exceeds think budget by more than this (GC / scheduler stall). */
+        private const val OVERRUN_SLACK_NANOS = 50_000_000L
+        /** WARN when dry-run cost per node is well above typical ~0.7–1ms under load. */
+        private const val HOT_US_PER_NODE = 2_000L
     }
 }

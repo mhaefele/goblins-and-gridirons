@@ -26,7 +26,8 @@ import org.springframework.stereotype.Component
  * with a private [com.mhaefele.gridiron.game.dice.ScriptedDiceRoller] bound on
  * [com.mhaefele.gridiron.game.dice.DiceRollerContext] — never MatchGame's production roller.
  *
- * Think budget: ~300ms when facing a human seat, ~100ms for computer-vs-computer (arena / AI v AI).
+ * Think budget: ~300ms when facing a human seat, ~100ms for computer-vs-computer (arena / AI v AI),
+ * ~150ms when [com.mhaefele.gridiron.api.ai.export.ExpertGameExporter] pins [EXPERT_EXPORT_THINK_NANOS].
  */
 @Component
 @Primary
@@ -483,5 +484,7 @@ class LookaheadOpponentStrategy(
     companion object {
         const val AI_VS_AI_THINK_NANOS = 100_000_000L
         const val HUMAN_THINK_NANOS = 300_000_000L
+        /** Expert dump LOOKAHEAD seats — above AI-vs-AI so parallel export still finishes a full-ish ply. */
+        const val EXPERT_EXPORT_THINK_NANOS = 150_000_000L
     }
 }
