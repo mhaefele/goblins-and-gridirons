@@ -38,10 +38,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * think budget is the 100ms AI-vs-AI seat limit.
  *
  * Expert schedule repeats in blocks: [SCENARIO_PASSES_PER_BLOCK] passes of every [TrainingScenarioEnum]
- * at each difficulty 0–5, then [REGULAR_GAMES_PER_BLOCK] regular kickoff games (~half of BC steps from
- * full games at ~6–7 steps/drill and ~150–200 steps/full game). Each scenario type gets the same
- * drill count per block. Scale `--games` with [exportGamesPreservingLegacyBoardCoverage] when the
- * enum grows so board-drill totals match a pre-claim dump.
+ * at each difficulty 0–5, then [REGULAR_GAMES_PER_BLOCK] regular kickoff games (scenario drill counts
+ * stay fixed when regulars change; ~6–7 steps/drill, ~150–200 steps/full game). Each scenario type
+ * gets the same drill count per block. Scale `--games` with [exportGamesPreservingLegacyBoardCoverage]
+ * when the enum grows so board-drill totals match a pre-claim dump.
  * Scenario games truncate after [scenarioCoachTurnWindow] coach turns (same window as PPO training).
  * Slots with [AbstractTrainingScenario.lookaheadSolveEval] true retry until Lookahead grades
  * [TrainingDrillStatus.PASS] ([MAX_SCENARIO_PLAY_ATTEMPTS] attempts); exhausting retries fails the export.
@@ -395,9 +395,9 @@ class ExpertGameExporter(
 
         /**
          * Full-game samples after [SCENARIO_PASSES_PER_BLOCK] passes of every scenario×difficulty.
-         * Sized for ~50% BC steps from regulars (~6–7 steps/scenario episode, ~150–200/full game).
+         * Scenario slots/block stay fixed when this rises — only regular density grows.
          */
-        const val REGULAR_GAMES_PER_BLOCK = 80
+        const val REGULAR_GAMES_PER_BLOCK = 160
 
         /**
          * Regulars per block when the pre-claim 31k dump was sized — freeze so raising

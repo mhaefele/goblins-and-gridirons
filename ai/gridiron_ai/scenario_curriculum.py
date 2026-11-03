@@ -401,10 +401,10 @@ def scenarios_for_eval(
 def scenario_max_coach_turns(difficulty: int) -> int:
     """Mirror of Kotlin ``scenarioCoachTurnWindow`` (server owns episode end).
 
-    Difficulties 0–3: trainer turn only. Difficulties 4–5: three coach turns.
+    Difficulties 0–3: trainer turn only. Difficulties 4–5: six coach turns.
     Kept here for offline docs / curriculum helpers — the env no longer truncates.
     """
-    return 1 if difficulty <= 3 else 3
+    return 1 if difficulty <= 3 else 6
 
 
 def _gating_active_names(

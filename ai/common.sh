@@ -39,10 +39,10 @@ BASE_URL="${BASE_URL:-http://localhost:${BACKEND_PORT}}"
 MVN="${MVN:-$(command -v mvnd 2>/dev/null || command -v mvn)}"
 PYTHON="${PYTHON:-$AI_ROOT/.venv/bin/python}"
 _LONG_RUNNING_STEM="maskable_ppo_selfplay_final"
-# Pre-claim dump: 31000 games × 370/block (legacy regulars=10). Current block = scenarioSlots + 80
-# regulars (~50% BC steps from full games). Scale with frozen legacy regulars so drill passes stay
-# on the pre-claim curve: 31000 × 2180 / 370 = 182648 (35 scenarios × 6 diff × 10 passes + 80).
-DUMP_GAMES="${DUMP_GAMES:-182648}"
+# Pre-claim dump: 31000 games × 370/block (legacy regulars=10). Current block = scenarioSlots + 160
+# regulars. Scale with frozen legacy regulars so drill passes stay on the pre-claim curve:
+# 31000 × 2260 / 370 = 189351 (35 scenarios × 6 diff × 10 passes + 160).
+DUMP_GAMES="${DUMP_GAMES:-189351}"
 DUMP_THREADS="${DUMP_THREADS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 
 # Phases in dependency order (wipe phase N also wipes everything after).

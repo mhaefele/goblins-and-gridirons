@@ -212,8 +212,8 @@ def test_eval_replaces_bounce_with_loose_ball_run() -> None:
 def test_scenario_max_coach_turns_by_difficulty() -> None:
     assert scenario_max_coach_turns(0) == 1
     assert scenario_max_coach_turns(3) == 1
-    assert scenario_max_coach_turns(4) == 3
-    assert scenario_max_coach_turns(5) == 3
+    assert scenario_max_coach_turns(4) == 6
+    assert scenario_max_coach_turns(5) == 6
 
 
 def test_optional_claim_deferred_until_board_d4() -> None:

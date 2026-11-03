@@ -153,7 +153,7 @@ Optional drills train and bump local difficulty on perfect eval like any other d
 `scenarioCoachTurnWindow(difficulty)`:
 
 - **d0–d3:** 1 coach turn (opening trainer turn only).
-- **d4–d5:** 3 coach turns (opponent can reply; more board context).
+- **d4–d5:** 6 coach turns (opponent can reply; more board context).
 
 ### Grading window vs play window
 
