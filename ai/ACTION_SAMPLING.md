@@ -52,8 +52,11 @@ join-score policy adds `SOFT_MASK_LOGIT_BIAS` (**2.5**) to preferred **row** log
 before the categorical over the menu. Illegal / pad rows stay hard-masked at 0;
 non-preferred legals stay available (soft tilt, not a hard filter).
 
-Same bias on rollout sample and `evaluate_actions` replay (flags ride in obs) so
-importance ratios stay consistent.
+**Train rollouts only.** Eval (including curriculum after-evals / gates) packs zeros
+into `soft_mask_legal` via `GridironEnv.soft_mask_bias=False`, so metrics are
+unaided ranking. Same bias on train sample and `evaluate_actions` replay (flags
+ride in obs) so importance ratios stay consistent. `episodeMode` TRAIN/EVAL only
+gates claim reachability soft-mask *search* on the server — not this policy bias.
 
 ### Legality mask vs soft preference (do not merge)
 

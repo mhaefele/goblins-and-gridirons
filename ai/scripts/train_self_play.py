@@ -313,6 +313,7 @@ class SegmentEnvConfig:
     scenario: str | None
     scenario_difficulty: int
     episode_mode: str
+    soft_mask_bias: bool
 
 
 class WorkerPool:
@@ -335,6 +336,7 @@ class WorkerPool:
             scenario=None,
             scenario_difficulty=0,
             episode_mode="TRAIN",
+            soft_mask_bias=True,
         )
         self._active_view = ActiveSubprocVecEnv(self._subproc, n_envs)
         self._last_config: SegmentEnvConfig | None = None
@@ -351,6 +353,7 @@ class WorkerPool:
         scenario: str | None,
         scenario_difficulty: int,
         episode_mode: str,
+        soft_mask_bias: bool,
     ) -> None:
         config = SegmentEnvConfig(
             opponent_mode=opponent_mode,
@@ -361,6 +364,7 @@ class WorkerPool:
             scenario=scenario,
             scenario_difficulty=scenario_difficulty,
             episode_mode=episode_mode,
+            soft_mask_bias=soft_mask_bias,
         )
         if config == self._last_config:
             return
@@ -374,6 +378,7 @@ class WorkerPool:
             scenario=scenario,
             scenario_difficulty=scenario_difficulty,
             episode_mode=episode_mode,
+            soft_mask_bias=soft_mask_bias,
         )
         self._last_config = config
 
@@ -402,6 +407,7 @@ def make_env(
     scenario: str | None = None,
     scenario_difficulty: int = 0,
     episode_mode: str = "TRAIN",
+    soft_mask_bias: bool = True,
 ) -> _PoolWorkerRoot:
     return _PoolWorkerRoot(
         ActionMasker(
@@ -418,6 +424,7 @@ def make_env(
                     scenario=scenario,
                     scenario_difficulty=scenario_difficulty,
                     episode_mode=episode_mode,
+                    soft_mask_bias=soft_mask_bias,
                 )
             ),
             _mask_fn,
@@ -437,6 +444,7 @@ def _env_thunk(
     scenario: str | None,
     scenario_difficulty: int,
     episode_mode: str,
+    soft_mask_bias: bool,
 ) -> Callable[[], _PoolWorkerRoot]:
     def _init() -> _PoolWorkerRoot:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", force=True)
@@ -452,6 +460,7 @@ def _env_thunk(
             scenario=scenario,
             scenario_difficulty=scenario_difficulty,
             episode_mode=episode_mode,
+            soft_mask_bias=soft_mask_bias,
         )
 
     return _init
@@ -471,6 +480,7 @@ def make_vec_env(
     scenario: str | None = None,
     scenario_difficulty: int = 0,
     episode_mode: str = "TRAIN",
+    soft_mask_bias: bool = True,
 ) -> SubprocVecEnv:
     # spawn: N fresh Python interpreters; each imports torch/sb3/gym and builds GridironEnv
     # (HTTP client only — backend matches start on first reset(), not during spawn).
@@ -488,6 +498,7 @@ def make_vec_env(
                 scenario,
                 scenario_difficulty,
                 episode_mode,
+                soft_mask_bias,
             )
             for _ in range(n_envs)
         ],
@@ -518,7 +529,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval-lookahead", type=int, default=DEFAULT_EVAL_LOOKAHEAD, help=f"Deterministic eval games vs LOOKAHEAD (train: every {FULL_GAME_EVAL_EVERY_CYCLES} visits/profile; eval-only: each pass; 0 = skip)")
     p.add_argument("--eval-onnx", type=int, default=DEFAULT_EVAL_ONNX, help=f"Deterministic eval games per ONNX profile ({', '.join(FULL_GAME_ONNX_OPPONENT_PROFILES)}; same cadence as heuristic/lookahead; 0 = skip)")
     p.add_argument("--eval-only", action="store_true", help="Skip all train; eval pass without eval JSON (eval.sh sets this)")
-    p.add_argument("--eval-episode-mode", choices=("EVAL", "TRAIN"), default="EVAL", help="Scenario/full-game eval episodeMode (EVAL=default; TRAIN enables soft-mask search on multi-step claims)")
+    p.add_argument("--eval-episode-mode", choices=("EVAL", "TRAIN"), default="EVAL", help="Scenario/full-game eval episodeMode (EVAL=default; TRAIN enables claim reachability soft-mask flags only — policy soft-mask logit bias stays off on all evals)")
     p.add_argument("--phase", choices=EVAL_PHASE_CHOICES, default=None, help="Eval-only: load the zip that phase produced (seed / scenario_a / scenario_b); read-only; one pass")
     p.add_argument("--scenario", default=None, help="One drill only — skips full-game train/eval (default: cycle all from server)")
     p.add_argument("--force-promote", action="store_true", help="Persist next phase gate without live curriculum (at profiles: sticky full-game unlock); fail if checkpoint missing")
@@ -859,6 +870,7 @@ def _train_segment(
         scenario=scenario,
         scenario_difficulty=scenario_difficulty,
         episode_mode="TRAIN",
+        soft_mask_bias=True,
     )
     configure_s = clk.lap("configure workers")
     env = _wrap_vecnormalize(pool.vec_env(DEFAULT_N_ENVS), save_stem, training=True)
@@ -1227,7 +1239,7 @@ def _eval_segment(
     scenario: str | None = None,
     scenario_difficulty: int = 0,
 ) -> dict[str, Any]:
-    """Deterministic games; shaping off so metrics are real match outcomes."""
+    """Deterministic games; shaping + soft-mask bias off so metrics are unaided outcomes."""
     workers = min(games, DEFAULT_N_ENVS)
     opp_label = opponent_metrics_label(computer_opponent, onnx_profile)
     if scenario is not None:
@@ -1237,7 +1249,7 @@ def _eval_segment(
     tagged = f"[{profile}] {label}"
     episode_mode = args.eval_episode_mode
     header = (
-        f"Eval {tagged}: {games} games (deterministic, shaping off, "
+        f"Eval {tagged}: {games} games (deterministic, shaping off, soft-mask bias off, "
         f"episode_mode={episode_mode}, n_envs={workers})…"
     )
     quiet_scenario = scenario is not None
@@ -1257,6 +1269,7 @@ def _eval_segment(
         scenario=scenario,
         scenario_difficulty=scenario_difficulty,
         episode_mode=episode_mode,
+        soft_mask_bias=False,
     )
     configure_s = clk.lap("configure workers", echo=echo_laps)
     env = pool.vec_env(workers)

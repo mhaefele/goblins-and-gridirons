@@ -213,7 +213,7 @@ Ask before merging:
 | `vf_coef` `0.5` (`td` `0.8`) | `train_self_play` `DEFAULT_VF_COEF` / `PROFILE_VF_COEF` | Create **and** resume |
 | `n_epochs` `4` / `clip_range` `0.1` / `target_kl` `0.02` | `train_self_play` | Critic/KL stability |
 | VecNormalize `norm_reward` | train segments; `{stem}_vecnormalize.pkl` | Obs not normalized |
-| Soft-mask bias `2.5` | `constants.SOFT_MASK_LOGIT_BIAS` | [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference); not a reward |
+| Soft-mask bias `2.5` | `constants.SOFT_MASK_LOGIT_BIAS` | Train rollouts only (`env.soft_mask_bias`); eval/gates pack zeros — [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference) |
 | Scenario coach-window ±0.5 | `reward.SCENARIO_TERMINAL_*` | Only when `trainingEpisodeEnded`; not stacked on match ±1 |
 | Claim unlock board d4 | `scenario_curriculum.CLAIM_UNLOCK_BOARD_DIFFICULTY` | scenario_a → scenario_b |
 | Full-game unlock d5 | `scenario_curriculum.FULL_GAME_UNLOCK_DIFFICULTY` | After all drills mastered |

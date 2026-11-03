@@ -106,6 +106,7 @@ class GridironEnv(gym.Env):
         scenario: str | None = None,
         scenario_difficulty: int = 0,
         episode_mode: str = "EVAL",
+        soft_mask_bias: bool = False,
     ) -> None:
         super().__init__()
         if opponent_mode not in _VALID_OPPONENT_MODES:
@@ -135,6 +136,8 @@ class GridironEnv(gym.Env):
         self.scenario = scenario
         self.scenario_difficulty = scenario_difficulty
         self.episode_mode = episode_mode
+        # Train rollouts only: policy +SOFT_MASK_LOGIT_BIAS from obs. Eval/gates keep False.
+        self.soft_mask_bias = soft_mask_bias
 
         self.observation_space = dict_observation_space()
         self.action_space = spaces.Discrete(legal_row_action_n())
@@ -162,6 +165,7 @@ class GridironEnv(gym.Env):
         scenario: str | None,
         scenario_difficulty: int,
         episode_mode: str,
+        soft_mask_bias: bool,
     ) -> None:
         """Reconfigure an idle worker between train/eval segments (pool reuse)."""
         if opponent_mode not in _VALID_OPPONENT_MODES:
@@ -185,6 +189,7 @@ class GridironEnv(gym.Env):
         self.scenario = scenario
         self.scenario_difficulty = scenario_difficulty
         self.episode_mode = episode_mode
+        self.soft_mask_bias = soft_mask_bias
         if scenario is not None:
             if self._scenario_eval_debug is None:
                 self._scenario_eval_debug = ScenarioEvalDebug()
@@ -309,7 +314,11 @@ class GridironEnv(gym.Env):
 
     @property
     def _soft_mask_legal(self) -> list[bool]:
-        return [bool(row["softMaskLegal"]) for row in self._legal_rows]
+        """Flags packed into obs for policy logit bias. Zeros when ``soft_mask_bias`` is off (eval)."""
+        rows = self._legal_rows
+        if not self.soft_mask_bias:
+            return [False] * len(rows)
+        return [bool(row["softMaskLegal"]) for row in rows]
 
     @property
     def _passing_legal(self) -> list[bool]:

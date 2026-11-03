@@ -734,7 +734,7 @@ def _legend() -> str:
             "Field glossary (names match eval JSON / TensorBoard):",
             "  steps                  PPO env timesteps trained (checkpoint max)",
             "  training_steps         PPO timesteps when this eval ran (in eval JSON)",
-            "  winrate                wins / decided games (eval, shaping off)",
+            "  winrate                wins / decided games (eval, shaping + soft-mask bias off)",
             "  wins / losses / draws  raw full-game outcomes",
             "  win_by_4_rate          fraction winning by ≥4 points",
             "  score_us / score_them  mean points per game",
