@@ -12,6 +12,7 @@ train-time ``+SOFT_MASK_LOGIT_BIAS`` crutch. PPO rollouts still use soft-mask vi
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -36,20 +37,42 @@ logger = logging.getLogger(__name__)
 _CLONE_N_ENVS = 2
 _CLONE_N_STEPS = 128
 _CLONE_BATCH_SIZE = 256
+# Fit minibatches (separate from the PPO constructor batch above).
+_CLONE_FIT_BATCH_SIZE = 1024
 # Rare full-dump pass — stop early when mean NLL plateaus; cap so it cannot run forever.
 MAX_CLONE_EPOCHS = 30
 _CLONE_PLATEAU_PATIENCE = 3
 _CLONE_PLATEAU_MIN_DELTA = 0.01
+# Heartbeat while an epoch is still chewing through millions of steps.
+_CLONE_PROGRESS_EVERY_S = 120.0
+
+
+def _clone_device() -> str:
+    """Prefer Apple MPS, then CUDA, else CPU — clone is offline and wall-clock heavy."""
+    if getattr(th.backends, "mps", None) is not None and th.backends.mps.is_available():
+        return "mps"
+    if th.cuda.is_available():
+        return "cuda"
+    return "cpu"
+
+
+def _format_duration(seconds: float) -> str:
+    total = max(0, int(round(seconds)))
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
 
 
 def clone_npz_into_checkpoint(
     npz_path: Path,
     checkpoint_zips: list[Path],
     *,
-    batch_size: int = 256,
     learning_rate: float = 1e-4,
     seed: int = 0,
-    device: str = "cpu",
     resume_zip: Path | None = None,
 ) -> float:
     """Train so the policy assigns higher probability to the recorded move. Returns last-epoch average loss."""
@@ -57,10 +80,8 @@ def clone_npz_into_checkpoint(
     return clone_arrays_into_checkpoint(
         arrays,
         checkpoint_zips,
-        batch_size=batch_size,
         learning_rate=learning_rate,
         seed=seed,
-        device=device,
         resume_zip=resume_zip,
     )
 
@@ -69,17 +90,22 @@ def clone_arrays_into_checkpoint(
     arrays: dict[str, np.ndarray],
     checkpoint_zips: list[Path],
     *,
-    batch_size: int = 256,
     learning_rate: float = 1e-4,
     seed: int = 0,
-    device: str = "cpu",
     resume_zip: Path | None = None,
 ) -> float:
     """Behavioral clone from packed arrays. Returns last-epoch average loss."""
     n = int(arrays[NPZ_KEY_ACTION].shape[0])
     if n == 0:
         raise ValueError("expert arrays contain 0 steps")
-    logger.info("cloning %s expert steps", n)
+    device = _clone_device()
+    logger.info(
+        "cloning %s expert steps (device=%s fit_batch=%s max_epochs=%s)",
+        f"{n:,}",
+        device,
+        _CLONE_FIT_BATCH_SIZE,
+        MAX_CLONE_EPOCHS,
+    )
 
     bootstrap = _policy_spaces_vec_env()
     if resume_zip is not None:
@@ -98,7 +124,6 @@ def clone_arrays_into_checkpoint(
     mean_nll = fit_behavioral_clone(
         model,
         arrays,
-        batch_size=batch_size,
         learning_rate=learning_rate,
         seed=seed,
     )
@@ -114,12 +139,12 @@ def fit_behavioral_clone(
     model: MaskablePPO,
     arrays: dict[str, np.ndarray],
     *,
-    batch_size: int,
     learning_rate: float,
     seed: int,
 ) -> float:
     """Shuffle the dump and walk until mean NLL plateaus (or ``MAX_CLONE_EPOCHS``). Returns last-epoch average loss."""
     n = int(arrays[NPZ_KEY_ACTION].shape[0])
+    batch_size = _CLONE_FIT_BATCH_SIZE
     rng = np.random.default_rng(seed)
     model.policy.set_training_mode(True)
     for group in model.policy.optimizer.param_groups:
@@ -127,10 +152,15 @@ def fit_behavioral_clone(
     last_mean = float("nan")
     best_mean = float("inf")
     stagnant = 0
+    clone_started = time.perf_counter()
+    epoch_durations: list[float] = []
     for epoch in range(MAX_CLONE_EPOCHS):
+        epoch_started = time.perf_counter()
+        progress_logged_at = epoch_started
         order = rng.permutation(n)
         total = 0.0
         batches = 0
+        steps_done = 0
         for start in range(0, n, batch_size):
             idx = order[start : start + batch_size]
             loss = _batch_nll(model, arrays, idx)
@@ -139,8 +169,45 @@ def fit_behavioral_clone(
             model.policy.optimizer.step()
             total += float(loss.item())
             batches += 1
+            steps_done += int(idx.shape[0])
+            now = time.perf_counter()
+            if now - progress_logged_at >= _CLONE_PROGRESS_EVERY_S:
+                epoch_so_far = now - epoch_started
+                running_mean = total / max(batches, 1)
+                rate = steps_done / epoch_so_far if epoch_so_far > 0 else 0.0
+                remain_steps = n - steps_done
+                epoch_eta = remain_steps / rate if rate > 0 else 0.0
+                logger.info(
+                    "clone epoch %s/%s  %s/%s steps (%.0f%%)  running_loss=%.4f  %.0f steps/s  epoch_eta~%s  elapsed=%s",
+                    epoch + 1,
+                    MAX_CLONE_EPOCHS,
+                    f"{steps_done:,}",
+                    f"{n:,}",
+                    100.0 * steps_done / n,
+                    running_mean,
+                    rate,
+                    _format_duration(epoch_eta),
+                    _format_duration(now - clone_started),
+                )
+                progress_logged_at = now
         last_mean = total / max(batches, 1)
-        logger.info("clone epoch %s/%s mean_loss=%.4f", epoch + 1, MAX_CLONE_EPOCHS, last_mean)
+        epoch_s = time.perf_counter() - epoch_started
+        epoch_durations.append(epoch_s)
+        elapsed_s = time.perf_counter() - clone_started
+        steps_per_s = n / epoch_s if epoch_s > 0 else 0.0
+        remaining_epochs = MAX_CLONE_EPOCHS - (epoch + 1)
+        mean_epoch_s = sum(epoch_durations) / len(epoch_durations)
+        eta_s = mean_epoch_s * remaining_epochs
+        logger.info(
+            "clone epoch %s/%s done  mean_loss=%.4f  epoch=%s  %.0f steps/s  elapsed=%s  eta~%s (if no early-stop)",
+            epoch + 1,
+            MAX_CLONE_EPOCHS,
+            last_mean,
+            _format_duration(epoch_s),
+            steps_per_s,
+            _format_duration(elapsed_s),
+            _format_duration(eta_s),
+        )
         if last_mean < best_mean - _CLONE_PLATEAU_MIN_DELTA:
             best_mean = last_mean
             stagnant = 0
@@ -148,9 +215,10 @@ def fit_behavioral_clone(
             stagnant += 1
             if stagnant >= _CLONE_PLATEAU_PATIENCE:
                 logger.info(
-                    "clone early-stop: mean_loss plateau (patience=%s, min_delta=%.4f)",
+                    "clone early-stop: mean_loss plateau (patience=%s, min_delta=%.4f) after %s",
                     _CLONE_PLATEAU_PATIENCE,
                     _CLONE_PLATEAU_MIN_DELTA,
+                    _format_duration(elapsed_s),
                 )
                 break
     return last_mean

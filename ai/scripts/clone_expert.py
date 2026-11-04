@@ -4,6 +4,8 @@
 No backend. Overwrites ``output/checkpoints/{profile}/maskable_ppo_selfplay_final.zip``
 (all three if ``--profile all``). Does not modify the npz unless ``--out`` is set.
 
+Device (mps/cuda/cpu) and fit batch size are fixed in ``gridiron_ai.clone``.
+
 Usage (from ai/):
   .venv/bin/python -m scripts.clone_expert --in output/expert/lookahead.npz --profile all
 
@@ -34,10 +36,8 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Copy expert npz into MaskablePPO checkpoint zip(s) (no HTTP)")
     p.add_argument("--in", dest="npz", type=Path, default=EXPERT_DIR / "lookahead.npz", help="Packed expert dump from import_expert")
     p.add_argument("--profile", default="general", choices=("all", *REWARD_PROFILES), help="Long-running zip to overwrite (all = every reward profile)")
-    p.add_argument("--batch-size", type=int, default=256, help="Minibatch size")
     p.add_argument("--lr", type=float, default=1e-4, help="Adam learning rate for this pass")
     p.add_argument("--seed", type=int, default=0, help="Weight init + shuffle seed (fresh models)")
-    p.add_argument("--device", default="cpu", help="Torch device")
     p.add_argument("--resume", type=Path, default=None, help="Optional existing zip to fine-tune instead of random weights")
     p.add_argument("--to", type=Path, default=None, help="Write this zip instead of profile long-running zips")
     return p.parse_args()
@@ -56,10 +56,8 @@ def main() -> None:
     mean_loss = clone_npz_into_checkpoint(
         npz_path,
         zips,
-        batch_size=args.batch_size,
         learning_rate=args.lr,
         seed=args.seed,
-        device=args.device,
         resume_zip=resume,
     )
 
