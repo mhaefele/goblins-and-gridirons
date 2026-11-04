@@ -11,8 +11,10 @@ train-time ``+SOFT_MASK_LOGIT_BIAS`` crutch. PPO rollouts still use soft-mask vi
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -48,6 +50,9 @@ _CLONE_PLATEAU_MIN_DELTA = 0.01
 # Heartbeat while an epoch is still chewing through millions of steps.
 _CLONE_PROGRESS_EVERY_S = 120.0
 
+_PROGRESS_JSON_SUFFIX = ".clone_progress.json"
+_EPOCH_ZIP_RE = re.compile(r"^(?P<stem>.+)\.clone_epoch_(?P<epoch>\d+)\.zip$")
+
 
 def _configure_cpu_threads() -> int:
     """Use all logical CPUs for Torch intra-op matmuls (clone is otherwise one-thread-looking)."""
@@ -65,6 +70,110 @@ def _format_duration(seconds: float) -> str:
     if minutes:
         return f"{minutes}m{secs:02d}s"
     return f"{secs}s"
+
+
+def clone_progress_json_path(final_zip: Path) -> Path:
+    """Sidecar next to the destination zip (``maskable_ppo_seed.clone_progress.json``)."""
+    zip_path = final_zip if final_zip.suffix == ".zip" else final_zip.with_suffix(".zip")
+    return zip_path.with_name(f"{zip_path.stem}{_PROGRESS_JSON_SUFFIX}")
+
+
+def clone_epoch_zip_path(final_zip: Path, completed_epochs: int) -> Path:
+    """Single in-progress weights file tagged with how many epochs finished."""
+    zip_path = final_zip if final_zip.suffix == ".zip" else final_zip.with_suffix(".zip")
+    return zip_path.with_name(f"{zip_path.stem}.clone_epoch_{int(completed_epochs)}.zip")
+
+
+def find_clone_epoch_zip(final_zip: Path, completed_epochs: int | None = None) -> Path | None:
+    """Locate ``*.clone_epoch_N.zip`` beside the destination (exact N, or highest if N is None)."""
+    zip_path = final_zip if final_zip.suffix == ".zip" else final_zip.with_suffix(".zip")
+    stem = zip_path.stem
+    parent = zip_path.parent
+    if completed_epochs is not None:
+        candidate = clone_epoch_zip_path(zip_path, completed_epochs)
+        return candidate if candidate.is_file() else None
+    best_n = -1
+    best_path: Path | None = None
+    for path in parent.glob(f"{stem}.clone_epoch_*.zip"):
+        match = _EPOCH_ZIP_RE.match(path.name)
+        if match is None or match.group("stem") != stem:
+            continue
+        n = int(match.group("epoch"))
+        if n > best_n:
+            best_n = n
+            best_path = path
+    return best_path
+
+
+def _read_clone_progress(final_zip: Path) -> dict[str, Any] | None:
+    path = clone_progress_json_path(final_zip)
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    return raw
+
+
+def _write_clone_progress(final_zip: Path, payload: dict[str, Any]) -> None:
+    path = clone_progress_json_path(final_zip)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.writing")
+    tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _clear_clone_progress(final_zip: Path) -> None:
+    """Remove in-progress zip(s) + progress sidecar after a successful final save."""
+    zip_path = final_zip if final_zip.suffix == ".zip" else final_zip.with_suffix(".zip")
+    clone_progress_json_path(zip_path).unlink(missing_ok=True)
+    for path in zip_path.parent.glob(f"{zip_path.stem}.clone_epoch_*.zip"):
+        path.unlink(missing_ok=True)
+    # Leftover atomic temps from a killed save.
+    for path in zip_path.parent.glob(f"{zip_path.stem}.clone_epoch_*.writing.zip"):
+        path.unlink(missing_ok=True)
+
+
+def _save_clone_epoch_checkpoint(
+    model: MaskablePPO,
+    final_zip: Path,
+    *,
+    completed_epochs: int,
+    best_mean: float,
+    stagnant: int,
+    last_mean: float,
+    seed: int,
+    n_steps: int,
+) -> Path:
+    """Atomically write ``*.clone_epoch_N.zip``, drop the previous epoch zip, refresh JSON."""
+    zip_path = final_zip if final_zip.suffix == ".zip" else final_zip.with_suffix(".zip")
+    new_zip = clone_epoch_zip_path(zip_path, completed_epochs)
+    new_zip.parent.mkdir(parents=True, exist_ok=True)
+    # atomic_model_save uses Path.with_suffix(".zip"), which breaks on stems like
+    # ``*.clone_epoch_10`` (``.10`` looks like a suffix). Save via an underscore stem, then rename.
+    safe_stem = zip_path.parent / f"{zip_path.stem}_clone_writing"
+    written = atomic_model_save(model, safe_stem)
+    os.replace(written, new_zip)
+    # Delete older epoch zips for this stem (keep only the latest).
+    for path in zip_path.parent.glob(f"{zip_path.stem}.clone_epoch_*.zip"):
+        if path.resolve() != new_zip.resolve():
+            path.unlink(missing_ok=True)
+    _write_clone_progress(
+        final_zip,
+        {
+            "completed_epochs": int(completed_epochs),
+            "best_mean": float(best_mean),
+            "stagnant": int(stagnant),
+            "last_mean": float(last_mean),
+            "seed": int(seed),
+            "n_steps": int(n_steps),
+        },
+    )
+    logger.info("clone checkpoint → %s (completed_epochs=%s)", new_zip, completed_epochs)
+    return new_zip
 
 
 def clone_npz_into_checkpoint(
@@ -94,26 +203,71 @@ def clone_arrays_into_checkpoint(
     seed: int = 0,
     resume_zip: Path | None = None,
 ) -> float:
-    """Behavioral clone from packed arrays. Returns last-epoch average loss."""
+    """Behavioral clone from packed arrays. Returns last-epoch average loss.
+
+    Progress is anchored on ``checkpoint_zips[0]``: ``*.clone_epoch_N.zip`` +
+    ``*.clone_progress.json``. A later run resumes from that pair automatically.
+    """
+    if not checkpoint_zips:
+        raise ValueError("checkpoint_zips must be non-empty")
     n = int(arrays[NPZ_KEY_ACTION].shape[0])
     if n == 0:
         raise ValueError("expert arrays contain 0 steps")
     device = _CLONE_DEVICE
     batch_size = _CLONE_FIT_BATCH_SIZE
     threads = _configure_cpu_threads() if device == "cpu" else th.get_num_threads()
+    primary_zip = checkpoint_zips[0] if checkpoint_zips[0].suffix == ".zip" else checkpoint_zips[0].with_suffix(".zip")
+
+    start_epoch = 0
+    best_mean = float("inf")
+    stagnant = 0
+    load_zip = resume_zip
+    progress = _read_clone_progress(primary_zip)
+    progress_zip = None
+    if progress is not None:
+        completed = int(progress.get("completed_epochs") or 0)
+        progress_zip = find_clone_epoch_zip(primary_zip, completed)
+        if progress_zip is None:
+            progress_zip = find_clone_epoch_zip(primary_zip)
+        if (
+            progress_zip is not None
+            and completed > 0
+            and int(progress.get("n_steps") or -1) in (-1, n)
+            and int(progress.get("seed") or seed) == seed
+        ):
+            start_epoch = completed
+            best_mean = float(progress.get("best_mean", best_mean))
+            stagnant = int(progress.get("stagnant") or 0)
+            load_zip = progress_zip
+            logger.info(
+                "resuming clone from %s (next epoch %s/%s best_mean=%.4f stagnant=%s)",
+                progress_zip,
+                start_epoch + 1,
+                MAX_CLONE_EPOCHS,
+                best_mean if best_mean < float("inf") else float("nan"),
+                stagnant,
+            )
+        elif progress_zip is None and completed > 0:
+            logger.warning(
+                "clone progress json present (%s epochs) but epoch zip missing — starting fresh",
+                completed,
+            )
+
     logger.info(
-        "cloning %s expert steps (device=%s batch=%s max_epochs=%s torch_threads=%s)",
+        "cloning %s expert steps (device=%s batch=%s max_epochs=%s torch_threads=%s start_epoch=%s)",
         f"{n:,}",
         device,
         batch_size,
         MAX_CLONE_EPOCHS,
         threads,
+        start_epoch,
     )
 
     bootstrap = _policy_spaces_vec_env()
-    if resume_zip is not None:
-        logger.info("resuming weights from %s", resume_zip)
-        model = MaskablePPO.load(str(resume_zip), env=bootstrap, device=device)
+    if load_zip is not None:
+        if resume_zip is not None and load_zip != resume_zip and progress_zip is None:
+            logger.info("resuming weights from %s", resume_zip)
+        model = MaskablePPO.load(str(load_zip), env=bootstrap, device=device)
     else:
         model = MaskablePPO(
             LegalRowActorCriticPolicy,
@@ -130,11 +284,16 @@ def clone_arrays_into_checkpoint(
         batch_size=batch_size,
         learning_rate=learning_rate,
         seed=seed,
+        start_epoch=start_epoch,
+        best_mean=best_mean,
+        stagnant=stagnant,
+        progress_zip=primary_zip,
     )
     for zip_path in checkpoint_zips:
         zip_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_model_save(model, zip_path.with_suffix(""))
         logger.info("wrote %s", zip_path if zip_path.suffix == ".zip" else zip_path.with_suffix(".zip"))
+    _clear_clone_progress(primary_zip)
     bootstrap.close()
     return mean_nll
 
@@ -146,22 +305,31 @@ def fit_behavioral_clone(
     batch_size: int,
     learning_rate: float,
     seed: int,
+    start_epoch: int = 0,
+    best_mean: float = float("inf"),
+    stagnant: int = 0,
+    progress_zip: Path | None = None,
 ) -> float:
-    """Shuffle the dump and walk until mean NLL plateaus (or ``MAX_CLONE_EPOCHS``). Returns last-epoch average loss."""
+    """Shuffle the dump and walk until mean NLL plateaus (or ``MAX_CLONE_EPOCHS``). Returns last-epoch average loss.
+
+    When ``progress_zip`` is set, writes ``*.clone_epoch_N.zip`` + progress JSON after each epoch
+    so a killed run can continue. Shuffle is ``seed + epoch`` so resume does not replay old order.
+    """
     n = int(arrays[NPZ_KEY_ACTION].shape[0])
-    rng = np.random.default_rng(seed)
     model.policy.set_training_mode(True)
     for group in model.policy.optimizer.param_groups:
         group["lr"] = learning_rate
     last_mean = float("nan")
-    best_mean = float("inf")
-    stagnant = 0
     clone_started = time.perf_counter()
     epoch_durations: list[float] = []
-    for epoch in range(MAX_CLONE_EPOCHS):
+    if start_epoch >= MAX_CLONE_EPOCHS:
+        logger.info("clone already finished all %s epochs — nothing to do", MAX_CLONE_EPOCHS)
+        return last_mean
+    for epoch in range(start_epoch, MAX_CLONE_EPOCHS):
         epoch_started = time.perf_counter()
         progress_logged_at = epoch_started
-        order = rng.permutation(n)
+        # Per-epoch RNG so resume at epoch k gets a fresh shuffle without replaying 0..k-1.
+        order = np.random.default_rng(seed + epoch).permutation(n)
         total = 0.0
         batches = 0
         steps_done = 0
@@ -217,14 +385,25 @@ def fit_behavioral_clone(
             stagnant = 0
         else:
             stagnant += 1
-            if stagnant >= _CLONE_PLATEAU_PATIENCE:
-                logger.info(
-                    "clone early-stop: mean_loss plateau (patience=%s, min_delta=%.4f) after %s",
-                    _CLONE_PLATEAU_PATIENCE,
-                    _CLONE_PLATEAU_MIN_DELTA,
-                    _format_duration(elapsed_s),
-                )
-                break
+        if progress_zip is not None:
+            _save_clone_epoch_checkpoint(
+                model,
+                progress_zip,
+                completed_epochs=epoch + 1,
+                best_mean=best_mean,
+                stagnant=stagnant,
+                last_mean=last_mean,
+                seed=seed,
+                n_steps=n,
+            )
+        if stagnant >= _CLONE_PLATEAU_PATIENCE:
+            logger.info(
+                "clone early-stop: mean_loss plateau (patience=%s, min_delta=%.4f) after %s",
+                _CLONE_PLATEAU_PATIENCE,
+                _CLONE_PLATEAU_MIN_DELTA,
+                _format_duration(elapsed_s),
+            )
+            break
     return last_mean
 
 
