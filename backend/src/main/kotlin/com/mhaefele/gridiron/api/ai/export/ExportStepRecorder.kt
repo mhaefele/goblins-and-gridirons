@@ -11,4 +11,12 @@ interface ExportStepRecorder<T> {
     fun openWriter(request: ExpertExportRequest): BufferedWriter
 
     fun recordStep(state: MatchState, legal: List<LegalAction>, chosen: LegalAction, acting: TeamSide, events: List<StoredDomainEvent>): T
+
+    /**
+     * Tag the next [recordStep] rows for dump stats (`scenario` | `regular`).
+     * Default no-op — only [ExpertExportStepRecorder] uses this.
+     */
+    fun beginEpisode(family: String) {}
+
+    fun endEpisode() {}
 }

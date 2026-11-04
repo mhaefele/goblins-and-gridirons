@@ -22,6 +22,9 @@ EXPERT_SEED_ZIP = EXPERT_DIR / "maskable_ppo_seed.zip"
 SCENARIO_CATALOG_PATH = OUTPUT_DIR / "scenario_catalog.json"
 # Append-only cycle metrics; train driver (``train_self_play``). Wiped from scenario_a rollback.
 CYCLE_LOG_PATH = RUNS_DIR / "train_eval_cycles.tsv"
+# Lifetime chosen-move kind totals per checkpoint key (under ``runs/{key}/``; wiped with that runs tree).
+KIND_TOTALS_JSON_NAME = "kind_totals.json"
+KIND_TOTALS_TXT_NAME = "kind_totals.txt"
 # Append-only scenario draw log (train + eval); ``eval_debug.append_scenario_draw_log``.
 SCENARIO_DRAWS_LOG_PATH = RUNS_DIR / "scenario_draws.log"
 # Scenario phases (scenario_a / scenario_b) and post-split baseline write eval JSON here.

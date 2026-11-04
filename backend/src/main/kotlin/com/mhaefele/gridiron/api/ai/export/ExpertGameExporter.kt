@@ -1,6 +1,7 @@
 package com.mhaefele.gridiron.api.ai.export
 
 import com.mhaefele.gridiron.api.MatchGame
+import com.mhaefele.gridiron.api.ai.dto.packed.ExpertStepRecord
 import com.mhaefele.gridiron.api.ai.training.TrainingScenarios
 import com.mhaefele.gridiron.api.ai.training.scenarioCoachTurnWindow
 import com.mhaefele.gridiron.game.legalmoves.LegalMovesGenerator
@@ -291,6 +292,36 @@ class ExpertGameExporter(
     private data class PlayUntilDoneResult<T>(val records: List<T>, val finalState: MatchState)
 
     private fun <T> playUntilDone(
+        state: MatchState,
+        homeStrategy: OpponentStrategy,
+        awayStrategy: OpponentStrategy,
+        maxActions: Int,
+        truncateAfterTurn: Int?,
+        homeTeam: TeamCard,
+        awayTeam: TeamCard,
+        slot: ScenarioSlot?,
+        recorder: ExportStepRecorder<T>,
+    ): PlayUntilDoneResult<T> {
+        val family = if (slot != null) ExpertStepRecord.EPISODE_FAMILY_SCENARIO else ExpertStepRecord.EPISODE_FAMILY_REGULAR
+        recorder.beginEpisode(family)
+        try {
+            return playUntilDoneTagged(
+                state = state,
+                homeStrategy = homeStrategy,
+                awayStrategy = awayStrategy,
+                maxActions = maxActions,
+                truncateAfterTurn = truncateAfterTurn,
+                homeTeam = homeTeam,
+                awayTeam = awayTeam,
+                slot = slot,
+                recorder = recorder,
+            )
+        } finally {
+            recorder.endEpisode()
+        }
+    }
+
+    private fun <T> playUntilDoneTagged(
         state: MatchState,
         homeStrategy: OpponentStrategy,
         awayStrategy: OpponentStrategy,

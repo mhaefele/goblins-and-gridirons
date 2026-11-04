@@ -4,7 +4,8 @@ Owner: dump line → npz tensors (``scripts/import_expert``). Kotlin writes pack
 ``ExpertStepRecord`` lines; clone pads per minibatch. No HTTP. See ``ai/OWNERSHIP.md``.
 
 Soft-mask is not part of the expert dump (or is ignored if an old line still has
-``softMaskLegal``). Clone scores plain logits; PPO soft-mask comes from the live env.
+``softMaskLegal``). ``episodeFamily`` is optional (stats only); missing → kind mix
+**total** only. Clone scores plain logits; PPO soft-mask comes from the live env.
 """
 
 from __future__ import annotations
@@ -29,7 +30,14 @@ from gridiron_ai.constants import (
     OBS_KEYS_GAME_STATE,
     SCHEMA_VERSION,
 )
-from gridiron_ai.expert_stats import format_kind_table, wire_kind_from_action_id, write_kind_stats
+from gridiron_ai.expert_stats import (
+    add_kind_to_breakdown,
+    bucket_for_episode_family,
+    empty_kind_breakdown,
+    format_kind_breakdown,
+    wire_kind_from_action_id,
+    write_kind_stats,
+)
 from gridiron_ai.obs import dict_observation_space, obs_flat_to_dict
 
 logger = logging.getLogger(__name__)
@@ -102,10 +110,10 @@ def count_dump(path: Path) -> tuple[int, int]:
     return n_steps, n_rows
 
 
-def records_to_arrays(jsonl_path: Path) -> tuple[dict[str, np.ndarray], Counter[str]]:
+def records_to_arrays(jsonl_path: Path) -> tuple[dict[str, np.ndarray], dict[str, Counter[str]]]:
     """Two-pass pack: preallocate game-state + ragged legal flats, then fill.
 
-    Also tallies chosen-move wire kinds (``chosenLegalActionId`` prefix) for pack summary.
+    Also tallies chosen-move wire kinds into scenarios / games / total for pack summary.
     """
     n_steps, n_rows = count_dump(jsonl_path)
     space = dict_observation_space()
@@ -116,7 +124,7 @@ def records_to_arrays(jsonl_path: Path) -> tuple[dict[str, np.ndarray], Counter[
     legal_flat = np.empty((n_rows, FACTORS_PER_LEGAL_MOVE), dtype=np.int64)
     offsets = np.empty((n_steps + 1,), dtype=np.int64)
     actions = np.empty((n_steps,), dtype=np.int64)
-    kind_counts: Counter[str] = Counter()
+    kind_breakdown = empty_kind_breakdown()
     offsets[0] = 0
     row_cursor = 0
     for index, record in enumerate(load_jsonl_records(jsonl_path)):
@@ -130,7 +138,11 @@ def records_to_arrays(jsonl_path: Path) -> tuple[dict[str, np.ndarray], Counter[
         row_cursor = end
         offsets[index + 1] = row_cursor
         actions[index] = int(action.reshape(-1)[0])
-        kind_counts[wire_kind_from_action_id(record.get("chosenLegalActionId"))] += 1
+        add_kind_to_breakdown(
+            kind_breakdown,
+            wire_kind_from_action_id(record.get("chosenLegalActionId")),
+            bucket=bucket_for_episode_family(record.get("episodeFamily")),
+        )
         if (index + 1) % 500 == 0:
             logger.info("packed %s expert steps", index + 1)
     if row_cursor != n_rows:
@@ -139,15 +151,15 @@ def records_to_arrays(jsonl_path: Path) -> tuple[dict[str, np.ndarray], Counter[
     arrays[NPZ_KEY_LEGAL_ROW_OFFSET] = offsets
     arrays[NPZ_KEY_ACTION] = actions
     arrays[NPZ_KEY_SCHEMA_VERSION] = np.int32(SCHEMA_VERSION)
-    return arrays, kind_counts
+    return arrays, kind_breakdown
 
 
 def jsonl_to_npz(jsonl_path: Path, npz_path: Path) -> dict[str, np.ndarray]:
     """Read Kotlin JSONL, slice tensors, write ``npz_path`` (creates parent dirs).
 
-    Also writes ``{stem}_kind_stats.txt`` beside the npz and logs the kind table.
+    Also writes ``{stem}_kind_stats.txt`` beside the npz and logs scenarios / games / total.
     """
-    arrays, kind_counts = records_to_arrays(jsonl_path)
+    arrays, kind_breakdown = records_to_arrays(jsonl_path)
     npz_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(npz_path, **arrays)
     n = int(arrays[NPZ_KEY_ACTION].shape[0])
@@ -162,8 +174,8 @@ def jsonl_to_npz(jsonl_path: Path, npz_path: Path) -> dict[str, np.ndarray]:
         npz_path,
     )
     stats_path = npz_path.with_name(f"{npz_path.stem}_kind_stats.txt")
-    write_kind_stats(stats_path, kind_counts)
-    logger.info("expert chosen-move kinds → %s\n%s", stats_path, format_kind_table(kind_counts))
+    write_kind_stats(stats_path, kind_breakdown)
+    logger.info("expert chosen-move kinds → %s\n%s", stats_path, format_kind_breakdown(kind_breakdown))
     return arrays
 
 

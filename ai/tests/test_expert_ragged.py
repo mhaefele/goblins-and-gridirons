@@ -76,6 +76,11 @@ def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
     assert int(obs[OBS_KEY_SOFT_MASK_LEGAL].sum()) == 0
 
     stats = (tmp_path / "tiny_kind_stats.txt").read_text(encoding="utf-8")
+    # Untagged legacy lines → scenarios/games empty; kinds only under total.
+    assert "=== scenarios ===" in stats and "=== games ===" in stats and "=== total ===" in stats
+    assert stats.index("=== scenarios ===") < stats.index("=== total ===")
+    scenarios_block = stats.split("=== games ===")[0]
+    assert "(no steps)" in scenarios_block
     assert "RUN" in stats and "BLOCK" in stats
     assert "50.00%" in stats
     assert "TOTAL" in stats

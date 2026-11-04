@@ -19,6 +19,21 @@ class ExpertExportStepRecorder(
     private val steps: AiStepMapper,
     private val packed: AiPackedMapper,
 ) : ExportStepRecorder<ExpertStepRecord> {
+    /**
+     * # DEVIATION: episode family is dump-stats only; [ExportStepRecorder] is shared with
+     * integration export which has no tags. ThreadLocal matches the exporter's per-game worker.
+     */
+    private val episodeFamily = ThreadLocal.withInitial { ExpertStepRecord.EPISODE_FAMILY_REGULAR }
+
+    override fun beginEpisode(family: String) {
+        require(family == ExpertStepRecord.EPISODE_FAMILY_SCENARIO || family == ExpertStepRecord.EPISODE_FAMILY_REGULAR) { "episodeFamily must be scenario|regular, got $family" }
+        episodeFamily.set(family)
+    }
+
+    override fun endEpisode() {
+        episodeFamily.set(ExpertStepRecord.EPISODE_FAMILY_REGULAR)
+    }
+
     override fun openWriter(request: ExpertExportRequest): BufferedWriter {
         val gzip = GZIPOutputStream(Files.newOutputStream(request.out))
         return BufferedWriter(OutputStreamWriter(gzip, StandardCharsets.UTF_8), 256 * 1024)
@@ -32,6 +47,7 @@ class ExpertExportStepRecorder(
             policy = packed.pack(step).policy,
             chosenLegalActionId = chosen.id,
             chosenFactors = step.policy.legalMoves[chosenIndex],
+            episodeFamily = episodeFamily.get(),
         )
     }
 }

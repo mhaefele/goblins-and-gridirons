@@ -3,14 +3,33 @@
 Owner: ``info["bb_episode"]`` shape + ``aggregate_episodes`` used by TensorBoard
 and eval CLI. Does not define rewards. See ``ai/OWNERSHIP.md``.
 
-Counts sampled wire kinds; scenario runs may carry ``first_kind``. Ball rates sample
-once per ``turnNumber`` at turn start; ``ball_gained_*`` count !holds→holds edges.
+Counts sampled wire kinds (``kind_count`` = per-episode means for TB;
+``kind_totals`` / ``kind_breakdown`` = session raw counts as scenarios / games / total).
+Scenario runs may carry ``first_kind``. Ball rates sample once per ``turnNumber`` at
+turn start; ``ball_gained_*`` count !holds→holds edges.
 """
 
 from __future__ import annotations
 
+import json
+from collections import Counter
+from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
+from gridiron_ai.expert_stats import (
+    BUCKET_GAMES,
+    BUCKET_SCENARIOS,
+    BUCKET_TOTAL,
+    KIND_BUCKETS,
+    add_kind_to_breakdown,
+    breakdown_to_jsonable,
+    empty_kind_breakdown,
+    format_kind_breakdown,
+    merge_kind_breakdown,
+    write_kind_stats,
+)
+from gridiron_ai.paths import KIND_TOTALS_JSON_NAME, KIND_TOTALS_TXT_NAME, RUNS_DIR
 from gridiron_ai.reward import (
     coordinate_xy,
     endzone_proximity,
@@ -66,6 +85,8 @@ def _empty_aggregate() -> dict[str, Any]:
         "ball_gained_us": 0.0,
         "ball_gained_them": 0.0,
         "kind_count": {},
+        "kind_totals": {},
+        "kind_breakdown": {bucket: {} for bucket in KIND_BUCKETS},
         "first_kind_count": {},
         "scenario_difficulty": None,
         "first_action_legal_count": None,
@@ -102,6 +123,86 @@ def format_metrics_line(label: str, stats: dict[str, Any]) -> str:
 
 def print_metrics(label: str, stats: dict[str, Any]) -> None:
     print(format_metrics_line(label, stats), flush=True)
+
+
+def print_kind_mix(label: str, stats: dict[str, Any]) -> None:
+    """Session chosen-move kinds as scenarios / games / total (same shape as expert pack stats)."""
+    breakdown = stats.get("kind_breakdown")
+    if not breakdown:
+        totals = stats.get("kind_totals") or {}
+        if not totals:
+            return
+        breakdown = {BUCKET_TOTAL: totals}
+    if not any(breakdown.get(bucket) for bucket in KIND_BUCKETS):
+        return
+    print(format_kind_breakdown(breakdown, title=f"{label} chosen-move kinds"), flush=True)
+
+
+def kind_totals_paths(runs_key: str) -> tuple[Path, Path]:
+    """``runs/{runs_key}/kind_totals.json`` + matching ``.txt`` table."""
+    root = RUNS_DIR / runs_key
+    return root / KIND_TOTALS_JSON_NAME, root / KIND_TOTALS_TXT_NAME
+
+
+def load_kind_breakdown(runs_key: str) -> dict[str, Counter[str]]:
+    """Read cumulative scenarios/games/total kind counts (missing → empty)."""
+    json_path, _txt = kind_totals_paths(runs_key)
+    if not json_path.is_file():
+        return empty_kind_breakdown()
+    raw = json.loads(json_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        return empty_kind_breakdown()
+    # Legacy flat ``{"counts": {...}}`` → total only.
+    if "counts" in raw and BUCKET_TOTAL not in raw and BUCKET_SCENARIOS not in raw:
+        counts = raw.get("counts") or {}
+        out = empty_kind_breakdown()
+        out[BUCKET_TOTAL] = Counter({str(k): int(v) for k, v in counts.items() if int(v) > 0})
+        return out
+    out = empty_kind_breakdown()
+    for bucket in KIND_BUCKETS:
+        part = raw.get(bucket) or {}
+        if isinstance(part, dict):
+            out[bucket] = Counter({str(k): int(v) for k, v in part.items() if int(v) > 0})
+    return out
+
+
+def load_kind_totals(runs_key: str) -> Counter[str]:
+    """Read cumulative total kind counts for a checkpoint key (missing → empty)."""
+    return load_kind_breakdown(runs_key)[BUCKET_TOTAL]
+
+
+def _segment_as_breakdown(
+    segment: Mapping[str, Any],
+) -> dict[str, Counter[str]]:
+    """Accept full breakdown or flat kind→count (legacy → total only)."""
+    if any(bucket in segment for bucket in KIND_BUCKETS):
+        out = empty_kind_breakdown()
+        for bucket in KIND_BUCKETS:
+            part = segment.get(bucket) or {}
+            if isinstance(part, Mapping):
+                out[bucket] = Counter({str(k): int(v) for k, v in part.items() if int(v) > 0})
+        return out
+    out = empty_kind_breakdown()
+    out[BUCKET_TOTAL] = Counter({str(k): int(v) for k, v in segment.items() if int(v) > 0})
+    return out
+
+
+def accumulate_kind_totals(
+    runs_key: str,
+    segment_totals: Mapping[str, Any],
+) -> dict[str, Counter[str]]:
+    """Add segment into ``runs/{runs_key}/kind_totals.{json,txt}``; return lifetime breakdown.
+
+    ``segment_totals`` may be a full ``kind_breakdown`` (scenarios/games/total) or a flat
+    kind→count map (legacy → added to ``total`` only).
+    """
+    lifetime = load_kind_breakdown(runs_key)
+    merge_kind_breakdown(lifetime, _segment_as_breakdown(segment_totals))
+    json_path, txt_path = kind_totals_paths(runs_key)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(json.dumps(breakdown_to_jsonable(lifetime), indent=2) + "\n", encoding="utf-8")
+    write_kind_stats(txt_path, lifetime)
+    return lifetime
 
 
 def aggregate_episodes(episodes: list[dict[str, Any]]) -> dict[str, Any]:
@@ -142,9 +243,13 @@ def aggregate_episodes(episodes: list[dict[str, Any]]) -> dict[str, Any]:
     mean_score_them = _mean(score_them)
 
     kind_keys = sorted({k for ep in episodes for k in ep.get("kind_count", {})})
-    kind_means = {
-        k: sum(ep.get("kind_count", {}).get(k, 0) for ep in episodes) / n for k in kind_keys
-    }
+    kind_breakdown = empty_kind_breakdown()
+    for ep in episodes:
+        bucket = BUCKET_SCENARIOS if ep.get("scenario_difficulty") is not None else BUCKET_GAMES
+        for kind, count in (ep.get("kind_count") or {}).items():
+            add_kind_to_breakdown(kind_breakdown, str(kind), bucket=bucket, count=int(count))
+    kind_totals = {k: int(kind_breakdown[BUCKET_TOTAL][k]) for k in kind_keys}
+    kind_means = {k: kind_totals[k] / n for k in kind_keys}
 
     first_kind_keys = sorted({ep["first_kind"] for ep in episodes if ep.get("first_kind")})
     first_kind_means = {
@@ -190,6 +295,8 @@ def aggregate_episodes(episodes: list[dict[str, Any]]) -> dict[str, Any]:
         "ball_gained_us": sum(ep.get("ball_gained_us", 0) for ep in episodes) / n,
         "ball_gained_them": sum(ep.get("ball_gained_them", 0) for ep in episodes) / n,
         "kind_count": kind_means,
+        "kind_totals": kind_totals,
+        "kind_breakdown": {bucket: dict(kind_breakdown[bucket]) for bucket in KIND_BUCKETS},
         "first_kind_count": first_kind_means,
         "scenario_difficulty": scenario_difficulty,
         "first_action_legal_count": first_action_legal_count,

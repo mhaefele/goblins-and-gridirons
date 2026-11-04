@@ -82,7 +82,12 @@ from gridiron_ai.env import (
 )
 from gridiron_ai.eval_debug import ScenarioEvalDebug
 from gridiron_ai.eval_opening_diag import diagnose_opening_mispick
-from gridiron_ai.metrics import aggregate_episodes, print_metrics
+from gridiron_ai.metrics import (
+    accumulate_kind_totals,
+    aggregate_episodes,
+    print_kind_mix,
+    print_metrics,
+)
 from gridiron_ai.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
     DEFAULT_SCENARIO_TRAIN_LEARNING,
@@ -181,6 +186,16 @@ _VECNORMALIZE_SUFFIX = "_vecnormalize.pkl"
 _last_scenario_after_eval: dict[tuple[str, int], dict[str, Any]] = {}
 _EVAL_SECTION_GAP = "\n\n\n"
 _scenario_perfect_summaries: list[str] = []
+
+
+def _note_kind_mix(runs_key: str, label: str, stats: dict[str, Any], *, print_tables: bool) -> None:
+    """Accumulate segment kinds into ``runs/{runs_key}/kind_totals.*``; optionally print segment + lifetime."""
+    segment = stats.get("kind_breakdown") or stats.get("kind_totals") or {}
+    lifetime = accumulate_kind_totals(runs_key, segment)
+    if not print_tables:
+        return
+    print_kind_mix(label, stats)
+    print_kind_mix(f"{label} lifetime [{runs_key}]", {"kind_breakdown": lifetime})
 
 
 def _eval_batch_all_wins(stats: dict[str, Any], *, games: int) -> bool:
@@ -866,6 +881,7 @@ def _train_segment(
     reset_num_timesteps: bool,
     reward_shaping: RewardShaping,
     profile: RewardProfileName,
+    runs_key: str,
     scenario: str | None = None,
     scenario_difficulty: int = 0,
 ) -> dict[str, Any]:
@@ -935,6 +951,7 @@ def _train_segment(
         flush=True,
     )
     print_metrics(f"Train {label}", stats)
+    _note_kind_mix(runs_key, f"Train {label}", stats, print_tables=True)
     return stats
 
 
@@ -955,6 +972,7 @@ def _eval_one_scenario(
     args: argparse.Namespace,
     pool: WorkerPool,
     profile: RewardProfileName,
+    runs_key: str,
     scenario: str,
     difficulty: int,
 ) -> dict[str, Any]:
@@ -968,6 +986,7 @@ def _eval_one_scenario(
         computer_opponent="LOOKAHEAD",
         onnx_profile=None,
         profile=profile,
+        runs_key=runs_key,
         scenario=scenario,
         scenario_difficulty=difficulty,
     )
@@ -1048,6 +1067,7 @@ def _train_scenarios_segment(
     reset_num_timesteps: bool,
     reward_shaping: RewardShaping,
     profile: RewardProfileName,
+    runs_key: str,
     game_phase: bool,
 ) -> dict[str, Any]:
     """Climbing: train → after-eval. Game phase: eval all, then train stragglers → after-eval."""
@@ -1071,6 +1091,7 @@ def _train_scenarios_segment(
             args=args,
             pool=pool,
             profile=profile,
+            runs_key=runs_key,
             save_stem=save_stem,
             update_curriculum=not args.eval_only,
         )
@@ -1136,6 +1157,7 @@ def _train_scenarios_segment(
             reset_num_timesteps=reset_num_timesteps and not did_train,
             reward_shaping=reward_shaping,
             profile=profile,
+            runs_key=runs_key,
             scenario=scenario,
             scenario_difficulty=difficulty,
         )
@@ -1156,7 +1178,13 @@ def _train_scenarios_segment(
             continue
 
         after = _eval_one_scenario(
-            model, args=args, pool=pool, profile=profile, scenario=scenario, difficulty=difficulty
+            model,
+            args=args,
+            pool=pool,
+            profile=profile,
+            runs_key=runs_key,
+            scenario=scenario,
+            difficulty=difficulty,
         )
         row.update(_cycle_stats_fields(f"eval_scenario_{slug}_after", after))
         after_rate = float(after["winrate"])
@@ -1288,6 +1316,7 @@ def _eval_segment(
     computer_opponent: str,
     onnx_profile: RewardProfileName | None,
     profile: RewardProfileName,
+    runs_key: str,
     scenario: str | None = None,
     scenario_difficulty: int = 0,
 ) -> dict[str, Any]:
@@ -1373,12 +1402,14 @@ def _eval_segment(
     if scenario is not None:
         stats["scenario_difficulty"] = scenario_difficulty
     timing_bit = f" ({clk.summary(('configure', configure_s), ('reset', reset_s), ('games', games_s))})"
-    if quiet_scenario and _eval_batch_all_wins(stats, games=games):
+    quiet_perfect = quiet_scenario and _eval_batch_all_wins(stats, games=games)
+    if quiet_perfect:
         _record_scenario_perfect_summary(
             stats,
             scenario=scenario,
             scenario_difficulty=scenario_difficulty,
         )
+        _note_kind_mix(runs_key, f"Eval {tagged}", stats, print_tables=False)
     else:
         if quiet_scenario:
             _eval_section_break()
@@ -1389,6 +1420,7 @@ def _eval_segment(
             for line in game_lines:
                 print(line, flush=True)
         print_metrics(f"Eval {tagged}", stats)
+        _note_kind_mix(runs_key, f"Eval {tagged}", stats, print_tables=True)
         if quiet_scenario:
             print(
                 f"  scenario success: drill_rate={stats['winrate']:.3f} win_by_4_rate={stats['win_by_4_rate']:.3f}",
@@ -1430,6 +1462,7 @@ def _eval_scenarios_segment(
     args: argparse.Namespace,
     pool: WorkerPool,
     profile: RewardProfileName,
+    runs_key: str,
     save_stem: Path,
     update_curriculum: bool = True,
 ) -> dict[str, Any]:
@@ -1470,7 +1503,13 @@ def _eval_scenarios_segment(
     for scenario in active:
         difficulty = pin_difficulty if pin_difficulty is not None else get_difficulty(levels, scenario)
         stats = _eval_one_scenario(
-            model, args=args, pool=pool, profile=profile, scenario=scenario, difficulty=difficulty
+            model,
+            args=args,
+            pool=pool,
+            profile=profile,
+            runs_key=runs_key,
+            scenario=scenario,
+            difficulty=difficulty,
         )
         if write_curriculum:
             levels, gate_failures, drill_stats = _apply_scenario_after_eval(
@@ -1635,6 +1674,7 @@ def _run_one_cycle(
     first_train_resets_timesteps: bool,
 ) -> dict[str, Any]:
     profile = target.reward_profile
+    runs_key = target.checkpoint_key
     row: dict[str, Any] = {
         "cycle": cycle_index,
         "phase": target.phase,
@@ -1737,6 +1777,7 @@ def _run_one_cycle(
                         args=args,
                         pool=pool,
                         profile=profile,
+                        runs_key=runs_key,
                         save_stem=save_stem,
                         update_curriculum=not args.eval_only,
                     )
@@ -1752,6 +1793,7 @@ def _run_one_cycle(
             reset_num_timesteps=first_train_resets_timesteps and not did_train,
             reward_shaping=reward_shaping,
             profile=profile,
+            runs_key=runs_key,
             game_phase=game_phase,
         )
         row.update(scenario_row)
@@ -1780,6 +1822,7 @@ def _run_one_cycle(
                 reset_num_timesteps=first_train_resets_timesteps and not did_train,
                 reward_shaping=reward_shaping,
                 profile=profile,
+                runs_key=runs_key,
             )
             did_train = True
             row.update(_cycle_stats_fields(key, stats))
@@ -1797,6 +1840,7 @@ def _run_one_cycle(
                 computer_opponent=computer,
                 onnx_profile=onnx_name,
                 profile=profile,
+                runs_key=runs_key,
             )
             row.update(_cycle_stats_fields(key, stats))
 
@@ -1814,6 +1858,7 @@ def _run_one_cycle(
                     args=args,
                     pool=pool,
                     profile=profile,
+                    runs_key=runs_key,
                     save_stem=save_stem,
                     update_curriculum=not args.eval_only,
                 )

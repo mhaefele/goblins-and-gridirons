@@ -88,7 +88,7 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `training_phases.py` | scenario_a / b / profiles routing; `active_targets` / `resolve_targets` (post-split train/eval `all` via `reward.profiles_for_all` — baseline + general + spread; summary `all` includes td/defense) |
 | `pipeline_state.py` | Load / save / rewind `pipeline.json` (no gate checks) |
 | `scenario_training.py` | Pointer: grading is Kotlin |
-| `metrics.py` / `tb_callback.py` | Episode aggregates / TensorBoard |
+| `metrics.py` / `tb_callback.py` | Episode aggregates / TensorBoard; lifetime kind totals under ``runs/{key}/`` |
 | `paths.py` | `output/` roots |
 | `expert.py` / `expert_stats.py` / `clone.py` | Dump → npz (+ kind stats) → seed zip |
 | `eval_debug.py` | Throwaway scenario-eval logging |

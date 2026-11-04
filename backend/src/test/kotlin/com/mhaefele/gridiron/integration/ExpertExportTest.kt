@@ -61,6 +61,8 @@ class ExpertExportTest : BaseApiTest() {
             assertThat(first.schemaVersion).isEqualTo(AiObsLayout.SCHEMA_VERSION)
             assertThat(first.policy.obs.values).hasSize(AiObsLayout.OBSERVATION_VECTOR_LENGTH)
             assertThat(first.chosenFactors).hasSize(AiObsLayout.ACTION_FACTOR_COUNT)
+            assertThat(first.episodeFamily).isEqualTo(ExpertStepRecord.EPISODE_FAMILY_SCENARIO)
+            assertThat(lines.first()).contains("\"episodeFamily\":\"scenario\"")
             assertThat(lines.first()).doesNotContain("softMaskLegal")
             val chosenIndex = first.policy.legalMoves.indexOfFirst { it == first.chosenFactors }
             assertThat(chosenIndex).isGreaterThanOrEqualTo(0)
