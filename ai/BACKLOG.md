@@ -2,7 +2,13 @@
 
 Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) defers here.
 
-**Status:** Open — AI2.0–AI2.4 + AI2.7 done; [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) **obs landed** (schema 11; scenarios still open); [AI2.13](#ai213--scenario-catalog-metadata-api) catalog metadata done; [AI2.15](#ai215--coachcontrol-seat-semantics) seat naming done; [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) blind-spot taxonomy open. Then [AI2.5](#ai25--multi-team-curriculum). Sampling follow-ups: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) ([AI2.11](#ai211--action-sampling--factor-space-inventory)). **Next:** [AI2.22](#ai222--python-typeddicts-for-harness-wire) TypedDict expand. Optional stock-layout: [AI2.23](#ai223--flat-cell-table-drop-pitch-chw) → [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice). Harness hygiene: [AI2.14](#ai214--split-train_self_play). Optimize (not next): [AI2.opt](#ai2opt--binary-observation-wire), [AI2.18](#ai218--one-bonus-play-action-kind-retrain), [AI2.19](#ai219--fold-ai-action-vocabulary-investigate). Ship AI1 done; see [archive/BACKLOG-done.md](../archive/BACKLOG-done.md).
+**Status:** Open. Live contract is **schema 22** ([`constants.py`](gridiron_ai/constants.py)). Train/eval still HTTP packed JSON against `./dev.sh` `:18080`. AI1 shipped — [archive](../archive/BACKLOG-done.md).
+
+**Near-term (product):** [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) scenarios · [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) · [AI2.6](#ai26--onnx-export--kotlin-compute-opponent) regen · [AI2.5](#ai25--multi-team-curriculum).
+
+**Hygiene:** [AI2.22](#ai222--python-typeddicts-for-harness-wire) · [AI2.14](#ai214--split-train_self_play) · optional [AI2.23](#ai223--flat-cell-table-drop-pitch-chw)→[AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice).
+
+**Transport optimize (own section, not next):** [Headless binary harness](#headless-binary-harness-transport) — AI2.25 → 26 → opt → 27 → 28.
 
 **Design:** [`DESIGN.md`](DESIGN.md) · **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md) · **Architecture:** [Backend § Long-term product goals](../backend/ARCHITECTURE.md#long-term-product-goals).
 
@@ -15,35 +21,50 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 ---
 
-## Phase checklist
+## Checklist
+
+### Done
 
 - [x] [AI2.0](#ai20--learning-contract-kotlin-dtos) — Learning contract as Kotlin DTOs
 - [x] [AI2.sse](#ai2sse--disable-sse-on-match-create-wont-do) — Disable SSE on match create *(won't do)*
-- [x] [AI2.1](#ai21--dedicated-ai-http-api) — Dedicated AI HTTP API (obs / mask / step)
+- [x] [AI2.1](#ai21--dedicated-ai-http-api) — Dedicated AI HTTP API
 - [x] [AI2.2](#ai22--python-gym--sb3-self-play) — Python gym + SB3 self-play
 - [x] [AI2.3](#ai23--eval-vs-computer) — Eval vs computer
 - [x] [AI2.4](#ai24--unattended-traineval-cycles) — Unattended train–eval cycles
+- [x] [AI2.7](#ai27--optional-reward-shaping-day-2) — Reward shaping profiles
+- [x] [AI2.9](#ai29--conditional-action-heads-follow-up) — Superseded by legal-row join scores
+- [x] [AI2.13](#ai213--scenario-catalog-metadata-api) — Scenario catalog metadata API
+- [x] [AI2.15](#ai215--coachcontrol-seat-semantics) — CoachControl seat semantics
+- [x] [AI2.16](#ai216--remove-ai-choose--in-process-scenario-lookahead-test) — Remove `/choose`
+- [x] [AI2.21](#ai221--harness-legalrows-wrap-legalaction) — `legalRows` wrap `LegalAction` *(schema 21)*
+
+### Open — product / curriculum
+
 - [ ] [AI2.5](#ai25--multi-team-curriculum) — Multi-team curriculum
-- [ ] [AI2.6](#ai26--onnx-export--kotlin-compute-opponent) — ONNX + Kotlin opponent
-- [x] [AI2.7](#ai27--optional-reward-shaping-day-2) — Optional reward shaping (day 2)
-- [ ] [AI2.8](#ai28--evaluate-obs-enrichment-vs-truncated-legals) — Evaluate obs enrichment vs truncated legals
-- [x] [AI2.9](#ai29--conditional-action-heads-follow-up) — Conditional action heads *(superseded by schema 16 legal-row join scores)*
-- [ ] [AI2.10](#ai210--legal-move-inputs--obs-dict-shape) — Legal move inputs & obs dict shape
-- [ ] [AI2.11](#ai211--action-sampling--factor-space-inventory) — Action sampling & factor-space inventory
-- [ ] [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) — Held dice / mid-check obs + scenarios **(prime)**
-- [x] [AI2.13](#ai213--scenario-catalog-metadata-api) — Scenario catalog metadata API (drop Python board/claim mirror)
-- [ ] [AI2.14](#ai214--split-train_self_play) — Split `train_self_play.py` orchestration
-- [x] [AI2.15](#ai215--coachcontrol-seat-semantics) — CoachControl: human vs harness vs in-process computer
-- [x] [AI2.16](#ai216--remove-ai-choose--in-process-scenario-lookahead-test) — Remove `/choose`; in-process scenario lookahead test
-- [ ] [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) — Blind-spot remediation (from arena diagnostics)
-- [ ] [AI2.opt](#ai2opt--binary-observation-wire) — Binary observation wire (optimization)
-- [ ] [AI2.18](#ai218--one-bonus-play-action-kind-retrain) — One bonus-play action kind *(retrain; bundle with the next layout change)*
-- [ ] [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) — Shared wire kind on `LegalAction` DTOs *(investigate; not next)*
-- [ ] [AI2.20](#ai220--remove-local-sb3-pickle-aliases) — Remove local SB3 pickle-alias shim *(after resume zips re-saved)*
-- [x] [AI2.21](#ai221--harness-legalrows-wrap-legalaction) — Harness `legalRows` wrap `LegalAction` *(schema 21)*
-- [ ] [AI2.22](#ai222--python-typeddicts-for-harness-wire) — TypedDict aliases for harness wire (`dict[str, Any]` hygiene)
+- [ ] [AI2.6](#ai26--onnx-export--kotlin-compute-opponent) — ONNX + Kotlin opponent *(partial; regen for current schema)*
+- [ ] [AI2.8](#ai28--evaluate-obs-enrichment-vs-truncated-legals) — Obs enrichment vs truncated legals
+- [ ] [AI2.10](#ai210--legal-move-inputs--obs-dict-shape) — Legal-row inputs beyond mask *(dict-shape half landed)*
+- [ ] [AI2.11](#ai211--action-sampling--factor-space-inventory) — Action sampling inventory → [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md)
+- [ ] [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) — Mid-check scenarios **(prime; obs landed)**
+- [ ] [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) — Blind-spot remediation
+- [ ] [AI2.18](#ai218--one-bonus-play-action-kind-retrain) — One bonus-play action kind *(bundle with next layout bump)*
+- [ ] [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) — Shared wire kind on `LegalAction` *(investigate)*
+
+### Open — hygiene
+
+- [ ] [AI2.14](#ai214--split-train_self_play) — Split `train_self_play.py`
+- [ ] [AI2.20](#ai220--remove-local-sb3-pickle-aliases) — Drop pickle-alias shim *(after resume zips re-saved)*
+- [ ] [AI2.22](#ai222--python-typeddicts-for-harness-wire) — TypedDicts for harness wire
 - [ ] [AI2.23](#ai223--flat-cell-table-drop-pitch-chw) — Flat cell table; drop pitch `(C,H,W)`
-- [ ] [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) — Packed `Box` obs (+ legals) instead of gym Dict slice
+- [ ] [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) — Packed `Box` obs
+
+### Open — transport optimize → [section](#headless-binary-harness-transport)
+
+- [ ] [AI2.25](#ai225--measure-harness-submit-timing) — Measure submit timing *(gate)*
+- [ ] [AI2.26](#ai226--harness-episode-facade) — `HarnessEpisode` facade
+- [ ] [AI2.opt](#ai2opt--binary-observation-wire) — Binary frame codec
+- [ ] [AI2.27](#ai227--binary-uds-harness-headless) — Headless UDS train host
+- [ ] [AI2.28](#ai228--python-binary-client--train-scripts) — Python client + train scripts
 
 ---
 
@@ -142,20 +163,20 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 | Field | Detail |
 |-------|--------|
-| **Status** | **Partial.** Schema-16 Kotlin path (`OnnxPolicySession.chooseRow` / obs+`legal_moves`→action index) landed; classpath artifacts are stale until re-export. |
-| **Goal** | Freeze obs + action schema version; export trained policy to ONNX; add Kotlin libraries to load it; implement `OpponentStrategy` that builds the same obs/mask, runs the model, submits the chosen legal action. Expose as a compute-opponent option alongside heuristic/lookahead. |
+| **Status** | **Partial.** Kotlin path (`OnnxPolicySession.chooseRow` / obs+`legal_moves`→row index) landed; classpath artifacts lag live **schema 22** until re-export. |
+| **Goal** | Freeze obs + action schema version; export trained policy to ONNX; Kotlin `OpponentStrategy` builds the same obs/mask, runs the model, submits the chosen legal action. Expose alongside heuristic/lookahead. |
 | **Depends on** | AI2.3+ with a schema worth freezing; preferably AI2.4 so quality is measured. |
 | **Files** | Export script under `ai/`; ONNX artifact convention; `backend/.../opponent/` model-backed strategy; match create / coach control wiring. |
 | **Acceptance** | A match can seat the ONNX opponent; it only ever submits currently legal actions; smoke playthrough completes; version mismatch fails loudly. |
 | **Rulebook** | n/a |
 
-**After next ONNX regen (schema 16):**
+**After next ONNX regen (match `SCHEMA_VERSION`):**
 
-- [ ] Re-export every classpath profile (`export_opponent.sh`) from a schema-16 zip; drop any leftover schema-15 factor-logit `.onnx` / manifests under `backend/.../resources/ai-opponent/`.
-- [ ] Retrain or clone+continue so resume zips are `LegalRowActorCriticPolicy` (Discrete) — schema-15 MultiDiscrete zips will not load.
-- [ ] Smoke: match create with ONNX seat + vs-lookahead/heuristic eval; confirm `schemaVersion=16` in the ONNX manifest and hard-fail on mismatch still works.
-- [ ] Drop any temporary “broken until re-export” comments once artifacts are live ([`OnnxPolicySession`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/onnx/OnnxPolicySession.kt)); manifest output is ``action`` (masked-argmax row index).
-- [ ] Revisit [AI2.20](#ai220--remove-local-sb3-pickle-aliases) after new zips are saved under current module paths (no `conditional_policy` aliases).
+- [ ] Re-export every classpath profile (`export_opponent.sh`) from a current-schema zip; drop leftover factor-logit / wrong-schema `.onnx` / manifests under `backend/.../resources/ai-opponent/`.
+- [ ] Resume zips must be `LegalRowActorCriticPolicy` (Discrete) — old MultiDiscrete zips will not load.
+- [ ] Smoke: match create with ONNX seat + vs-lookahead/heuristic eval; confirm manifest `schemaVersion` matches Python; hard-fail on mismatch.
+- [ ] Drop temporary “broken until re-export” comments once artifacts are live ([`OnnxPolicySession`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/onnx/OnnxPolicySession.kt)); manifest output is `action` (masked-argmax row index).
+- [ ] Revisit [AI2.20](#ai220--remove-local-sb3-pickle-aliases) after new zips are saved under current module paths.
 
 ---
 
@@ -215,7 +236,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 | **Goal** | **Evaluate (not presuppose)** how much legal-move information the policy and value nets should see beyond conditional masking alone — and whether the Dict observation should split the monolithic game-state vector into logical sections now that `legal_moves` / `legal_move_count` already ride as separate keys. Decide *what* to add (cheap scalars, per-kind summaries, encoded legal rows, something else) and *where* it lives (concat to features, separate encoder branch, etc.). Keep the wire/DTO contract stable unless a split forces a version bump. |
 | **Depends on** | Schema 16 legal-row baseline (board features + join-score action); [AI2.3](#ai23--eval-vs-computer)+ to compare ablations. |
 | **Files** | `ai/gridiron_ai/obs.py`, `env.py`, `legal_row_policy.py` / `features.py`; optional Kotlin packer / `schemaVersion` only if dict keys or flat layout change. |
-| **Acceptance** | Written decision + eval evidence: either “board-only + masking is enough” or a landed approach with ablation vs the baseline on the AI2.3 suite. If splitting game state, document the new Dict keys and whether the flat 2067 vector remains for ONNX/wire compat. |
+| **Acceptance** | Written decision + eval evidence: either “board-only + masking is enough” or a landed approach with ablation vs the baseline on the AI2.3 suite. If splitting game state, document the new Dict keys and whether the flat packed vector (`OBSERVATION_VECTOR_LENGTH`) remains for ONNX/wire compat. |
 | **Rulebook** | n/a |
 
 **Notes**
@@ -406,20 +427,6 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 ---
 
-## AI2.opt — Binary observation wire
-
-| Field | Detail |
-|-------|--------|
-| **Goal** | Cut remaining wire cost after the **JSON-array packed path** (done): lean `…/step\|submit/packed` already sends `obs: float[3922]` + legal matrix (Python live client is packed-only; nested JSON stays for curl / functional tests). Optional next step: raw **binary** `Content-Type` (or gRPC) for the same concat — no schema bump. |
-| **Depends on** | Packed JSON-array path in use (AiObsPacker / harness `obs_flat_to_dict`). |
-| **Files** | Kotlin binary writer; Python client path; shared `schemaVersion` / concat order (`OBSERVATION_VECTOR_LENGTH`). |
-| **Acceptance** | Binary and packed-JSON-array paths produce identical tensors; binary is opt-in; nested JSON remains for debug/curl. |
-| **Rulebook** | n/a |
-
-**Landed (JSON-array packed):** `GET/POST …/packed`; learning `obs` concat = scalars(17) + challenges + deck + hand + heldCheck + cells[0..184]×21. Harness reward/metrics use explicit `reward` + `legalRowMeta` sidecars (not reverse-unpacked from `obs`).
-
----
-
 ## AI2.18 — One bonus-play action kind (retrain)
 
 | Field | Detail |
@@ -515,27 +522,126 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 ---
 
+## Headless binary harness (transport)
+
+**Status:** Open — **optimize, not next.** Do not start until [AI2.25](#ai225--measure-harness-submit-timing) says pack/wire/contention is worth it (or the gate is explicitly skipped).
+
+Faster PPO rollout by dropping localhost HTTP+JSON for train, without changing rules, obs packing ownership, or the SB3 harness. Product GUI stays on today’s HTTP game host.
+
+### Intent
+
+| Today | Target |
+|-------|--------|
+| 30 `SubprocVecEnv` workers → one Spring Boot on `:18080` | Same workers → **headless** Boot over **Unix-domain socket** |
+| One `POST …/submit/packed` JSON per policy step | Length-prefixed **binary** frames (same tensors) |
+| Opponent already in-process on `COMPUTER` | Unchanged |
+| Expert dump is headless one-shot (`--export-expert`) | Train host is headless **long-lived** UDS server (same Boot family, different entry) |
+
+**Two launch shapes (intentional):**
+
+1. **Game host** — `./dev.sh` HTTP `:18080` (GUI, curl, play-vs-human). Unchanged.
+2. **Train host** — headless Boot (`web-application-type=none`) + UDS. Train/eval scripts start or require this; no dependency on `:18080`.
+
+**Shared code, two boots:** extract [AI2.26](#ai226--harness-episode-facade) so HTTP controllers and the UDS acceptor call one episode implementation (no grading fork). Catalog stays Kotlin-owned ([OWNERSHIP](OWNERSHIP.md) / no mirrored enums).
+
+**Why headless (not UDS on the game host):** train saturates the JVM with ~30 env workers; Tomcat, SSE hub, and human-match TTL are tax. Separate process = own heap/GC/threads, no port fight with `:18080`, stop/start train without taking down the GUI. Expert export already proved headless Boot — incremental work is “bind UDS + block,” not a second Spring graph. Optional later dual-listen on the game host is debug-only, not the train default.
+
+**Abandoned for this track:** JPype/JNI embed; rewriting the SB3 loop in Kotlin; making UDS-on-`./dev.sh` the primary train path.
+
+### Expected speed (order of magnitude)
+
+Conditional on [AI2.25](#ai225--measure-harness-submit-timing). If `lookahead_ms` dominates full-game submits, park this section and change opponent/search instead.
+
+| Change | Scenario drills (little handoff) | Full game vs LOOKAHEAD |
+|--------|----------------------------------|------------------------|
+| Binary codec ([AI2.opt](#ai2opt--binary-observation-wire)) | ~1.2–2× if JSON/parse hot | ~1.05–1.2× |
+| + headless UDS ([AI2.27](#ai227--binary-uds-harness-headless)) | ~1.3–2.5× vs today’s HTTP+JSON | ~1.1–1.3× |
+| + multi harness JVMs (later) | ~2–5× if one process saturates | ~1.5–3× |
+
+### Work order
+
+`AI2.25` (gate) → `AI2.26` (facade) → `AI2.opt` (codec) → `AI2.27` (headless UDS) → `AI2.28` (Python + scripts). Codec + listener may land in one PR if small.
+
+### AI2.25 — Measure harness submit timing
+
+| Field | Detail |
+|-------|--------|
+| **Status** | **Open — gate for this section.** |
+| **Goal** | Decide whether wire/contention work is worth it. Capture [`AiSubmitTiming`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/AiSubmitTiming.kt) INFO batches (`next_legals_ms`, `engine_ms`, `turnWait_ms`/`lookahead_ms`, `pack_dto_ms`, `pack_flat_ms`) and Python `submit_avg_ms` on (1) scenario drills and (2) a LOOKAHEAD full-game eval. Note pack+HTTP vs search share (comment here or DESIGN footnote). |
+| **Depends on** | None (timing already logs every 400 submits). |
+| **Files** | Ops note; optional tiny summarizer for timing lines. |
+| **Acceptance** | Go/no-go: proceed if pack/wire/contention is roughly **≥ ~30%** of scenario `submit` time; else park the section. |
+| **Rulebook** | n/a |
+
+### AI2.26 — HarnessEpisode facade
+
+| Field | Detail |
+|-------|--------|
+| **Status** | **Open.** |
+| **Goal** | Extract the synchronous harness loop from [`AiMatchController`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/AiMatchController.kt) (create / wait-for-seat / pack step / submit / pack next / delete + scenario create) into a Spring `@Service` (`HarnessEpisode` / `AiHarnessService`) that HTTP controllers **and** the UDS listener both call. No rule changes; keep `AiSubmitTiming` hooks. |
+| **Depends on** | [AI2.25](#ai225--measure-harness-submit-timing) go (or explicit skip). |
+| **Files** | New service under `api/ai/`; thin `AiMatchController` / `TrainingScenarioController`; facade-only integration test (parity with packed step/submit). |
+| **Acceptance** | Controllers are thin delegates; facade test creates a scenario episode and submits without HTTP; GUI HTTP behavior unchanged. |
+| **Rulebook** | n/a |
+
+**Do not:** invent a second grading path.
+
+### AI2.opt — Binary observation wire
+
+| Field | Detail |
+|-------|--------|
+| **Status** | **Open.** Codec for [AI2.27](#ai227--binary-uds-harness-headless); HTTP binary optional debug/compat. |
+| **Goal** | Length-prefixed binary frame for the same concat as packed JSON (`obs` float vector + legal matrix + compact legalRows / reward sidecars) — **no** obs `schemaVersion` bump. Transport-agnostic encode/decode. |
+| **Depends on** | Packed JSON path in use; prefer AI2.25 evidence; AI2.26 so packers are not controller-only. |
+| **Files** | Kotlin binary writer/reader; Python decode; shared layout via `OBSERVATION_VECTOR_LENGTH` / current constants. |
+| **Acceptance** | Binary ≡ packed-JSON tensors; nested JSON remains for curl/tests; codec has no HTTP/UDS dependency. |
+| **Rulebook** | n/a |
+
+**Landed (JSON-array packed):** `GET/POST …/packed`; obs length tracked in `constants.py` / Kotlin packer. Reward/metrics use explicit sidecars (not reverse-unpacked from `obs`).
+
+### AI2.27 — Binary UDS harness (headless train host)
+
+| Field | Detail |
+|-------|--------|
+| **Status** | **Open.** |
+| **Goal** | Long-lived headless Boot (`web-application-type=none`, same family as `--export-expert`) binds a Unix-domain socket and serves binary RPC via AI2.26. Leave HTTP game host untouched. |
+| **Depends on** | AI2.26; AI2.opt (same PR OK if small). |
+| **Files** | Harness CLI / flag (e.g. `--harness-socket=…`); socket acceptor + framing → facade; readiness path for scripts. |
+| **Acceptance** | UDS create/step/submit/catalog tensors match HTTP packed on the game host; DESIGN unlocked from “Training loop = HTTP only” to “train = binary UDS headless host; GUI = HTTP game host”; multi-JVM shard only if one harness saturates later. |
+| **Rulebook** | n/a |
+
+**Out:** UDS on the GUI JVM as primary train path; turning `--export-expert` into the train server (dump stays one-shot).
+
+### AI2.28 — Python binary client + train scripts
+
+| Field | Detail |
+|-------|--------|
+| **Status** | **Open.** |
+| **Goal** | [`GridironClient`](gridiron_ai/client.py) / env speak binary UDS (Gym loop unchanged). **Train/eval** start or require the headless harness; **play-vs-human / GUI** keep requiring `./dev.sh`. Clear errors when the wrong host is up. |
+| **Depends on** | [AI2.27](#ai227--binary-uds-harness-headless). |
+| **Files** | Client transport; `env.py` kwargs; [`dev_stack.py`](gridiron_ai/dev_stack.py) (socket vs HTTP health); [`common.sh`](common.sh); [`train.sh`](train.sh) / [`eval.sh`](eval.sh); harness start helper (mirror expert-export `mvn spring-boot:run` / web none); [`README.md`](README.md); [`OWNERSHIP.md`](OWNERSHIP.md). Catalog: UDS `catalog` RPC preferred (no HTTP dependency for train); server still owns membership. |
+| **Acceptance** | `./train.sh` works without `:18080`; play-vs-human still documents `./dev.sh`; failure text names which host to start; no mirrored scenario enum lists in Python. |
+| **Rulebook** | n/a |
+
+---
+
 ## Suggested order of work
 
 ```text
-AI2.0 Kotlin DTOs (contract = source)
-  → AI2.1 /api/ai step HTTP (wire the DTOs; reuse create; harness never opens /events)
-  → AI2.2 Python self-play (basic 4-factor actions + masks)
-  → AI2.3 eval vs computer   ← keep early
-  → AI2.4 unattended cycles
-  → AI2.12 held dice / mid-check obs + scenarios  ← prime (reroll blind without this)
-  → AI2.13 scenario catalog metadata (optional hygiene; kills Python board/claim mirror)
-  → AI2.14 split train_self_play (optional hygiene; orchestration only)
+Product / curriculum (current)
+  → AI2.12 mid-check scenarios (obs landed; prime)
+  → AI2.17 blind-spot remediation (17a → 17e → 17b → 17c → 17d)
+  → AI2.6 ONNX regen to schema 22 + smoke
   → AI2.5 multi-team
-  → AI2.6 ONNX + Kotlin opponent (same DTO/packer layout)
-  → AI2.7 shaping only if needed
-  → AI2.8 evaluate other obs enrichment vs truncated legals (only if baseline struggles)
-  → AI2.9 conditional action heads (optional)
-  → AI2.10 legal move inputs & obs dict shape (after conditional baseline)
-  → AI2.11 action sampling → [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) (inventory lives there)
-  → AI2.16 remove /choose + scenario lookahead test
-  → AI2.17 blind-spot remediation (from BlindSpotArena / BLINDSPOTS.md)
-  → AI2.opt binary wire when packed JSON-array is still hot (JSON float[] path landed)
+  → AI2.8 / AI2.10 / AI2.11 only if baseline still struggles
+  → AI2.18 + AI2.19 with next layout/schema bump
+
+Hygiene (anytime, low priority)
+  → AI2.22 TypedDicts · AI2.14 split train_self_play · AI2.20 pickle aliases
+  → AI2.23 → AI2.24 stock-layout (optional; needs retrain)
+
+Transport optimize (after AI2.25 go/no-go) — see section above
+  → AI2.25 → AI2.26 → AI2.opt → AI2.27 → AI2.28
 ```
 
 ---
@@ -550,9 +656,8 @@ AI2.0 Kotlin DTOs (contract = source)
 | Action sampling inventory | [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) |
 | Blind spots vs lookahead | [`BLINDSPOTS.md`](BLINDSPOTS.md) / [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) |
 | Held dice / mid-check (prime) | [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) |
-| Scenario catalog metadata | [AI2.13](#ai213--scenario-catalog-metadata-api) |
+| Headless binary harness (transport) | [section](#headless-binary-harness-transport) |
 | Split train entrypoint | [AI2.14](#ai214--split-train_self_play) |
-| Remove `/choose` + scenario lookahead test | [AI2.16](#ai216--remove-ai-choose--in-process-scenario-lookahead-test) |
 | Remove local SB3 pickle aliases | [AI2.20](#ai220--remove-local-sb3-pickle-aliases) |
 | Root backlog pointer | [`BACKLOG.md` AI2](../BACKLOG.md#deferred--phase-ai2-trainable-model) |
 | Heuristic / lookahead bots | [BACKLOG-done.md AI1](../archive/BACKLOG-done.md#ai1--basic-computer-opponent) |
