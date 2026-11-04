@@ -12,6 +12,7 @@ train-time ``+SOFT_MASK_LOGIT_BIAS`` crutch. PPO rollouts still use soft-mask vi
 from __future__ import annotations
 
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -37,8 +38,9 @@ logger = logging.getLogger(__name__)
 _CLONE_N_ENVS = 2
 _CLONE_N_STEPS = 128
 _CLONE_BATCH_SIZE = 256
-# Fit minibatches (separate from the PPO constructor batch above).
-_CLONE_FIT_BATCH_SIZE = 1024
+# Fit minibatch; 512 amortizes overhead vs historical 256 without the 1024 flop.
+_CLONE_FIT_BATCH_SIZE = 512
+_CLONE_DEVICE = "cpu"
 # Rare full-dump pass — stop early when mean NLL plateaus; cap so it cannot run forever.
 MAX_CLONE_EPOCHS = 30
 _CLONE_PLATEAU_PATIENCE = 3
@@ -47,13 +49,11 @@ _CLONE_PLATEAU_MIN_DELTA = 0.01
 _CLONE_PROGRESS_EVERY_S = 120.0
 
 
-def _clone_device() -> str:
-    """Prefer Apple MPS, then CUDA, else CPU — clone is offline and wall-clock heavy."""
-    if getattr(th.backends, "mps", None) is not None and th.backends.mps.is_available():
-        return "mps"
-    if th.cuda.is_available():
-        return "cuda"
-    return "cpu"
+def _configure_cpu_threads() -> int:
+    """Use all logical CPUs for Torch intra-op matmuls (clone is otherwise one-thread-looking)."""
+    n = os.cpu_count() or 1
+    th.set_num_threads(n)
+    return int(th.get_num_threads())
 
 
 def _format_duration(seconds: float) -> str:
@@ -98,13 +98,16 @@ def clone_arrays_into_checkpoint(
     n = int(arrays[NPZ_KEY_ACTION].shape[0])
     if n == 0:
         raise ValueError("expert arrays contain 0 steps")
-    device = _clone_device()
+    device = _CLONE_DEVICE
+    batch_size = _CLONE_FIT_BATCH_SIZE
+    threads = _configure_cpu_threads() if device == "cpu" else th.get_num_threads()
     logger.info(
-        "cloning %s expert steps (device=%s fit_batch=%s max_epochs=%s)",
+        "cloning %s expert steps (device=%s batch=%s max_epochs=%s torch_threads=%s)",
         f"{n:,}",
         device,
-        _CLONE_FIT_BATCH_SIZE,
+        batch_size,
         MAX_CLONE_EPOCHS,
+        threads,
     )
 
     bootstrap = _policy_spaces_vec_env()
@@ -124,6 +127,7 @@ def clone_arrays_into_checkpoint(
     mean_nll = fit_behavioral_clone(
         model,
         arrays,
+        batch_size=batch_size,
         learning_rate=learning_rate,
         seed=seed,
     )
@@ -139,12 +143,12 @@ def fit_behavioral_clone(
     model: MaskablePPO,
     arrays: dict[str, np.ndarray],
     *,
+    batch_size: int,
     learning_rate: float,
     seed: int,
 ) -> float:
     """Shuffle the dump and walk until mean NLL plateaus (or ``MAX_CLONE_EPOCHS``). Returns last-epoch average loss."""
     n = int(arrays[NPZ_KEY_ACTION].shape[0])
-    batch_size = _CLONE_FIT_BATCH_SIZE
     rng = np.random.default_rng(seed)
     model.policy.set_training_mode(True)
     for group in model.policy.optimizer.param_groups:

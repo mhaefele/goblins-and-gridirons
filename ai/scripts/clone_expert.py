@@ -4,7 +4,7 @@
 No backend. Overwrites ``output/checkpoints/{profile}/maskable_ppo_selfplay_final.zip``
 (all three if ``--profile all``). Does not modify the npz unless ``--out`` is set.
 
-Device (mps/cuda/cpu) and fit batch size are fixed in ``gridiron_ai.clone``.
+Device and fit batch size are fixed in ``gridiron_ai.clone``.
 
 Usage (from ai/):
   .venv/bin/python -m scripts.clone_expert --in output/expert/lookahead.npz --profile all

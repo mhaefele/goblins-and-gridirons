@@ -209,38 +209,23 @@ def batch_gym_obs(arrays: dict[str, np.ndarray], idx: np.ndarray) -> dict[str, n
     """Index steps and pad ragged legals to ``MAX_LEGAL_MOVES`` for the policy Dict.
 
     Soft-mask obs is always zeros — expert dumps do not carry preference flags into clone.
-
-    # DEVIATION: scatter ragged flat rows with vectorized repeat/arange instead of a
-    # Python per-step copy loop — clone was host-bound on that pad at millions of steps.
     """
-    idx = np.asarray(idx, dtype=np.int64)
     obs = {key: arrays[key][idx] for key in OBS_KEYS_GAME_STATE}
     offsets = arrays[NPZ_KEY_LEGAL_ROW_OFFSET]
     flat = arrays[NPZ_KEY_LEGAL_MOVES_FLAT]
     batch = int(idx.shape[0])
     legal = np.full((batch, MAX_LEGAL_MOVES, FACTORS_PER_LEGAL_MOVE), -1, dtype=np.int64)
     preferred = np.zeros((batch, MAX_LEGAL_MOVES), dtype=np.int8)
-    if batch == 0:
-        obs[OBS_KEY_LEGAL_MOVES] = legal
-        obs[OBS_KEY_SOFT_MASK_LEGAL] = preferred
-        obs[OBS_KEY_LEGAL_MOVE_COUNT] = np.zeros((0, 1), dtype=np.int32)
-        return obs
-    starts = np.asarray(offsets[idx], dtype=np.int64)
-    ends = np.asarray(offsets[idx + 1], dtype=np.int64)
-    lens = ends - starts
-    widest = int(lens.max())
-    if widest > MAX_LEGAL_MOVES:
-        bad = int(idx[int(np.argmax(lens))])
-        raise ValueError(f"step {bad} has {widest} legal rows > MAX_LEGAL_MOVES={MAX_LEGAL_MOVES}")
-    counts = lens.astype(np.int32, copy=False).reshape(batch, 1)
-    total = int(lens.sum())
-    if total:
-        out_row = np.repeat(np.arange(batch, dtype=np.int64), lens)
-        flat_pos = np.arange(total, dtype=np.int64)
-        group_base = np.repeat(np.cumsum(lens, dtype=np.int64) - lens, lens)
-        out_col = flat_pos - group_base
-        src = np.repeat(starts, lens) + out_col
-        legal[out_row, out_col] = flat[src]
+    counts = np.zeros((batch, 1), dtype=np.int32)
+    for j, step_i in enumerate(idx):
+        start = int(offsets[step_i])
+        end = int(offsets[step_i + 1])
+        n = end - start
+        if n > MAX_LEGAL_MOVES:
+            raise ValueError(f"step {int(step_i)} has {n} legal rows > MAX_LEGAL_MOVES={MAX_LEGAL_MOVES}")
+        if n:
+            legal[j, :n] = flat[start:end]
+        counts[j, 0] = n
     obs[OBS_KEY_LEGAL_MOVES] = legal
     obs[OBS_KEY_SOFT_MASK_LEGAL] = preferred
     obs[OBS_KEY_LEGAL_MOVE_COUNT] = counts

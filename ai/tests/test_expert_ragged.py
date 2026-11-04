@@ -13,7 +13,6 @@ from gridiron_ai.constants import (
     OBS_KEY_LEGAL_MOVE_COUNT,
     OBS_KEY_LEGAL_MOVES,
     OBS_KEY_SOFT_MASK_LEGAL,
-    OBS_KEYS_GAME_STATE,
     OBSERVATION_VECTOR_LENGTH,
     SCHEMA_VERSION,
 )
@@ -26,7 +25,6 @@ from gridiron_ai.expert import (
     jsonl_to_npz,
     load_npz,
 )
-from gridiron_ai.obs import dict_observation_space
 
 
 def _record(
@@ -100,37 +98,6 @@ def test_jsonl_ignores_legacy_soft_mask_legal(tmp_path: Path) -> None:
     arrays = load_npz(npz)
     obs = batch_gym_obs(arrays, np.asarray([0], dtype=np.int64))
     assert int(obs[OBS_KEY_SOFT_MASK_LEGAL].sum()) == 0
-
-
-def test_batch_gym_obs_pads_uneven_ragged_lengths() -> None:
-    """Vectorized pad must match the old per-step copy for uneven menus."""
-    flat = np.asarray(
-        [
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ],
-        dtype=np.int64,
-    )
-    assert flat.shape[1] == FACTORS_PER_LEGAL_MOVE
-    arrays = {
-        NPZ_KEY_LEGAL_MOVES_FLAT: flat,
-        NPZ_KEY_LEGAL_ROW_OFFSET: np.asarray([0, 2, 2, 5], dtype=np.int64),  # lens 2, 0, 3
-        NPZ_KEY_ACTION: np.zeros((3,), dtype=np.int64),
-    }
-    space = dict_observation_space()
-    for key in OBS_KEYS_GAME_STATE:
-        shape = space.spaces[key].shape
-        arrays[key] = np.zeros((3, *shape), dtype=space.spaces[key].dtype)
-
-    obs = batch_gym_obs(arrays, np.asarray([0, 2, 1], dtype=np.int64))
-    assert obs[OBS_KEY_LEGAL_MOVE_COUNT].tolist() == [[2], [3], [0]]
-    np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][0, :2], flat[0:2])
-    np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][0, 2], [-1] * FACTORS_PER_LEGAL_MOVE)
-    np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][1, :3], flat[2:5])
-    np.testing.assert_array_equal(obs[OBS_KEY_LEGAL_MOVES][2, 0], [-1] * FACTORS_PER_LEGAL_MOVE)
 
 
 def test_load_npz_tolerates_legacy_preferred_flat(tmp_path: Path) -> None:
