@@ -11,6 +11,8 @@ from gridiron_ai.metrics import (
     accumulate_kind_totals,
     aggregate_episodes,
     format_metrics_line,
+    format_scenario_learn_line,
+    format_scenario_success_line,
     load_kind_breakdown,
     load_kind_totals,
     print_kind_mix,
@@ -150,7 +152,22 @@ def test_format_metrics_line_winrate_delta_vs_prior() -> None:
         [{"kind_count": {"run": 1}, "result_kind": "FULL", "result_winner_rel": "THEM"}]
     )
     stats["opening_expected_p_mean"] = 0.006
+    stats["win_by_4_rate"] = 0.0
     prior = {"winrate": 0.2, "opening_expected_p_mean": 0.05}
     line = format_metrics_line("Eval [baseline] vs-x", stats, prior=prior)
     assert "winrate=0.200→0.000" in line
     assert "expected_p=0.050→0.006" in line
+    success = format_scenario_success_line(stats, prior=prior)
+    assert success.startswith("  scenario success: drill_rate=0.200→0.000")
+    assert "expected_p=0.050→0.006" in success
+    learn = format_scenario_learn_line(
+        scenario="TD_RUN",
+        difficulty=1,
+        after=stats,
+        before=prior,
+        before_source="before-eval",
+    )
+    assert "scenario learn: TD_RUN d1" in learn
+    assert "drill_rate 0.200→0.000 (Δ=-0.200)" in learn
+    assert "expected_p=0.050→0.006" in learn
+    assert "before=before-eval" in learn

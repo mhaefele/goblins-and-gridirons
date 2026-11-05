@@ -1,8 +1,8 @@
-"""Policy diagnostics when scenario eval mispicks the opening coach turn.
+"""Opening join-score diagnostics and score-bit formatting for scenario eval.
 
-Owner: throwaway eval instrumentation — not part of the learning contract.
-Join-score port of the pre-schema-16 factor-head opening mispick diag.
-See ``eval_debug.py`` / ``ai/OWNERSHIP.md``.
+Owner: per-game opening mispick diag + batch ``opening_*`` aggregates / ``expected_p``
+format (including prior→current deltas). Episode metrics lines live in ``metrics.py``.
+Throwaway turn1 logging stays in ``eval_debug.py``. See ``ai/OWNERSHIP.md``.
 """
 
 from __future__ import annotations
@@ -319,7 +319,7 @@ def opening_score_fields(stats: dict[str, Any]) -> dict[str, float | None]:
     return {key: None for key in _OPENING_SCORE_KEYS}
 
 
-def _fmt_opening_metric(before: float | None, after: float | None, *, digits: int) -> str | None:
+def fmt_metric_delta(before: float | None, after: float | None, *, digits: int = 3) -> str | None:
     """``0.300→0.400`` when ``before`` is set, else ``0.400``; ``None`` if after missing."""
     if after is None:
         return None
@@ -347,7 +347,7 @@ def format_opening_score_bits(
         ("opening_expected_rank_best_mean", "expected_rank", 1),
     ):
         before = None if prior_fields is None else prior_fields[key]
-        rendered = _fmt_opening_metric(before, fields[key], digits=digits)
+        rendered = fmt_metric_delta(before, fields[key], digits=digits)
         if rendered is not None:
             bits.append(f"{label}={rendered}")
     return (" " + " ".join(bits)) if bits else ""

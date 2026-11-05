@@ -89,6 +89,8 @@ from gridiron_ai.eval_opening_diag import (
 from gridiron_ai.metrics import (
     accumulate_kind_totals,
     aggregate_episodes,
+    format_scenario_learn_line,
+    format_scenario_success_line,
     print_kind_mix,
     print_metrics,
 )
@@ -878,17 +880,6 @@ def _fmt_optional_float(value: Any, *, digits: int = 6) -> str:
     return f"{float(value):.{digits}f}"
 
 
-def _fmt_metric_delta(before: Any, after: Any, *, digits: int = 3) -> str | None:
-    """``0.300→0.400`` or ``0.400`` when before is missing."""
-    if after is None:
-        return None
-    after_f = float(after)
-    if before is None:
-        return f"{after_f:.{digits}f}"
-    before_f = float(before)
-    return f"{before_f:.{digits}f}→{after_f:.{digits}f}"
-
-
 def _episode_success_rates(episodes: list[dict[str, Any]]) -> dict[str, float]:
     n = len(episodes)
     if n == 0:
@@ -1326,46 +1317,22 @@ def _print_scenario_learn_line(
     row: dict[str, Any],
     slug: str,
 ) -> None:
-    """Stdout + cycle-row deltas for drill_rate and opening expected/first p + rank."""
-    after_rate = float(after["winrate"])
-    bits = [f"scenario learn: {scenario} d{difficulty}"]
+    """Stdout learn line + cycle-row winrate deltas (formatting owned by ``metrics``)."""
     if before is not None:
         prior_rate = float(before["winrate"])
-        delta = after_rate - prior_rate
+        delta = float(after["winrate"]) - prior_rate
         row[f"eval_scenario_{slug}_prior_winrate"] = f"{prior_rate:.6f}"
         row[f"eval_scenario_{slug}_delta_winrate"] = f"{delta:.6f}"
-        bits.append(f"drill_rate {prior_rate:.3f}→{after_rate:.3f} (Δ={delta:+.3f})")
-    else:
-        bits.append(f"drill_rate {after_rate:.3f}")
-
-    expected_p = _fmt_metric_delta(
-        None if before is None else before.get("opening_expected_p_mean"),
-        after.get("opening_expected_p_mean"),
+    print(
+        format_scenario_learn_line(
+            scenario=scenario,
+            difficulty=difficulty,
+            after=after,
+            before=before,
+            before_source=before_source,
+        ),
+        flush=True,
     )
-    expected_p_best = _fmt_metric_delta(
-        None if before is None else before.get("opening_expected_p_best_mean"),
-        after.get("opening_expected_p_best_mean"),
-    )
-    first_p = _fmt_metric_delta(
-        None if before is None else before.get("opening_chosen_p_mean"),
-        after.get("opening_chosen_p_mean"),
-    )
-    expected_rank = _fmt_metric_delta(
-        None if before is None else before.get("opening_expected_rank_best_mean"),
-        after.get("opening_expected_rank_best_mean"),
-        digits=1,
-    )
-    if expected_p is not None:
-        bits.append(f"expected_p {expected_p}")
-    if expected_p_best is not None:
-        bits.append(f"expected_best_p {expected_p_best}")
-    if first_p is not None:
-        bits.append(f"first_p {first_p}")
-    if expected_rank is not None:
-        bits.append(f"expected_rank {expected_rank}")
-    if before_source is not None:
-        bits.append(f"before={before_source}")
-    print("  " + " ".join(bits), flush=True)
 
 
 def _format_eval_game_line(
@@ -1604,16 +1571,7 @@ def _eval_segment(
         print_metrics(f"Eval {tagged}", stats, prior=metrics_prior)
         _note_kind_mix(runs_key, f"Eval {tagged}", stats, print_tables=True, accumulate=False)
         if quiet_scenario:
-            if metrics_prior is not None and metrics_prior.get("winrate") is not None:
-                drill_rate_bit = f"{float(metrics_prior['winrate']):.3f}→{stats['winrate']:.3f}"
-            else:
-                drill_rate_bit = f"{stats['winrate']:.3f}"
-            print(
-                f"  scenario success: drill_rate={drill_rate_bit} "
-                f"win_by_4_rate={stats['win_by_4_rate']:.3f}"
-                f"{format_opening_score_bits(stats, prior=metrics_prior)}",
-                flush=True,
-            )
+            print(format_scenario_success_line(stats, prior=metrics_prior), flush=True)
 
     if not args.eval_only:
         eval_dir = EVAL_DIR / profile

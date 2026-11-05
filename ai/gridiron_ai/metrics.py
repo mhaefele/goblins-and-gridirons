@@ -1,7 +1,8 @@
 """Episode action stats and shared aggregation (train + eval).
 
 Owner: ``info["bb_episode"]`` shape + ``aggregate_episodes`` used by TensorBoard
-and eval CLI. Does not define rewards. See ``ai/OWNERSHIP.md``.
+and eval CLI; stdout metrics / scenario success / learn summary lines (opening bits
+delegated to ``eval_opening_diag``). Does not define rewards. See ``ai/OWNERSHIP.md``.
 
 Counts sampled wire kinds (``kind_count`` = per-episode means for TB;
 ``kind_totals`` / ``kind_breakdown`` = session raw counts as scenarios / games / total).
@@ -17,7 +18,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from gridiron_ai.eval_opening_diag import format_opening_score_bits
+from gridiron_ai.eval_opening_diag import format_opening_score_bits, fmt_metric_delta
 from gridiron_ai.expert_stats import (
     BUCKET_GAMES,
     BUCKET_SCENARIOS,
@@ -94,6 +95,21 @@ def _empty_aggregate() -> dict[str, Any]:
     }
 
 
+def format_rate_bit(
+    after: float,
+    prior: float | None = None,
+    *,
+    digits: int = 3,
+    with_delta: bool = False,
+) -> str:
+    """``0.200→0.000`` / ``0.000``, optionally with ``(Δ=…)`` for learn lines."""
+    rendered = fmt_metric_delta(prior, after, digits=digits)
+    assert rendered is not None
+    if with_delta and prior is not None:
+        return f"{rendered} (Δ={after - prior:+.{digits}f})"
+    return rendered
+
+
 def format_metrics_line(
     label: str,
     stats: dict[str, Any],
@@ -102,8 +118,8 @@ def format_metrics_line(
 ) -> str:
     """One-line train/eval summary for stdout (TensorBoard callback + CLI).
 
-    When ``prior`` is set (before-eval vs last same-drill eval), winrate and opening
-    score bits render as ``before→after`` drift.
+    When ``prior`` is set (vs last same-drill eval), winrate and opening score bits
+    render as ``before→after`` drift.
     """
     kinds = " ".join(
         f"{k}={v:.2f}" for k, v in sorted(stats["kind_count"].items()) if v
@@ -114,11 +130,8 @@ def format_metrics_line(
     first_legals_bit = (
         f" first_legals={first_legals:.1f}" if first_legals is not None else ""
     )
-    opening_bit = format_opening_score_bits(stats, prior=prior)
-    if prior is not None and prior.get("winrate") is not None:
-        winrate_bit = f"{float(prior['winrate']):.3f}→{stats['winrate']:.3f}"
-    else:
-        winrate_bit = f"{stats['winrate']:.3f}"
+    prior_rate = float(prior["winrate"]) if prior is not None and prior.get("winrate") is not None else None
+    winrate_bit = format_rate_bit(float(stats["winrate"]), prior_rate)
     return (
         f"{label}: episodes={stats['episodes']} "
         f"winrate={winrate_bit} (W{stats['wins']}/L{stats['losses']}/D{stats['draws']}) "
@@ -132,8 +145,46 @@ def format_metrics_line(
         f"kinds[{kinds}] "
         f"trunc={stats['truncation_rate']:.3f} submit_err={stats['submit_error_rate']:.3f} "
         f"submit_ms={stats['submit_avg_ms']:.1f}"
-        f"{difficulty_bit}{first_legals_bit}{opening_bit}"
+        f"{difficulty_bit}{first_legals_bit}{format_opening_score_bits(stats, prior=prior)}"
     )
+
+
+def format_scenario_success_line(
+    stats: dict[str, Any],
+    *,
+    prior: dict[str, Any] | None = None,
+) -> str:
+    """``scenario success:`` drill_rate + win_by_4 + opening bits (optional prior deltas)."""
+    prior_rate = float(prior["winrate"]) if prior is not None and prior.get("winrate") is not None else None
+    return (
+        f"  scenario success: drill_rate={format_rate_bit(float(stats['winrate']), prior_rate)} "
+        f"win_by_4_rate={float(stats['win_by_4_rate']):.3f}"
+        f"{format_opening_score_bits(stats, prior=prior)}"
+    )
+
+
+def format_scenario_learn_line(
+    *,
+    scenario: str,
+    difficulty: int,
+    after: dict[str, Any],
+    before: dict[str, Any] | None = None,
+    before_source: str | None = None,
+) -> str:
+    """Post-sandwich ``scenario learn:`` drill_rate + opening bits vs ``before``."""
+    after_rate = float(after["winrate"])
+    bits = [f"scenario learn: {scenario} d{difficulty}"]
+    if before is not None:
+        prior_rate = float(before["winrate"])
+        bits.append(f"drill_rate {format_rate_bit(after_rate, prior_rate, with_delta=True)}")
+    else:
+        bits.append(f"drill_rate {after_rate:.3f}")
+    opening = format_opening_score_bits(after, prior=before).lstrip()
+    if opening:
+        bits.append(opening)
+    if before_source is not None:
+        bits.append(f"before={before_source}")
+    return "  " + " ".join(bits)
 
 
 def print_metrics(

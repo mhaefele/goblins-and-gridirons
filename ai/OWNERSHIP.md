@@ -31,7 +31,7 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 | HTTP create / step / submit / scenarios list | Kotlin `/api/ai/...` + `gridiron_ai/client.py` | Open `/events` from the harness |
 | Gym env (reset/step/reward call) | `gridiron_ai/env.py` | Own drill grading |
 | Reward margin / terminal / profile shaping / scenario coach-window ± | `gridiron_ai/reward.py` (LegalAction + `rewards.players` / `ballCoordinate`) | Per-move expected-move slap/bonus (soft-mask owns that); packed-row business logic |
-| Episode metrics / TB aggregates | `gridiron_ai/metrics.py`, `tb_callback.py` | — |
+| Episode metrics / TB aggregates / eval·learn stdout lines | `gridiron_ai/metrics.py`, `tb_callback.py` (opening bits → `eval_opening_diag`) | Re-format winrate/opening deltas in `train_self_play` |
 | **Drill board / expected moves / coach window** | Kotlin `api/ai/training/**` + `TrainingScenarioEnum`; semantics in [`backend/TRAINING_SCENARIOS.md`](../backend/TRAINING_SCENARIOS.md) | Script boards in Python |
 | Scenario catalog (name / family / difficultyProxy) | Kotlin `GET /api/ai/training/scenarios` → cached `output/scenario_catalog.json` via `scenarios.py` | Hard-code name lists in Python or frontend |
 | Difficulty JSON, lead, unlock levels, scenario timesteps, gate-failure counts | `gridiron_ai/scenario_curriculum.py` | — |
@@ -88,8 +88,9 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `training_phases.py` | scenario_a / b / profiles routing; `active_targets` / `resolve_targets` (post-split train/eval `all` via `reward.profiles_for_all` — baseline + general + spread; summary `all` includes td/defense) |
 | `pipeline_state.py` | Load / save / rewind `pipeline.json` (no gate checks) |
 | `scenario_training.py` | Pointer: grading is Kotlin |
-| `metrics.py` / `tb_callback.py` | Episode aggregates / TensorBoard; lifetime kind totals under ``runs/{key}/`` |
+| `metrics.py` / `tb_callback.py` | Episode aggregates / TensorBoard / metrics·success·learn lines; lifetime kind totals under ``runs/{key}/`` |
+| `eval_opening_diag.py` | Opening join-score aggregates + ``expected_p``/rank format (+ prior deltas) |
+| `eval_debug.py` | Throwaway per-episode turn1 / expected-move logging |
 | `paths.py` | `output/` roots |
 | `expert.py` / `expert_stats.py` / `clone.py` | Dump → npz (+ kind stats) → seed zip |
-| `eval_debug.py` | Throwaway scenario-eval logging |
 | `scripts/train_self_play.py` | Train/eval loop entrypoint |
