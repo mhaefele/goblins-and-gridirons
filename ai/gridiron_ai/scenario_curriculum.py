@@ -35,7 +35,7 @@ the oracle (right moves unknown) or placement (not always solvable). New catalog
 from the JSON start at difficulty 0; stale JSON keys for removed drills are ignored (restart
 training if that matters).
 Coach-window end / US|THEM grading: Kotlin. Scenario budgets: DEFAULT_SCENARIO_TRAIN_* below
-(learning / mastered while climbing; soft-d5 maintenance in game phase); full-game defaults in
+(learning below MAX; healthy d5 skip; soft-d5 maintenance); full-game defaults in
 ``scripts/train_self_play.py``.
 """
 
@@ -79,8 +79,9 @@ _DRILL_STATS_SUFFIX = ".scenario_drill_stats.json"
 # Sized in whole rollouts at locked defaults (n_envs=30 × n_steps=128 = 3840).
 _SCENARIO_ROLLOUT_TIMESTEPS = 3_840
 DEFAULT_SCENARIO_TRAIN_LEARNING = _SCENARIO_ROLLOUT_TIMESTEPS  # level < MAX: one PPO update
-DEFAULT_SCENARIO_TRAIN_MASTERED = _SCENARIO_ROLLOUT_TIMESTEPS  # level == MAX while pack climbs
-# Game phase: soft d5 (imperfect after-eval at MAX) get one rollout; healthy d5 stay eval-only.
+# Healthy d5: no train (0). Soft-d5 uses DEFAULT_SCENARIO_TRAIN_MAINTENANCE instead.
+DEFAULT_SCENARIO_TRAIN_MASTERED = 0
+# Soft d5 (imperfect after-eval at MAX): one rollout; healthy d5 stay eval-only.
 DEFAULT_SCENARIO_TRAIN_MAINTENANCE = _SCENARIO_ROLLOUT_TIMESTEPS
 
 
@@ -528,15 +529,17 @@ def train_timesteps_for_difficulty(
 ) -> int:
     """Timesteps for one scenario this cycle (budget amount before soft-d5 filtering).
 
-    While the pack is still climbing: learning budget below MAX, mastered budget at MAX.
-    In game phase / all-mastered: d5 drills use the maintenance budget (selective apply in
-    ``train_timesteps_for_scenario`` — healthy d5 stay 0).
+    Below MAX: learning budget. At MAX with mastered>0: that rehearse budget; otherwise
+    maintenance amount (``train_timesteps_for_scenario`` keeps healthy d5 at 0).
     """
-    if all_mastered or (game_phase and _clamp(difficulty) >= MAX_DIFFICULTY):
+    at_max = _clamp(difficulty) >= MAX_DIFFICULTY
+    if all_mastered or (game_phase and at_max):
         return max(0, maintenance)
     if learning <= 0 and mastered <= 0:
         return 0
-    if _clamp(difficulty) >= MAX_DIFFICULTY:
+    if at_max:
+        if mastered <= 0:
+            return max(0, maintenance)
         return max(0, mastered)
     return max(0, learning)
 
@@ -554,7 +557,7 @@ def train_timesteps_for_scenario(
     gate_failures: dict[str, dict[str, int]] | None = None,
     drill_stats: dict[str, dict[str, int]] | None = None,
 ) -> int:
-    """Per-scenario train budget; up to 4× while climbing; game phase stragglers + soft d5 at 1×."""
+    """Per-scenario train budget; up to 4× while climbing; soft d5 + game-phase stragglers at 1×."""
     failures = gate_failures if gate_failures is not None else {}
     difficulty = get_difficulty(levels, scenario)
     base = train_timesteps_for_difficulty(
@@ -568,7 +571,8 @@ def train_timesteps_for_scenario(
     if base <= 0:
         return 0
     at_max = _clamp(difficulty) >= MAX_DIFFICULTY
-    if all_mastered or (game_phase and at_max):
+    # Healthy d5 stay eval-only; soft-d5 (gate fails at MAX) get maintenance — climbing too.
+    if all_mastered or (game_phase and at_max) or (at_max and mastered <= 0):
         if not scenario_needs_maintenance(
             scenario, difficulty=difficulty, gate_failures=failures
         ):

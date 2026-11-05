@@ -155,7 +155,7 @@ Full games stay **off**.
 - Unlock full-game train **only after** scenario_b gate — equal parts vs HEURISTIC,
   LOOKAHEAD, and ONNX seats from `FULL_GAME_ONNX_OPPONENT_PROFILES` (today: general, defense)
 - Scenario drills: **stragglers** (< d5) keep learning budget; **soft d5** (imperfect
-  after-eval at MAX) get maintenance budget; healthy d5 stay eval-only
+  after-eval at MAX) get maintenance budget; healthy d5 stay eval-only (same while climbing)
 - Judge transfer with shaping-off eval (winrate / score_diff / TD rates)
 - Rotate `baseline` + `profiles_for_all("train")` shaped names with `--profile all`
   (today: `general`, `spread`; pin `td` / `defense` explicitly). Summary `--profile all` still
@@ -177,7 +177,7 @@ keep writing the `scenario_b` tree.
 
 **Do not**
 
-- Drop soft-d5 maintenance while games-only (healthy d5 stay eval-only; soft/stragglers train)
+- Drop soft-d5 maintenance (healthy d5 stay eval-only; soft/stragglers train)
 - Parallel experimental reward stacks beyond the named presets
 
 ---
@@ -203,8 +203,8 @@ Ask before merging:
 | Knob | Where | Notes |
 |------|--------|--------|
 | Scenario learning (below d5) | `scenario_curriculum` — 3840 ts/drill/cycle (1×3840 rollout) | Contiguous train → after-eval |
-| Scenario mastered (d=5) | `scenario_curriculum` — 3840 ts/drill/cycle | While pack still climbing; game phase uses maintenance for soft d5 only |
-| Scenario soft-d5 maintenance | `scenario_curriculum` — 3840 ts/drill/cycle | Game phase: imperfect after-eval at MAX; healthy d5 eval-only |
+| Scenario mastered (d=5) | `scenario_curriculum` — 0 ts | Healthy d5 never rehearse; soft-d5 uses maintenance |
+| Scenario soft-d5 maintenance | `scenario_curriculum` — 3840 ts/drill/cycle | Imperfect after-eval at MAX (climbing + game phase); healthy d5 eval-only |
 | vs HEURISTIC / LOOKAHEAD / ONNX train | `train_self_play` — 20k ts each per cycle (ONNX × `FULL_GAME_ONNX_OPPONENT_PROFILES`: general, defense) | 0 until full-game unlock (all drills d5) |
 | vs HEURISTIC / LOOKAHEAD / ONNX eval | `train_self_play` — 200 games each seat, every 4 visits per profile (`FULL_GAME_EVAL_EVERY_CYCLES`; eval-only each pass) | Shaping off, `deterministic=True`; ONNX seats use reward-profile ids as `onnxProfile`; multi-wave up to `n_envs` |
 | `n_envs` / `n_steps` / `batch_size` | `train_self_play` — 30 / 128 / 256 | `device=cpu` |

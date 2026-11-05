@@ -551,7 +551,7 @@ def parse_args() -> argparse.Namespace:
         help="Skip scenario train; with --eval-only skip scenario eval too (eval.sh)",
     )
     p.add_argument("--train-scenario-learning", type=int, default=DEFAULT_SCENARIO_TRAIN_LEARNING, help="PPO timesteps per scenario still below difficulty 5 (0 = skip learning scenarios)")
-    p.add_argument("--train-scenario-mastered", type=int, default=DEFAULT_SCENARIO_TRAIN_MASTERED, help="PPO timesteps per scenario already at difficulty 5 while pack climbs (0 = skip)")
+    p.add_argument("--train-scenario-mastered", type=int, default=DEFAULT_SCENARIO_TRAIN_MASTERED, help="PPO timesteps per healthy d5 while pack climbs (default 0 = skip; soft-d5 uses maintenance)")
     p.add_argument("--train-heuristic", type=int, default=DEFAULT_TRAIN_HEURISTIC, help="PPO timesteps vs HEURISTIC computer per cycle (0 = skip)")
     p.add_argument("--train-lookahead", type=int, default=DEFAULT_TRAIN_LOOKAHEAD, help="PPO timesteps vs LOOKAHEAD computer per cycle (0 = skip)")
     p.add_argument("--train-onnx", type=int, default=DEFAULT_TRAIN_ONNX, help=f"PPO timesteps per ONNX profile seat per cycle ({', '.join(FULL_GAME_ONNX_OPPONENT_PROFILES)}; 0 = skip)")

@@ -53,8 +53,10 @@ def test_train_timesteps_learning_below_max() -> None:
 
 
 def test_train_timesteps_mastered_at_max() -> None:
-    assert train_timesteps_for_difficulty(MAX_DIFFICULTY) == DEFAULT_SCENARIO_TRAIN_MASTERED
-    assert train_timesteps_for_difficulty(MAX_DIFFICULTY + 99) == DEFAULT_SCENARIO_TRAIN_MASTERED
+    # Default mastered=0 → maintenance amount (healthy d5 filtered in for_scenario).
+    assert train_timesteps_for_difficulty(MAX_DIFFICULTY) == DEFAULT_SCENARIO_TRAIN_MAINTENANCE
+    assert train_timesteps_for_difficulty(MAX_DIFFICULTY + 99) == DEFAULT_SCENARIO_TRAIN_MAINTENANCE
+    assert train_timesteps_for_difficulty(MAX_DIFFICULTY, mastered=3_840) == 3_840
 
 
 def test_train_timesteps_all_mastered_uses_maintenance() -> None:
@@ -68,9 +70,9 @@ def test_train_timesteps_game_phase_at_d5_is_maintenance() -> None:
 
 
 def test_train_budgets_are_whole_rollouts() -> None:
-    """Learning = mastered = maintenance = 1×3840 (locked n_envs×n_steps defaults)."""
+    """Learning / maintenance = 1×3840; healthy-d5 mastered budget stays 0."""
     assert DEFAULT_SCENARIO_TRAIN_LEARNING == 3_840
-    assert DEFAULT_SCENARIO_TRAIN_MASTERED == 3_840
+    assert DEFAULT_SCENARIO_TRAIN_MASTERED == 0
     assert DEFAULT_SCENARIO_TRAIN_MAINTENANCE == 3_840
 
 
@@ -509,7 +511,26 @@ def test_train_timesteps_no_double_on_d5_gate_fails() -> None:
     failures = record_gate_failure({}, "TD_RUN", MAX_DIFFICULTY)
     assert (
         train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, gate_failures=failures)
-        == DEFAULT_SCENARIO_TRAIN_MASTERED
+        == DEFAULT_SCENARIO_TRAIN_MAINTENANCE
+    )
+    assert train_timesteps_for_scenario("LOOSE_BALL_RUN", levels, _CATALOG, gate_failures=failures) == 0
+
+
+def test_train_timesteps_climbing_healthy_d5_skipped() -> None:
+    levels = {"TD_RUN": MAX_DIFFICULTY, "LOOSE_BALL_RUN": 0, "MARKED_RUN": MAX_DIFFICULTY}
+    assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG) == 0
+    assert (
+        train_timesteps_for_scenario("LOOSE_BALL_RUN", levels, _CATALOG)
+        == DEFAULT_SCENARIO_TRAIN_LEARNING * 2
+    )
+
+
+def test_train_timesteps_climbing_soft_d5_gets_maintenance() -> None:
+    levels = {"TD_RUN": MAX_DIFFICULTY, "LOOSE_BALL_RUN": 0, "MARKED_RUN": MAX_DIFFICULTY}
+    failures = record_gate_failure({}, "TD_RUN", MAX_DIFFICULTY)
+    assert (
+        train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, gate_failures=failures)
+        == DEFAULT_SCENARIO_TRAIN_MAINTENANCE
     )
 
 
@@ -534,7 +555,7 @@ def test_train_timesteps_double_below_pack_when_healthy() -> None:
     levels = {"TD_RUN": 5, "LOOSE_BALL_RUN": 4, "MARKED_RUN": 5}
     assert SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER == 4
     assert train_timesteps_for_scenario("LOOSE_BALL_RUN", levels, _CATALOG) == DEFAULT_SCENARIO_TRAIN_LEARNING * 2
-    assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG) == DEFAULT_SCENARIO_TRAIN_MASTERED
+    assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG) == 0
 
 
 def test_train_timesteps_bottleneck_fail_quadruples_before_claim_unlock() -> None:
