@@ -219,7 +219,7 @@ Core play, challenge cards, player abilities, Foul, Throw Team-mate, vs-computer
 
 ## DEFERRED — Phase AI2: Trainable Model
 
-Full phased backlog (HTTP trainer API, SB3 harness, eval vs computer, ONNX; optional [headless binary harness](ai/BACKLOG.md#headless-binary-harness-transport)): **[`ai/BACKLOG.md`](ai/BACKLOG.md)**. Harness root: [`ai/`](ai/).
+Full phased backlog (HTTP trainer API, SB3 harness, eval vs computer, ONNX): **[`ai/BACKLOG.md`](ai/BACKLOG.md)**. Harness root: [`ai/`](ai/). Headless binary/UDS transport [won't do 2026-11](archive/BACKLOG-done.md#ai2--headless-binary-harness-transport-wont-do-2026-11).
 
 ---
 

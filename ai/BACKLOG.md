@@ -8,8 +8,6 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 **Hygiene:** [AI2.22](#ai222--python-typeddicts-for-harness-wire) · [AI2.14](#ai214--split-train_self_play) · optional [AI2.23](#ai223--flat-cell-table-drop-pitch-chw)→[AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice).
 
-**Transport optimize (own section, not next):** [Headless binary harness](#headless-binary-harness-transport) — AI2.25 → 26 → opt → 27 → 28.
-
 **Design:** [`DESIGN.md`](DESIGN.md) · **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md) · **Architecture:** [Backend § Long-term product goals](../backend/ARCHITECTURE.md#long-term-product-goals).
 
 ---
@@ -37,6 +35,8 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [x] [AI2.15](#ai215--coachcontrol-seat-semantics) — CoachControl seat semantics
 - [x] [AI2.16](#ai216--remove-ai-choose--in-process-scenario-lookahead-test) — Remove `/choose`
 - [x] [AI2.21](#ai221--harness-legalrows-wrap-legalaction) — `legalRows` wrap `LegalAction` *(schema 21)*
+- [x] [AI2.25](#headless-binary-harness-transport-wont-do) — Measure harness submit timing *(no-go 2026-11)*
+- [x] Headless binary harness AI2.26 / opt / 27 / 28 — *(won't do; see archive)*
 
 ### Open — product / curriculum
 
@@ -58,14 +58,6 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [ ] [AI2.23](#ai223--flat-cell-table-drop-pitch-chw) — Flat cell table; drop pitch `(C,H,W)`
 - [ ] [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) — Packed `Box` obs
 
-### Open — transport optimize → [section](#headless-binary-harness-transport)
-
-- [ ] [AI2.25](#ai225--measure-harness-submit-timing) — Measure submit timing *(gate)*
-- [ ] [AI2.26](#ai226--harness-episode-facade) — `HarnessEpisode` facade
-- [ ] [AI2.opt](#ai2opt--binary-observation-wire) — Binary frame codec
-- [ ] [AI2.27](#ai227--binary-uds-harness-headless) — Headless UDS train host
-- [ ] [AI2.28](#ai228--python-binary-client--train-scripts) — Python client + train scripts
-
 ---
 
 ## AI2.0 — Learning contract (Kotlin DTOs)
@@ -76,7 +68,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 | **Goal** | **Ship Kotlin DTOs** that *are* the learning contract — flat obs, action factors / catalog rows (+ optional `LegalActionId` sidecar), step envelope, `schemaVersion`, and harness metadata (`actingSeat`). Reward is **not** a DTO — harness derives it from obs scores/result. No parallel markdown/OpenAPI field table: the DTO source is what you read. Packer stubs or TODOs on the types are fine; HTTP wiring can wait for AI2.1. |
 | **Depends on** | AI1 done (legal-action graph exists). |
 | **Files** | [`api/ai/dto/`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/) — contract types + KDoc. [`api/ai/mapping/`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/mapping/) — `MatchState` / `LegalAction` → those DTOs (`toAiStepDto`, etc.). |
-| **Acceptance** | Compiling Kotlin DTOs for step obs, legal-row **`kind` + typed [AiFactor](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiFactor.kt) list** + id sidecar, acting seat; nested GUI snapshot types are not reused; KDoc states schema / sentinel / factor conventions (omit unused factors — no NONE pad). Harness-only fields on [`AiGameStateDto`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiGameStateDto.kt); packable body nested [`AiObsDto`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiGameStateDto.kt); envelope [`AiStepDto`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiStepDto.kt). Domain→DTO mapping in place. Flat float packer + HTTP = [AI2.1](#ai21--dedicated-ai-http-api) / [AI2.opt](#ai2opt--binary-observation-wire). Flat single-Discrete catalog is **out**. |
+| **Acceptance** | Compiling Kotlin DTOs for step obs, legal-row **`kind` + typed [AiFactor](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiFactor.kt) list** + id sidecar, acting seat; nested GUI snapshot types are not reused; KDoc states schema / sentinel / factor conventions (omit unused factors — no NONE pad). Harness-only fields on [`AiGameStateDto`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiGameStateDto.kt); packable body nested [`AiObsDto`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiGameStateDto.kt); envelope [`AiStepDto`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiStepDto.kt). Domain→DTO mapping in place. Flat float packer + HTTP = [AI2.1](#ai21--dedicated-ai-http-api) (binary wire parked — [archive](../archive/BACKLOG-done.md#ai2--headless-binary-harness-transport-wont-do-2026-11)). Flat single-Discrete catalog is **out**. |
 | **Rulebook** | n/a (engine fidelity stays on existing resolvers). |
 
 **Do not:** write `ai/docs/contract.md` (or similar) that duplicates DTO fields. If prose is needed, put it in KDoc on the DTO. Rationale lives in [`DESIGN.md`](DESIGN.md).
@@ -522,106 +514,14 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 ---
 
-## Headless binary harness (transport)
-
-**Status:** Open — **optimize, not next.** Do not start until [AI2.25](#ai225--measure-harness-submit-timing) says pack/wire/contention is worth it (or the gate is explicitly skipped).
-
-Faster PPO rollout by dropping localhost HTTP+JSON for train, without changing rules, obs packing ownership, or the SB3 harness. Product GUI stays on today’s HTTP game host.
-
-### Intent
-
-| Today | Target |
-|-------|--------|
-| 30 `SubprocVecEnv` workers → one Spring Boot on `:18080` | Same workers → **headless** Boot over **Unix-domain socket** |
-| One `POST …/submit/packed` JSON per policy step | Length-prefixed **binary** frames (same tensors) |
-| Opponent already in-process on `COMPUTER` | Unchanged |
-| Expert dump is headless one-shot (`--export-expert`) | Train host is headless **long-lived** UDS server (same Boot family, different entry) |
-
-**Two launch shapes (intentional):**
-
-1. **Game host** — `./dev.sh` HTTP `:18080` (GUI, curl, play-vs-human). Unchanged.
-2. **Train host** — headless Boot (`web-application-type=none`) + UDS. Train/eval scripts start or require this; no dependency on `:18080`.
-
-**Shared code, two boots:** extract [AI2.26](#ai226--harness-episode-facade) so HTTP controllers and the UDS acceptor call one episode implementation (no grading fork). Catalog stays Kotlin-owned ([OWNERSHIP](OWNERSHIP.md) / no mirrored enums).
-
-**Why headless (not UDS on the game host):** train saturates the JVM with ~30 env workers; Tomcat, SSE hub, and human-match TTL are tax. Separate process = own heap/GC/threads, no port fight with `:18080`, stop/start train without taking down the GUI. Expert export already proved headless Boot — incremental work is “bind UDS + block,” not a second Spring graph. Optional later dual-listen on the game host is debug-only, not the train default.
-
-**Abandoned for this track:** JPype/JNI embed; rewriting the SB3 loop in Kotlin; making UDS-on-`./dev.sh` the primary train path.
-
-### Expected speed (order of magnitude)
-
-Conditional on [AI2.25](#ai225--measure-harness-submit-timing). If `lookahead_ms` dominates full-game submits, park this section and change opponent/search instead.
-
-| Change | Scenario drills (little handoff) | Full game vs LOOKAHEAD |
-|--------|----------------------------------|------------------------|
-| Binary codec ([AI2.opt](#ai2opt--binary-observation-wire)) | ~1.2–2× if JSON/parse hot | ~1.05–1.2× |
-| + headless UDS ([AI2.27](#ai227--binary-uds-harness-headless)) | ~1.3–2.5× vs today’s HTTP+JSON | ~1.1–1.3× |
-| + multi harness JVMs (later) | ~2–5× if one process saturates | ~1.5–3× |
-
-### Work order
-
-`AI2.25` (gate) → `AI2.26` (facade) → `AI2.opt` (codec) → `AI2.27` (headless UDS) → `AI2.28` (Python + scripts). Codec + listener may land in one PR if small.
-
-### AI2.25 — Measure harness submit timing
+## Headless binary harness (transport) *(won't do)*
 
 | Field | Detail |
 |-------|--------|
-| **Status** | **Open — gate for this section.** |
-| **Goal** | Decide whether wire/contention work is worth it. Capture [`AiSubmitTiming`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/AiSubmitTiming.kt) INFO batches (`next_legals_ms`, `engine_ms`, `turnWait_ms`/`lookahead_ms`, `pack_dto_ms`, `pack_flat_ms`) and Python `submit_avg_ms` on (1) scenario drills and (2) a LOOKAHEAD full-game eval. Note pack+HTTP vs search share (comment here or DESIGN footnote). |
-| **Depends on** | None (timing already logs every 400 submits). |
-| **Files** | Ops note; optional tiny summarizer for timing lines. |
-| **Acceptance** | Go/no-go: proceed if pack/wire/contention is roughly **≥ ~30%** of scenario `submit` time; else park the section. |
-| **Rulebook** | n/a |
-
-### AI2.26 — HarnessEpisode facade
-
-| Field | Detail |
-|-------|--------|
-| **Status** | **Open.** |
-| **Goal** | Extract the synchronous harness loop from [`AiMatchController`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/AiMatchController.kt) (create / wait-for-seat / pack step / submit / pack next / delete + scenario create) into a Spring `@Service` (`HarnessEpisode` / `AiHarnessService`) that HTTP controllers **and** the UDS listener both call. No rule changes; keep `AiSubmitTiming` hooks. |
-| **Depends on** | [AI2.25](#ai225--measure-harness-submit-timing) go (or explicit skip). |
-| **Files** | New service under `api/ai/`; thin `AiMatchController` / `TrainingScenarioController`; facade-only integration test (parity with packed step/submit). |
-| **Acceptance** | Controllers are thin delegates; facade test creates a scenario episode and submits without HTTP; GUI HTTP behavior unchanged. |
-| **Rulebook** | n/a |
-
-**Do not:** invent a second grading path.
-
-### AI2.opt — Binary observation wire
-
-| Field | Detail |
-|-------|--------|
-| **Status** | **Open.** Codec for [AI2.27](#ai227--binary-uds-harness-headless); HTTP binary optional debug/compat. |
-| **Goal** | Length-prefixed binary frame for the same concat as packed JSON (`obs` float vector + legal matrix + compact legalRows / reward sidecars) — **no** obs `schemaVersion` bump. Transport-agnostic encode/decode. |
-| **Depends on** | Packed JSON path in use; prefer AI2.25 evidence; AI2.26 so packers are not controller-only. |
-| **Files** | Kotlin binary writer/reader; Python decode; shared layout via `OBSERVATION_VECTOR_LENGTH` / current constants. |
-| **Acceptance** | Binary ≡ packed-JSON tensors; nested JSON remains for curl/tests; codec has no HTTP/UDS dependency. |
-| **Rulebook** | n/a |
-
-**Landed (JSON-array packed):** `GET/POST …/packed`; obs length tracked in `constants.py` / Kotlin packer. Reward/metrics use explicit sidecars (not reverse-unpacked from `obs`).
-
-### AI2.27 — Binary UDS harness (headless train host)
-
-| Field | Detail |
-|-------|--------|
-| **Status** | **Open.** |
-| **Goal** | Long-lived headless Boot (`web-application-type=none`, same family as `--export-expert`) binds a Unix-domain socket and serves binary RPC via AI2.26. Leave HTTP game host untouched. |
-| **Depends on** | AI2.26; AI2.opt (same PR OK if small). |
-| **Files** | Harness CLI / flag (e.g. `--harness-socket=…`); socket acceptor + framing → facade; readiness path for scripts. |
-| **Acceptance** | UDS create/step/submit/catalog tensors match HTTP packed on the game host; DESIGN unlocked from “Training loop = HTTP only” to “train = binary UDS headless host; GUI = HTTP game host”; multi-JVM shard only if one harness saturates later. |
-| **Rulebook** | n/a |
-
-**Out:** UDS on the GUI JVM as primary train path; turning `--export-expert` into the train server (dump stays one-shot).
-
-### AI2.28 — Python binary client + train scripts
-
-| Field | Detail |
-|-------|--------|
-| **Status** | **Open.** |
-| **Goal** | [`GridironClient`](gridiron_ai/client.py) / env speak binary UDS (Gym loop unchanged). **Train/eval** start or require the headless harness; **play-vs-human / GUI** keep requiring `./dev.sh`. Clear errors when the wrong host is up. |
-| **Depends on** | [AI2.27](#ai227--binary-uds-harness-headless). |
-| **Files** | Client transport; `env.py` kwargs; [`dev_stack.py`](gridiron_ai/dev_stack.py) (socket vs HTTP health); [`common.sh`](common.sh); [`train.sh`](train.sh) / [`eval.sh`](eval.sh); harness start helper (mirror expert-export `mvn spring-boot:run` / web none); [`README.md`](README.md); [`OWNERSHIP.md`](OWNERSHIP.md). Catalog: UDS `catalog` RPC preferred (no HTTP dependency for train); server still owns membership. |
-| **Acceptance** | `./train.sh` works without `:18080`; play-vs-human still documents `./dev.sh`; failure text names which host to start; no mirrored scenario enum lists in Python. |
-| **Rulebook** | n/a |
+| **Status** | **Won't do (2026-11).** AI2.25 measured; AI2.26 / AI2.opt / AI2.27 / AI2.28 parked. |
+| **Summary** | Eval timings show **lookahead / turnWait** dominate full-game submits (~70–80% of server `total_ms`; Python `submit_ms` ~36 vs-lookahead, ~19 vs-heuristic). Server **pack is sub-ms**; short scenario steps are ~3.5–6 ms and already engine/legals-bound. Binary UDS would save ~1–2 ms absolute — not worth a second train-host launch. |
+| **Lever instead** | Opponent mix / search budget — not sockets. |
+| **Full write-up** | [`archive/BACKLOG-done.md` § AI2 headless binary harness](../archive/BACKLOG-done.md#ai2--headless-binary-harness-transport-wont-do-2026-11) (intent, speed guesses, timing tables, revisit criteria). |
 
 ---
 
@@ -639,9 +539,6 @@ Product / curriculum (current)
 Hygiene (anytime, low priority)
   → AI2.22 TypedDicts · AI2.14 split train_self_play · AI2.20 pickle aliases
   → AI2.23 → AI2.24 stock-layout (optional; needs retrain)
-
-Transport optimize (after AI2.25 go/no-go) — see section above
-  → AI2.25 → AI2.26 → AI2.opt → AI2.27 → AI2.28
 ```
 
 ---
@@ -656,7 +553,7 @@ Transport optimize (after AI2.25 go/no-go) — see section above
 | Action sampling inventory | [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) |
 | Blind spots vs lookahead | [`BLINDSPOTS.md`](BLINDSPOTS.md) / [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) |
 | Held dice / mid-check (prime) | [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) |
-| Headless binary harness (transport) | [section](#headless-binary-harness-transport) |
+| Headless binary harness *(won't do)* | [short](#headless-binary-harness-transport-wont-do) · [archive](../archive/BACKLOG-done.md#ai2--headless-binary-harness-transport-wont-do-2026-11) |
 | Split train entrypoint | [AI2.14](#ai214--split-train_self_play) |
 | Remove local SB3 pickle aliases | [AI2.20](#ai220--remove-local-sb3-pickle-aliases) |
 | Root backlog pointer | [`BACKLOG.md` AI2](../BACKLOG.md#deferred--phase-ai2-trainable-model) |

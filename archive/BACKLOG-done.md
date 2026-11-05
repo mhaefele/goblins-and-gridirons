@@ -2177,6 +2177,48 @@ Most GUI work consumes the done backend as-is. Four **backend** tasks are still 
 
 ---
 
+## AI2 — Headless binary harness (transport) *(won't do 2026-11)*
+
+> Parked after [AI2.25](#ai225--measure-harness-submit-timing-2026-11) measured live eval timings. Short pointer in active [`ai/BACKLOG.md`](../ai/BACKLOG.md#headless-binary-harness-transport-wont-do). Re-open only if pack/wire/contention becomes hot again (e.g. much cheaper opponents, or scenario-only train where search is gone).
+
+### Intent (what we scoped)
+
+Faster PPO rollout by dropping localhost HTTP+JSON for train, without changing rules, obs packing ownership, or the SB3 harness.
+
+| Today | Target we considered |
+|-------|----------------------|
+| 30 `SubprocVecEnv` workers → one Spring Boot on `:18080` | Same workers → **headless** Boot over **Unix-domain socket** |
+| One `POST …/submit/packed` JSON per policy step | Length-prefixed **binary** frames (same tensors) |
+| Opponent already in-process on `COMPUTER` | Unchanged |
+| Expert dump is headless one-shot (`--export-expert`) | Train host would be headless **long-lived** UDS server |
+
+**Two launch shapes:** game host = `./dev.sh` HTTP; train host = headless Boot + UDS. Shared `HarnessEpisode` facade so HTTP controllers and UDS call one episode path (no grading fork). Catalog stays Kotlin-owned.
+
+**Why headless (vs UDS on the game host):** train saturates the JVM; Tomcat/SSE/human TTL are tax; separate heap/GC; no `:18080` fight. Expert export already proved headless Boot.
+
+**Abandoned even before the gate:** JPype/JNI embed; rewriting the SB3 loop in Kotlin; UDS-on-`./dev.sh` as the primary train path.
+
+**Planned work order (not started):** AI2.25 gate → AI2.26 facade → AI2.opt binary codec → AI2.27 headless UDS → AI2.28 Python client + scripts.
+
+**Expected speed (pre-measure guesses):** binary ~1.2–2× on scenario if JSON hot; +UDS ~1.3–2.5×; vs LOOKAHEAD full games only ~1.05–1.3× if search dominates.
+
+### AI2.25 — Measure harness submit timing *(2026-11)*
+
+- [x] **Goal:** Go/no-go — proceed only if pack/wire/contention roughly **≥ ~30%** of scenario `submit` time.
+- [x] **Evidence:** `./eval.sh` (baseline) + Spring `AiSubmitTiming` INFO every 400 submits.
+- [x] **Python `submit_ms`:** vs-lookahead **35.9**; vs-heuristic **18.7**; short scenario drills **~3.5–6**; longer scenarios (deny_pickup d4 / throw_to_endzone d5) **~21**.
+- [x] **Spring (LOOKAHEAD batches):** `total_ms` ~19–36; **`turnWait` ~70–80%** (`lookahead_ms` ~12–23; handoff-only ~60–140); `next_legals` ~2–3; `engine` ~0.5–1; **`pack_dto`+`pack_flat` ~0.4–0.7**.
+- [x] **Spring (HEURISTIC / `lookahead_ms=0`):** `total_ms` ~6–9; handoffs ~12–16 ms; pack still sub-ms.
+- [x] **Decision:** **No-go.** Absolute pack/wire savings ~1–2 ms on scenario steps; noise next to lookahead on full games. Lever = opponent mix / search budget, not sockets.
+- [x] **Rulebook:** n/a
+
+### AI2.26 / AI2.opt / AI2.27 / AI2.28 — *(won't do)*
+
+- [x] **Won't do (2026-11):** `HarnessEpisode` facade, binary frame codec, headless UDS train host, Python UDS client + train script lifecycle — not worth it under current timings.
+- [x] **Revisit if:** scenario-only or heuristic/ONNX-dominated train shows pack+HTTP as a large share of `submit_ms`, or worker count / JSON payload grow enough to change the gate.
+
+---
+
 ## Frontend follow-ups — all shipped *(2026-07)*
 
 > Active backlog had **no remaining FF items**. Archive: [FF.1](#ff1--local-coach--seat-identity-2026-07)–[FF.7](#ff7--distinct-block-die-face-glyphs-2026-07), [FF.9](#ff9--random-team-selection-toggle-2026-07)–[FF.10](#ff10--challenge-earn-cue-on-legal-actions-gui-2026-07); [FF.8](#ff8--pitch--join-chrome-punch-up-wont-do) won't do. Challenge face art on-screen via [GFX.14](#gfx14--challenge-card-art-pack) + D1 tableau.
