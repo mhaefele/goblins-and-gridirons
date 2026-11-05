@@ -272,6 +272,20 @@ abstract class AbstractTrainingScenario {
     protected fun scoredTouchdown(before: MatchState, after: MatchState, side: TeamSide): Boolean =
         touchdowns(after, side) > touchdowns(before, side)
 
+    /**
+     * Run-to-score drills: [TrainingDrillStatus.PASS] only when the scoring submit is a [LegalAction.Run].
+     * Non-Run touchdowns (Block push, Throw into EZ, …) → [TrainingDrillStatus.DISTRACTED] so soft-mask
+     * wins that skip the taught Run do not count as US. Null when no trainer TD this submit.
+     */
+    protected fun drillStatusForTouchdownByRun(
+        before: MatchState,
+        after: MatchState,
+        action: LegalAction,
+    ): TrainingDrillStatus? {
+        if (!scoredTouchdown(before, after, trainerSide(before))) return null
+        return if (action is LegalAction.Run) TrainingDrillStatus.PASS else TrainingDrillStatus.DISTRACTED
+    }
+
     protected fun isBlockOnThemBallCarrier(action: LegalAction, board: Board, trainerSide: TeamSide): Boolean {
         if (action !is LegalAction.Block) return false
         val targetId = board.squareAt(action.destination).playerId ?: return false

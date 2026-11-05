@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component
 
 /**
  * Soft-mask / expected: no ball → pickup; has ball → carrier EZ run.
- * Drill PASSes on touchdown only — pickup is expected but must not grade PASS.
+ * PASS only on a Run touchdown — pickup and non-Run TDs must not grade PASS.
  */
 @Component
 class LooseBallRunTrainingScenario : AbstractLooseBallTrainingScenario(contested = false) {
@@ -30,10 +30,8 @@ class LooseBallRunTrainingScenario : AbstractLooseBallTrainingScenario(contested
     override fun isPassingScenarioMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
         isLessonRun(action, state, trainerSide)
 
-    override fun drillStatus(before: MatchState, after: MatchState, action: LegalAction): TrainingDrillStatus {
-        if (scoredTouchdown(before, after, trainerSide(before))) return TrainingDrillStatus.PASS
-        return TrainingDrillStatus.STILL_IN_PROGRESS
-    }
+    override fun drillStatus(before: MatchState, after: MatchState, action: LegalAction): TrainingDrillStatus =
+        drillStatusForTouchdownByRun(before, after, action) ?: TrainingDrillStatus.STILL_IN_PROGRESS
 
     private fun isLessonRun(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
         if (action !is LegalAction.Run || state.board.players[action.playerId]?.team != trainerSide) return false

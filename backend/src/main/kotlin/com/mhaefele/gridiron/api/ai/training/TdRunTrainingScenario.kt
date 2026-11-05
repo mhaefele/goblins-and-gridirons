@@ -2,10 +2,12 @@ package com.mhaefele.gridiron.api.ai.training
 
 import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.model.MatchState
+import com.mhaefele.gridiron.model.TrainingDrillStatus
 import com.mhaefele.gridiron.model.TrainingScenarioEnum
 import com.mhaefele.gridiron.shared.TeamSide
 import org.springframework.stereotype.Component
 
+/** Soft-mask / PASS: carrier Run into the scoring end zone. Non-Run touchdowns grade DISTRACTED. */
 @Component
 class TdRunTrainingScenario : AbstractTrainingScenario() {
     override val scenario = TrainingScenarioEnum.TD_RUN
@@ -32,5 +34,11 @@ class TdRunTrainingScenario : AbstractTrainingScenario() {
         val carrier = trainerBallCarrierOrNull(state, trainerSide) ?: return false
         if (action !is LegalAction.Run || action.playerId != carrier.id) return false
         return state.board.squareAt(action.path.squares.last()).isEndZone(trainerSide.opposite())
+    }
+
+    override fun drillStatus(before: MatchState, after: MatchState, action: LegalAction): TrainingDrillStatus {
+        drillStatusForTouchdownByRun(before, after, action)?.let { return it }
+        if (isPassingScenarioMove(action, before, trainerSide(before))) return TrainingDrillStatus.PASS
+        return TrainingDrillStatus.STILL_IN_PROGRESS
     }
 }

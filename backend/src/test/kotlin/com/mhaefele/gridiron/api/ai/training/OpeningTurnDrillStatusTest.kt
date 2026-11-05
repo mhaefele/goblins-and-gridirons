@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test
 class OpeningTurnDrillStatusTest {
     private val markedRun = MarkedRunTrainingScenario()
     private val tdRun = TdRunTrainingScenario()
+    private val looseBallRun = LooseBallRunTrainingScenario()
     private val stripAndScore = StripAndScoreTrainingScenario()
 
     @Test
@@ -38,7 +39,7 @@ class OpeningTurnDrillStatusTest {
     }
 
     @Test
-    fun `drillStatus PASSes on opening-turn touchdown`() {
+    fun `drillStatus PASSes on opening-turn Run touchdown`() {
         val episode = TrainingEpisodeConfig(
             scenario = TrainingScenarioEnum.TD_RUN,
             difficulty = 0,
@@ -50,6 +51,25 @@ class OpeningTurnDrillStatusTest {
         val action = LegalAction.Run(PlayerId("home-1"), Path(listOf(Coordinate(9, 14), Coordinate(9, 15))))
 
         assertThat(tdRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.PASS)
+        assertThat(markedRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.PASS)
+        assertThat(looseBallRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.PASS)
+    }
+
+    @Test
+    fun `drillStatus DISTRACTED on opening-turn non-Run touchdown`() {
+        val episode = TrainingEpisodeConfig(
+            scenario = TrainingScenarioEnum.TD_RUN,
+            difficulty = 0,
+            trainerSide = TeamSide.HOME,
+            openingTurnNumber = 1,
+        )
+        val before = matchState(trainingEpisode = episode)
+        val after = before.copy(progress = before.progress.addTouchdown(TeamSide.HOME))
+        val action = LegalAction.Block(PlayerId("home-1"), Coordinate(9, 15))
+
+        assertThat(tdRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.DISTRACTED)
+        assertThat(markedRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.DISTRACTED)
+        assertThat(looseBallRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.DISTRACTED)
     }
 
     @Test

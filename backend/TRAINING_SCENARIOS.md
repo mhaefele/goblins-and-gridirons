@@ -201,6 +201,7 @@ Several drills intentionally PASS on **attempt**, not full resolution:
 |---------|----------|
 | `succeedsOnAttempt = true` | Claim dice drills: `CLAIM_CONNECT`, `CLAIM_DROP_THEM`, `CLAIM_SEND_THEM_OFF`, `CLAIM_THREAD_THE_NEEDLE`, `CLAIM_STRIP_IT` — right flagged move passes even if throw/block fails to bank the card |
 | Custom `drillStatus` | `THROW_OPEN_RECEIVER`, `THROW_CLOSER_RANGE` — correct target/range, not catch; `LOOSE_BALL_BOUNCE` — block on guard or TD, not post-bounce pickup |
+| Run-only TD | `TD_RUN`, `MARKED_RUN`, `LOOSE_BALL_RUN` — PASS only when the scoring submit is a `Run`; non-Run TDs → `DISTRACTED` |
 | Bank-all-three | `CLAIM_CLEAN_SWEEP` — PASS only when all trio cards are in hand |
 
 Curriculum winrate can climb while physical resolution still fails. That is deliberate

@@ -12,7 +12,7 @@ import kotlin.math.abs
 
 /**
  * Soft-mask / expected: marked → carrier sidestep; open → carrier EZ run.
- * Drill PASSes on touchdown only — opening expected sidestep must not grade PASS.
+ * PASS only on a Run touchdown — opening sidestep and non-Run TDs must not grade PASS.
  */
 @Component
 class MarkedRunTrainingScenario : AbstractTrainingScenario() {
@@ -54,10 +54,8 @@ class MarkedRunTrainingScenario : AbstractTrainingScenario() {
     override fun isPassingFollowUpMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
         isScoringRun(action, state, trainerSide)
 
-    override fun drillStatus(before: MatchState, after: MatchState, action: LegalAction): TrainingDrillStatus {
-        if (scoredTouchdown(before, after, trainerSide(before))) return TrainingDrillStatus.PASS
-        return TrainingDrillStatus.STILL_IN_PROGRESS
-    }
+    override fun drillStatus(before: MatchState, after: MatchState, action: LegalAction): TrainingDrillStatus =
+        drillStatusForTouchdownByRun(before, after, action) ?: TrainingDrillStatus.STILL_IN_PROGRESS
 
     private fun isScoringRun(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
         val carrier = trainerBallCarrierOrNull(state, trainerSide) ?: return false
