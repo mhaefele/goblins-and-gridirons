@@ -185,8 +185,10 @@ abstract class AbstractChallengeClaimTrainingScenario(
         claimsFocus(action)
 
     /**
-     * Follow-up on the opening turn after the first budgeted action.
-     * Default none — single-move drills finish on the opening action.
+     * Follow-up soft-mask after the first budgeted action.
+     * Default none — one-shot claims still soft-mask opening-only; PASS follow-up reuses
+     * [isPassingOpeningMove] via [AbstractTrainingScenario.isPassingFollowUpMove] when
+     * [expectedBudgetedActions] == 1. Multi-move drills override.
      */
     override fun isSoftMaskFollowUpMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
         false

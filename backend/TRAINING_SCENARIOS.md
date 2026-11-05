@@ -161,6 +161,10 @@ Optional drills train and bump local difficulty on perfect eval like any other d
 (`openingTurnNumber`, trainer active). Later window turns never upgrade a miss to PASS;
 coach-window timeout without PASS grades **THEM** (`TrainingEpisodeEnd`).
 
+**One-shot drills** (`expectedBudgetedActions == 1`): PASS uses the same opening predicate on
+any budgeted action of that opening turn (action 2–3 still grade if the lesson move appears).
+Soft-mask stays opening-only. Multi-step drills keep their own follow-up overrides.
+
 ### Claim-specific
 
 - Episodes open on **turn 3** (`ChallengeClaimTableau.OPENING_TURN`) — past the turn-1 claim gate, still a full three-action turn.
@@ -186,7 +190,8 @@ coach-window timeout without PASS grades **THEM** (`TrainingEpisodeEnd`).
 
 ## Grading semantics (`drillStatus`)
 
-Default board behavior: **PASS** on opening-turn touchdown or flagged `expectedScenarioMove`.
+Default board behavior: **PASS** on opening-turn touchdown or flagged `expectedScenarioMove`
+(for one-shot drills: that flagged move on any of the three budgeted actions).
 
 Several drills intentionally PASS on **attempt**, not full resolution:
 

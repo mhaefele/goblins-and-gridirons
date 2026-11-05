@@ -143,9 +143,19 @@ abstract class AbstractTrainingScenario {
     /** Follow-up on the opening turn after the first budgeted action (soft-mask). Default none. */
     open fun isSoftMaskFollowUpMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean = false
 
-    /** Pass-grade follow-up on the opening turn (default: same as soft-mask follow-up). */
+    /**
+     * Pass-grade follow-up on the opening turn.
+     * One-shot drills ([expectedBudgetedActions] == 1): same predicate as [isPassingOpeningMove] —
+     * do not recompute a new expected move; just accept the lesson action later in the turn.
+     * Soft-mask stays opening-only so training still prefers action 1.
+     * Multi-step drills: same as soft-mask follow-up (override when PASS is a subset).
+     */
     open fun isPassingFollowUpMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
-        isSoftMaskFollowUpMove(action, state, trainerSide)
+        if (expectedBudgetedActions == 1) {
+            isPassingOpeningMove(action, state, trainerSide)
+        } else {
+            isSoftMaskFollowUpMove(action, state, trainerSide)
+        }
 
     /**
      * Drill grade for one submit (curriculum / winrate; harness scenario terminal on window end).

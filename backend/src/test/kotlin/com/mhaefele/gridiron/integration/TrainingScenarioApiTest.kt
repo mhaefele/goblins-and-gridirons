@@ -148,6 +148,24 @@ class TrainingScenarioApiTest : BaseApiTest() {
         }
     }
 
+    @Test
+    fun `one-shot drill PASSes when expected move comes after a distractor action`() {
+        withRandomDiceRetries {
+            // Two trainers + assisted/unassisted targets: burn a non-PASS Block, then the assisted one.
+            val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.ASSISTED_BLOCK))
+            val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
+            val distractor = opening.harness.legalRows.first { !it.passingLegal && it.action is LegalAction.Block }
+            api.aiSubmit(response.matchId, distractor.action.id, forSeat = TeamSide.HOME)
+
+            val afterDistractor = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
+            assertThat(afterDistractor.harness.legalRows).noneMatch { it.softMaskLegal }
+            val passing = afterDistractor.harness.legalRows.filter { it.passingLegal }
+            assertThat(passing).isNotEmpty()
+            api.aiSubmit(response.matchId, passing.first().action.id, forSeat = TeamSide.HOME)
+            assertThat(loadMatch(response.matchId).trainingEpisode!!.drillStatus).isEqualTo(TrainingDrillStatus.PASS)
+        }
+    }
+
     @ParameterizedTest(name = "difficulty={0}")
     @ValueSource(ints = [0, 3, 5])
     fun `difficulty scatters that many extra reserves on both sides`(difficulty: Int) {
