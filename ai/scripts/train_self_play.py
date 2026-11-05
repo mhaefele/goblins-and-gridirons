@@ -91,6 +91,7 @@ from gridiron_ai.metrics import (
     aggregate_episodes,
     format_scenario_learn_line,
     format_scenario_success_line,
+    load_kind_breakdown,
     print_kind_mix,
     print_metrics,
 )
@@ -232,22 +233,29 @@ def _note_kind_mix(
     stats: dict[str, Any],
     *,
     print_tables: bool,
+    print_lifetime: bool = False,
     accumulate: bool = True,
 ) -> None:
     """Optionally print segment kind tables; train also merges into ``kind_totals.*``.
 
     Lifetime under ``runs/{runs_key}/`` tracks **training** mix only — eval prints
-    the segment table when asked and must not pollute that file.
+    the segment table when asked and must not pollute that file. Lifetime stdout is
+    opt-in (once per scenario-train cycle, not once per drill).
     """
-    lifetime = None
     if accumulate:
         segment = stats.get("kind_breakdown") or stats.get("kind_totals") or {}
-        lifetime = accumulate_kind_totals(runs_key, segment)
-    if not print_tables:
-        return
-    print_kind_mix(label, stats)
-    if lifetime is not None:
-        print_kind_mix(f"{label} lifetime [{runs_key}]", {"kind_breakdown": lifetime})
+        accumulate_kind_totals(runs_key, segment)
+    if print_tables:
+        print_kind_mix(label, stats)
+    if print_lifetime:
+        _print_kind_lifetime(runs_key, label)
+
+
+def _print_kind_lifetime(runs_key: str, label: str) -> None:
+    print_kind_mix(
+        f"{label} lifetime [{runs_key}]",
+        {"kind_breakdown": load_kind_breakdown(runs_key)},
+    )
 
 
 def _eval_batch_all_wins(stats: dict[str, Any], *, games: int) -> bool:
@@ -1028,7 +1036,14 @@ def _train_segment(
         flush=True,
     )
     print_metrics(f"Train {label}", stats)
-    _note_kind_mix(runs_key, f"Train {label}", stats, print_tables=True)
+    # Segment table only — lifetime once after all scenarios (or after full-game train).
+    _note_kind_mix(
+        runs_key,
+        f"Train {label}",
+        stats,
+        print_tables=True,
+        print_lifetime=scenario is None,
+    )
     return stats
 
 
@@ -1336,6 +1351,8 @@ def _train_scenarios_segment(
             drill_stats_path=drill_stats_path,
         )
         _eval_section_break()
+    if did_train:
+        _print_kind_lifetime(runs_key, "Train scenarios")
     return row
 
 
