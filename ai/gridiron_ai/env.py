@@ -609,7 +609,7 @@ class GridironEnv(gym.Env):
                 summary["first_kind"] = self._action_stats.first_kind
         if self._scenario_eval_debug is not None:
             summary.update(self._scenario_eval_debug.episode_fields())
-            snapshot = self._scenario_eval_debug.opening_mispick_snapshot()
+            snapshot = self._scenario_eval_debug.opening_decision_snapshot()
             if snapshot is not None:
                 summary["_opening_mispick_snapshot"] = snapshot
             assert self.scenario is not None

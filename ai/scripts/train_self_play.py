@@ -546,7 +546,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval-onnx", type=int, default=DEFAULT_EVAL_ONNX, help=f"Deterministic eval games per ONNX profile ({', '.join(FULL_GAME_ONNX_OPPONENT_PROFILES)}; same cadence as heuristic/lookahead; 0 = skip)")
     p.add_argument("--eval-only", action="store_true", help="Skip all train; eval pass without eval JSON (eval.sh sets this)")
     p.add_argument("--eval-episode-mode", choices=("EVAL", "TRAIN"), default="EVAL", help="Scenario/full-game eval: EVAL=unaided (soft-mask bias off); TRAIN=soft-mask logit bias on (+ claim reachability soft-mask search)")
-    p.add_argument("--verbose", action="store_true", help="Scenario eval: score opening mispicks (expected/soft row rank + plain vs soft-mask probs) on THEM games")
+    p.add_argument("--verbose", action="store_true", help="Scenario eval: extra opening-mispick policy_diag line (expected/soft row rank + plain vs soft-mask probs) on THEM games; rank/p on expected+turn1 always")
     p.add_argument("--super-verbose", action="store_true", help="Implies --verbose; also dumps the full ranked legal menu (idx + probs) on THEM opening mispicks")
     p.add_argument("--phase", choices=EVAL_PHASE_CHOICES, default=None, help="Eval-only: load the zip that phase produced (seed / scenario_a / scenario_b); read-only; one pass")
     p.add_argument("--scenario", default=None, help="One drill only — skips full-game train/eval (default: cycle all from server)")
@@ -1252,36 +1252,62 @@ def _format_eval_game_line(
     return line
 
 
-def _attach_opening_mispick_diag(
+def _attach_opening_move_scores(
     model: MaskablePPO,
     summary: dict[str, Any],
     *,
+    verbose: bool = False,
     all_rows: bool = False,
 ) -> None:
-    """Score plain vs soft-mask-biased legal-row mass for the first lesson mispick — THEM only."""
+    """Score opening join-score mass for expected/turn1 rank+p; full diag on verbose THEM mispicks."""
     snapshot = summary.pop("_opening_mispick_snapshot", None)
     if snapshot is None:
-        return
-    if summary.get("result_winner_rel") != "THEM":
         summary.pop("opening_mispick", None)
         summary.pop("opening_mispick_chosen", None)
+        summary.pop("opening_mispick_diag", None)
+        summary.pop("opening_move_scores", None)
         return
     try:
-        summary["opening_mispick_diag"] = diagnose_opening_mispick(
+        diag = diagnose_opening_mispick(
             model.policy,
             snapshot,
             all_rows=all_rows,
         )
     except Exception as exc:
-        summary["opening_mispick_diag"] = {"error": str(exc)}
+        summary.pop("opening_move_scores", None)
+        if verbose and summary.get("opening_mispick") and summary.get("result_winner_rel") == "THEM":
+            summary["opening_mispick_diag"] = {"error": str(exc)}
+        else:
+            summary.pop("opening_mispick", None)
+            summary.pop("opening_mispick_chosen", None)
+            summary.pop("opening_mispick_diag", None)
+        return
+    scores = diag.get("opening_move_scores")
+    if scores is not None:
+        summary["opening_move_scores"] = scores
+    else:
+        summary.pop("opening_move_scores", None)
+    keep_verbose_diag = (
+        verbose
+        and summary.get("opening_mispick")
+        and summary.get("result_winner_rel") == "THEM"
+    )
+    if keep_verbose_diag:
+        summary["opening_mispick_diag"] = diag
+    else:
+        # Avoid ``policy_diag=pending`` on lean (rank/p only) lines.
+        summary.pop("opening_mispick_diag", None)
+        summary.pop("opening_mispick", None)
+        summary.pop("opening_mispick_chosen", None)
 
 
 def _drop_opening_mispick_snapshot(summary: dict[str, Any]) -> None:
-    """Eval JSON / logs stay lean when ``--verbose`` is off."""
+    """Drop frozen opening obs when scoring is skipped (non-scenario eval)."""
     summary.pop("_opening_mispick_snapshot", None)
     summary.pop("opening_mispick", None)
     summary.pop("opening_mispick_chosen", None)
     summary.pop("opening_mispick_diag", None)
+    summary.pop("opening_move_scores", None)
 
 
 def _log_eval_game(
@@ -1371,10 +1397,11 @@ def _eval_segment(
                 summary = info.get("bb_episode")
                 truncated = bool(summary.get("truncated")) if summary is not None else bool(info.get("TimeLimit.truncated"))
                 if summary is not None:
-                    if args.verbose and scenario is not None:
-                        _attach_opening_mispick_diag(
+                    if scenario is not None:
+                        _attach_opening_move_scores(
                             model,
                             summary,
+                            verbose=bool(args.verbose),
                             all_rows=bool(args.super_verbose),
                         )
                     else:
@@ -1569,6 +1596,7 @@ def _load_or_create_model(
                     None,
                     0,
                     "TRAIN",
+                    True,
                 )
                 for _ in range(DEFAULT_N_ENVS)
             ]

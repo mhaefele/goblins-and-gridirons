@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from gridiron_ai.eval_opening_diag import (
+    annotate_move_label,
     ball_carrier_player_index,
     format_opening_mispick_diag,
     preferred_row_rank,
@@ -25,6 +26,11 @@ def test_preferred_row_rank_reports_best_expected() -> None:
 
 def test_preferred_row_rank_none_without_flags() -> None:
     assert preferred_row_rank(logits=np.ones(3), legal_count=3, preferred=np.zeros(3, dtype=bool)) is None
+
+
+def test_annotate_move_label_appends_rank_and_p() -> None:
+    assert annotate_move_label("run(1,2->3,4)", None) == "run(1,2->3,4)"
+    assert annotate_move_label("run(1,2->3,4)", {"rank": 7, "p": 0.0123}) == "run(1,2->3,4) [rank=7 p=0.012]"
 
 
 def test_ball_carrier_player_index_from_rewards() -> None:

@@ -45,7 +45,8 @@ class ScenarioEvalDebug:
         self._first_action_legal_count: int | None = None
         self._expected_move_count: int = 0
         self._expected_moves: list[str] = []
-        self._opening_mispick_snapshot: dict[str, Any] | None = None
+        self._opening_decision_snapshot: dict[str, Any] | None = None
+        self._opening_was_expected: bool = False
         self._available_cards: str | None = None
         self._satisfied_claims: list[str] = []
 
@@ -59,7 +60,8 @@ class ScenarioEvalDebug:
         self._first_action_legal_count = None
         self._expected_move_count = 0
         self._expected_moves = []
-        self._opening_mispick_snapshot = None
+        self._opening_decision_snapshot = None
+        self._opening_was_expected = False
         self._available_cards = None
         self._satisfied_claims = []
 
@@ -116,7 +118,7 @@ class ScenarioEvalDebug:
             and soft_mask_legal is not None
             and chosen_row_index is not None
         ):
-            self._capture_opening_mispick_if_needed(
+            self._capture_opening_decision_if_needed(
                 turn_number=turn_number,
                 rewards=rewards,
                 policy_obs=policy_obs,
@@ -202,18 +204,21 @@ class ScenarioEvalDebug:
         if self._expected_move_count:
             fields["expected_move_count"] = self._expected_move_count
             fields["expected_moves"] = list(self._expected_moves)
-        if self._opening_mispick_snapshot is not None:
+        if self._opening_decision_snapshot is not None and not self._opening_was_expected:
             fields["opening_mispick"] = True
-            fields["opening_mispick_chosen"] = self._opening_mispick_snapshot.get("chosen_label")
+            fields["opening_mispick_chosen"] = self._opening_decision_snapshot.get("chosen_label")
         return fields
 
-    def opening_mispick_snapshot(self) -> dict[str, Any] | None:
-        return self._opening_mispick_snapshot
+    def opening_decision_snapshot(self) -> dict[str, Any] | None:
+        return self._opening_decision_snapshot
 
     @staticmethod
     def turn1_log_suffix(summary: dict[str, Any]) -> str:
         """Extra lines after the game summary: ball/setup, then turn1 (heavy indent)."""
+        from gridiron_ai.eval_opening_diag import annotate_move_label
+
         indent = "            "
+        scores = summary.get("opening_move_scores") or {}
         line1_bits: list[str] = []
         legals = summary.get("first_action_legal_count")
         if legals is not None:
@@ -235,11 +240,16 @@ class ScenarioEvalDebug:
 
         expected_count = int(summary.get("expected_move_count") or 0)
         expected = summary.get("expected_moves") or []
+        expected_scored = scores.get("expected") or []
+        expected_bits = [
+            annotate_move_label(label, expected_scored[index] if index < len(expected_scored) else None)
+            for index, label in enumerate(expected)
+        ]
         if expected_count:
             if expected_count <= 2:
-                line3 = f"{indent}expected=" + " ".join(expected)
+                line3 = f"{indent}expected=" + " ".join(expected_bits)
             else:
-                line3 = f"{indent}expected={expected_count} " + " ".join(expected)
+                line3 = f"{indent}expected={expected_count} " + " ".join(expected_bits)
         else:
             line3 = ""
 
@@ -247,7 +257,12 @@ class ScenarioEvalDebug:
         line_cards = f"\n{indent}cards={cards}" if cards else ""
 
         actions = summary.get("first_turn_actions") or []
-        line4 = f"{indent}turn1=" + " ".join(actions) if actions else ""
+        if actions:
+            chosen_score = scores.get("chosen")
+            action_bits = [annotate_move_label(actions[0], chosen_score), *actions[1:]]
+            line4 = f"{indent}turn1=" + " ".join(action_bits)
+        else:
+            line4 = ""
 
         claimed = summary.get("scenario_satisfied_claims") or []
         line_claimed = f"\n{indent}claimed=" + " ".join(claimed) if claimed else ""
@@ -333,7 +348,7 @@ class ScenarioEvalDebug:
             body = f"{body},{','.join(extras)}"
         return f"{tag}({body}){suffix}"
 
-    def _capture_opening_mispick_if_needed(
+    def _capture_opening_decision_if_needed(
         self,
         *,
         turn_number: int,
@@ -347,21 +362,21 @@ class ScenarioEvalDebug:
         legal_choice: dict[str, Any],
         was_expected: bool,
     ) -> None:
-        """First off-PASS player action on the opening coach turn.
+        """First player action on the opening coach turn (for rank/p on expected + turn1).
 
         Do not gate on opening ``expected_move_count`` (replace menus have none) or on
-        PASS/soft-mask rows for this decision (empty is the interesting failure). Skip
-        coach-only rows (no ``playerId``) so a challenge-menu click is not the mispick.
+        whether the pick was PASS. Skip coach-only rows (no ``playerId``) so a
+        challenge-menu click is not the scored decision.
         """
         if self._start_turn is None or turn_number != self._start_turn:
             return
-        if was_expected or self._opening_mispick_snapshot is not None:
+        if self._opening_decision_snapshot is not None:
             return
         if not _has_actor(legal_choice):
             return
         from gridiron_ai.eval_opening_diag import snapshot_opening_mispick
 
-        self._opening_mispick_snapshot = snapshot_opening_mispick(
+        self._opening_decision_snapshot = snapshot_opening_mispick(
             rewards=rewards,
             policy_obs=policy_obs,
             legal_moves=legal_moves,
@@ -371,6 +386,7 @@ class ScenarioEvalDebug:
             chosen_row_index=chosen_row_index,
             chosen_label=self.format_action(legal_choice, rewards=rewards),
         )
+        self._opening_was_expected = bool(was_expected)
 
 
 def append_scenario_draw_log(block: str, *, path: Any | None = None) -> None:

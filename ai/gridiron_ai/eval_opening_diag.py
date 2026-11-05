@@ -194,6 +194,20 @@ def diagnose_opening_mispick(
     expected_rank = preferred_row_rank(logits=acting, legal_count=legal_count, preferred=passing)
     soft_rank = preferred_row_rank(logits=acting, legal_count=legal_count, preferred=soft_mask)
 
+    p_key = "p_biased" if acting_biased else "p_plain"
+    # Same sample order as ``_format_expected_moves`` (all when ≤2, else first two).
+    passing_indices = [int(index) for index in np.flatnonzero(passing)]
+    expected_sample = passing_indices if len(passing_indices) <= 2 else passing_indices[:2]
+    expected_rows = [
+        {
+            "index": index,
+            "rank": int(ranks[index]),
+            "p": float(prob_biased[index] if acting_biased else prob_plain[index]),
+            "logit": float(acting[index]),
+        }
+        for index in expected_sample
+    ]
+
     return {
         "chosen": snapshot.get("chosen_label"),
         "chosen_row": {
@@ -207,6 +221,7 @@ def diagnose_opening_mispick(
             "passing": bool(passing[chosen_i]) if chosen_ok else False,
         },
         "expected_rank": expected_rank,
+        "expected_rows": expected_rows,
         "soft_rank": soft_rank,
         "ball_carrier_player_index": carrier,
         "carrier_kind_mass": carrier_kinds,
@@ -217,7 +232,28 @@ def diagnose_opening_mispick(
         "legal_count": legal_count,
         "passing_row_count": int(passing.sum()),
         "soft_mask_row_count": int(soft_mask.sum()),
+        "opening_move_scores": {
+            "chosen": (
+                {
+                    "rank": int(ranks[chosen_i]),
+                    "p": float(prob_biased[chosen_i] if acting_biased else prob_plain[chosen_i]),
+                    "logit": float(acting[chosen_i]),
+                }
+                if chosen_ok
+                else None
+            ),
+            "expected": expected_rows,
+            "p_key": p_key,
+        },
     }
+
+
+def annotate_move_label(label: str, score: dict[str, Any] | None) -> str:
+    """Append ``rank=`` / ``p=`` from opening join-score mass when present."""
+    if not score or score.get("rank") is None:
+        return label
+    p = float(score.get("p") or 0.0)
+    return f"{label} [rank={int(score['rank'])} p={p:.3f}]"
 
 
 def format_opening_mispick_diag(diag: dict[str, Any]) -> str:

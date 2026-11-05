@@ -102,6 +102,22 @@ def test_turn1_log_suffix_includes_expected_moves() -> None:
     assert "expected=47 R(7,2->7,3) R(8,3->9,2)" in many_suffix
 
 
+def test_turn1_log_suffix_annotates_rank_and_p() -> None:
+    suffix = ScenarioEvalDebug.turn1_log_suffix(
+        {
+            "expected_move_count": 1,
+            "expected_moves": ["run(6,13->5,14)"],
+            "first_turn_actions": ["run(6,13->10,15)", "reserves(p1)"],
+            "opening_move_scores": {
+                "chosen": {"rank": 1, "p": 0.42, "logit": 1.5},
+                "expected": [{"rank": 52, "p": 0.001, "logit": -2.0}],
+            },
+        }
+    )
+    assert "expected=run(6,13->5,14) [rank=52 p=0.001]" in suffix
+    assert "turn1=run(6,13->10,15) [rank=1 p=0.420] reserves(p1)" in suffix
+
+
 def test_describe_satisfied_claim_on_attached_claim() -> None:
     from gridiron_ai.eval_debug import _describe_satisfied_claim
 
