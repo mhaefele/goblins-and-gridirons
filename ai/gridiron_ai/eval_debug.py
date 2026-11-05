@@ -224,7 +224,7 @@ class ScenarioEvalDebug:
     @staticmethod
     def turn1_log_suffix(summary: dict[str, Any]) -> str:
         """Extra lines after the game summary: ball/setup, then turn1 (heavy indent)."""
-        from gridiron_ai.eval_opening_diag import annotate_move_label
+        from gridiron_ai.eval_opening_diag import annotate_move_label, format_step_reward
 
         indent = "            "
         scores = summary.get("opening_move_scores") or {}
@@ -287,7 +287,15 @@ class ScenarioEvalDebug:
                 )
                 score = chosen_score if index == 0 else None
                 action_bits.append(annotate_move_label(label, score, reward=reward))
-            line4 = f"{indent}turn1=" + " ".join(action_bits)
+            # Prefix = turn return (sum of per-step); each move still shows its step reward.
+            if step_rewards:
+                turn_reward = sum(float(value) for value in step_rewards)
+                line4 = (
+                    f"{indent}turn1 [reward={format_step_reward(turn_reward)}]="
+                    + " ".join(action_bits)
+                )
+            else:
+                line4 = f"{indent}turn1=" + " ".join(action_bits)
         else:
             line4 = ""
 

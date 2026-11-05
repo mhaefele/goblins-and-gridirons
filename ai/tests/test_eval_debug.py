@@ -118,7 +118,7 @@ def test_turn1_log_suffix_annotates_rank_and_p() -> None:
     )
     assert "expected=run(6,13->5,14) [rank=52 p=0.001]" in suffix
     assert (
-        "turn1=run(6,13->10,15) [rank=1 p=0.420 reward=+0.12] "
+        "turn1 [reward=-0.88]=run(6,13->10,15) [rank=1 p=0.420 reward=+0.12] "
         "reserves(p1) [reward=-1]"
     ) in suffix
 
