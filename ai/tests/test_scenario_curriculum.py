@@ -33,6 +33,8 @@ from gridiron_ai.scenario_curriculum import (
     scenarios_for_cycle,
     scenarios_for_eval,
     scenario_needs_maintenance,
+    scenario_train_budget_units,
+    train_multiplier_summary_lines,
     train_timesteps_for_difficulty,
     train_timesteps_for_scenario,
 )
@@ -532,6 +534,30 @@ def test_train_timesteps_climbing_soft_d5_gets_maintenance() -> None:
         train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, gate_failures=failures)
         == DEFAULT_SCENARIO_TRAIN_MAINTENANCE
     )
+
+
+def test_scenario_train_budget_units_matches_timesteps() -> None:
+    levels = {"TD_RUN": MAX_DIFFICULTY, "LOOSE_BALL_RUN": 0, "MARKED_RUN": MAX_DIFFICULTY}
+    assert scenario_train_budget_units("TD_RUN", levels, _CATALOG) == 0
+    assert scenario_train_budget_units("LOOSE_BALL_RUN", levels, _CATALOG) == 2
+    failures = record_gate_failure({}, "TD_RUN", MAX_DIFFICULTY)
+    assert scenario_train_budget_units("TD_RUN", levels, _CATALOG, gate_failures=failures) == 1
+
+
+def test_train_multiplier_summary_lines_lists_each_tier() -> None:
+    levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
+    levels["TD_RUN"] = 3
+    levels["THROW_OPEN_RECEIVER"] = 4
+    failures = record_gate_failure({}, "THROW_OPEN_RECEIVER", 4)
+    failures = record_gate_failure(failures, "TD_RUN", 3)
+    lines = train_multiplier_summary_lines(levels, FULL_NAMES, failures, {}, game_phase=False)
+    joined = "\n".join(lines)
+    assert lines[0] == "  train multipliers (next cycle):"
+    assert "    2×: throw_open_receiver" in lines
+    assert any(line.startswith("    4×:") and "td_run" in line for line in lines)
+    assert "throw_open_receiver" not in next(line for line in lines if line.startswith("    4×:"))
+    assert lines[-1] == "    0×: all others"
+    assert "1× default PPO budget" not in joined
 
 
 def test_train_timesteps_behind_pack_doubles_without_claim_unlock() -> None:

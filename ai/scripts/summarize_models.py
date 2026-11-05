@@ -37,14 +37,8 @@ from scripts.train_self_play import (
 )
 from gridiron_ai.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
-    DEFAULT_SCENARIO_TRAIN_LEARNING,
-    DEFAULT_SCENARIO_TRAIN_MASTERED,
     MAX_DIFFICULTY,
     SCENARIO_EVAL_PASS_MIN_WINS,
-    SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER,
-    SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER,
-    SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD,
-    active_scenario_catalog,
     all_scenarios_mastered,
     board_scenarios_in_catalog,
     claims_unlocked,
@@ -56,8 +50,7 @@ from gridiron_ai.scenario_curriculum import (
     load_levels,
     path_for_gate_failures,
     path_for_stem,
-    scenario_train_multiplier,
-    train_timesteps_for_scenario,
+    train_multiplier_summary_lines,
 )
 from gridiron_ai.scenarios import (
     load_cached_catalog,
@@ -785,85 +778,6 @@ def _gate_exclusion_bit(
     return ""
 
 
-def _train_boost_criteria_lines() -> list[str]:
-    """How scenario_train_multiplier maps gating drills to 1× / 2× / 4× next cycle."""
-    return [
-        "  train multipliers (next cycle):",
-        "    1× default PPO budget (optional drills never boost; d5 gate fails do not double)",
-        (
-            f"    2× gate_fails at current d (below d{MAX_DIFFICULTY}); or below pack max "
-            f"(not waived) with no current fail"
-        ),
-        (
-            f"    4× current fail at pack min; or below d{CLAIM_UNLOCK_BOARD_DIFFICULTY} "
-            f"while boards are not yet d{CLAIM_UNLOCK_BOARD_DIFFICULTY}+; or current fail + "
-            f"d5_demotes≥{SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD} once boards are "
-            f"d{CLAIM_UNLOCK_BOARD_DIFFICULTY}+"
-        ),
-    ]
-
-
-def _train_boost_lines(
-    levels: dict[str, int],
-    scenarios: list[str],
-    gate_failures: dict[str, dict[str, int]],
-    drill_stats: dict[str, dict[str, int]],
-    *,
-    game_phase: bool,
-) -> list[str]:
-    """Drills that would train at 2× or 4× on the next scenario cycle."""
-    lines = _train_boost_criteria_lines()
-    if all_scenarios_mastered(levels, scenarios):
-        lines.extend(["  train 2×: — (scenario train off)", "  train 4×: —"])
-        return lines
-    if game_phase:
-        lines.extend(["  train 2×: — (game phase)", "  train 4×: —"])
-        return lines
-    catalog = require_catalog()
-    claims_on = claims_unlocked(levels, scenarios, gate_failures)
-    all_mastered = False
-    at_2x: list[str] = []
-    at_4x: list[str] = []
-    for scenario in active_scenario_catalog(levels, scenarios, gate_failures):
-        if catalog.is_claim(scenario) and not claims_on:
-            continue
-        if (
-            train_timesteps_for_scenario(
-                scenario,
-                levels,
-                scenarios,
-                learning=DEFAULT_SCENARIO_TRAIN_LEARNING,
-                mastered=DEFAULT_SCENARIO_TRAIN_MASTERED,
-                all_mastered=all_mastered,
-                gate_failures=gate_failures,
-                drill_stats=drill_stats,
-            )
-            <= 0
-        ):
-            continue
-        difficulty = get_difficulty(levels, scenario)
-        multiplier = scenario_train_multiplier(
-            scenario,
-            levels,
-            scenarios,
-            difficulty=difficulty,
-            gate_failures=gate_failures,
-            drill_stats=drill_stats,
-        )
-        short = catalog.short_name(scenario)
-        if multiplier == SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER:
-            at_2x.append(short)
-        elif multiplier == SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER:
-            at_4x.append(short)
-    lines.extend(
-        [
-            f"  train 2×: {', '.join(at_2x) if at_2x else '—'}",
-            f"  train 4×: {', '.join(at_4x) if at_4x else '—'}",
-        ]
-    )
-    return lines
-
-
 def _curriculum_note(
     levels: dict[str, int],
     gate_failures: dict[str, dict[str, int]] | None = None,
@@ -1341,7 +1255,9 @@ def _summarize_target(target: TrainTarget, *, trend_steps: int) -> str:
     game_phase = game_phase_unlocked(checkpoint_key)
     lines.append(f"  {_curriculum_note(levels, gate_failures, game_phase=game_phase)}")
     lines.extend(
-        _train_boost_lines(levels, scenarios, gate_failures, drill_stats, game_phase=game_phase)
+        train_multiplier_summary_lines(
+            levels, scenarios, gate_failures, drill_stats, game_phase=game_phase
+        )
     )
     return "\n".join(lines)
 

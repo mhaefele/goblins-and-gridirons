@@ -243,10 +243,19 @@ class ScenarioEvalDebug:
         expected_count = int(summary.get("expected_move_count") or 0)
         expected = summary.get("expected_moves") or []
         expected_scored = scores.get("expected") or []
-        expected_bits = [
-            annotate_move_label(label, expected_scored[index] if index < len(expected_scored) else None)
+        paired = [
+            (label, expected_scored[index] if index < len(expected_scored) else None)
             for index, label in enumerate(expected)
         ]
+        # Best (lowest) rank first; unscored keep relative order after scored.
+        paired.sort(
+            key=lambda item: (
+                0 if item[1] and item[1].get("rank") is not None else 1,
+                int(item[1]["rank"]) if item[1] and item[1].get("rank") is not None else 0,
+            )
+        )
+        shown = paired if expected_count <= 2 else paired[:2]
+        expected_bits = [annotate_move_label(label, score) for label, score in shown]
         if expected_count:
             if expected_count <= 2:
                 line3 = f"{indent}expected=" + " ".join(expected_bits)
@@ -437,7 +446,7 @@ def _format_expected_moves(
     legal_row_meta: list[dict[str, Any]],
     passing_legal: list[bool],
 ) -> tuple[int, list[str]] | None:
-    """Total passing-scenario rows and labels to print (all when ≤2, else two samples)."""
+    """Total passing-scenario rows and all labels (display sorts by rank; shows best two if many)."""
     if not legal_row_meta:
         return None
     if len(passing_legal) < len(legal_row_meta):
@@ -450,10 +459,7 @@ def _format_expected_moves(
         row = legal_row_meta[index]
         choice = row["action"] if isinstance(row.get("action"), dict) else row
         labels.append(ScenarioEvalDebug.format_action(choice, rewards=rewards))
-    count = len(labels)
-    if count <= 2:
-        return count, labels
-    return count, labels[:2]
+    return len(labels), labels
 
 
 def _abs_xy_label(x: int, y: int) -> str:

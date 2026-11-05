@@ -195,9 +195,8 @@ def diagnose_opening_mispick(
     soft_rank = preferred_row_rank(logits=acting, legal_count=legal_count, preferred=soft_mask)
 
     p_key = "p_biased" if acting_biased else "p_plain"
-    # Same sample order as ``_format_expected_moves`` (all when ≤2, else first two).
+    # Same order as ``_format_expected_moves`` labels; display sorts by rank and keeps the best.
     passing_indices = [int(index) for index in np.flatnonzero(passing)]
-    expected_sample = passing_indices if len(passing_indices) <= 2 else passing_indices[:2]
     expected_rows = [
         {
             "index": index,
@@ -205,7 +204,7 @@ def diagnose_opening_mispick(
             "p": float(prob_biased[index] if acting_biased else prob_plain[index]),
             "logit": float(acting[index]),
         }
-        for index in expected_sample
+        for index in passing_indices
     ]
 
     return {

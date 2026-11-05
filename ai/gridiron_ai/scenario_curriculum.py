@@ -593,6 +593,89 @@ def train_timesteps_for_scenario(
     return base * multiplier
 
 
+def scenario_train_budget_units(
+    scenario: str,
+    levels: dict[str, int],
+    scenario_names: list[str],
+    *,
+    learning: int = DEFAULT_SCENARIO_TRAIN_LEARNING,
+    mastered: int = DEFAULT_SCENARIO_TRAIN_MASTERED,
+    maintenance: int = DEFAULT_SCENARIO_TRAIN_MAINTENANCE,
+    all_mastered: bool = False,
+    game_phase: bool = False,
+    gate_failures: dict[str, dict[str, int]] | None = None,
+    drill_stats: dict[str, dict[str, int]] | None = None,
+) -> int:
+    """Effective × of one PPO rollout next cycle (0 = skip).
+
+    Same rules as ``train_timesteps_for_scenario`` (healthy d5 → 0; soft-d5 / stragglers → 1+).
+    """
+    failures = gate_failures if gate_failures is not None else {}
+    difficulty = get_difficulty(levels, scenario)
+    timesteps = train_timesteps_for_scenario(
+        scenario,
+        levels,
+        scenario_names,
+        learning=learning,
+        mastered=mastered,
+        maintenance=maintenance,
+        all_mastered=all_mastered,
+        game_phase=game_phase,
+        gate_failures=failures,
+        drill_stats=drill_stats,
+    )
+    if timesteps <= 0:
+        return 0
+    base = train_timesteps_for_difficulty(
+        difficulty,
+        learning=learning,
+        mastered=mastered,
+        maintenance=maintenance,
+        all_mastered=all_mastered,
+        game_phase=game_phase,
+    )
+    if base <= 0:
+        return 0
+    return max(1, timesteps // base)
+
+
+def train_multiplier_summary_lines(
+    levels: dict[str, int],
+    scenario_names: list[str],
+    gate_failures: dict[str, dict[str, int]] | None = None,
+    drill_stats: dict[str, dict[str, int]] | None = None,
+    *,
+    game_phase: bool = False,
+) -> list[str]:
+    """Next-cycle train × listing from ``scenario_train_budget_units`` (0× = everyone else)."""
+    failures = gate_failures if gate_failures is not None else {}
+    stats = drill_stats if drill_stats is not None else {}
+    catalog = require_catalog()
+    claims_on = claims_unlocked(levels, scenario_names, failures)
+    mastered_pack = all_scenarios_mastered(levels, scenario_names)
+    by_units: dict[int, list[str]] = {}
+    for scenario in active_scenario_catalog(levels, scenario_names, failures):
+        if catalog.is_claim(scenario) and not claims_on:
+            continue
+        units = scenario_train_budget_units(
+            scenario,
+            levels,
+            scenario_names,
+            all_mastered=mastered_pack,
+            game_phase=game_phase,
+            gate_failures=failures,
+            drill_stats=stats,
+        )
+        if units <= 0:
+            continue
+        by_units.setdefault(units, []).append(catalog.short_name(scenario))
+    lines = ["  train multipliers (next cycle):"]
+    for units in sorted(by_units):
+        lines.append(f"    {units}×: {', '.join(by_units[units])}")
+    lines.append("    0×: all others")
+    return lines
+
+
 def gating_scenarios_mastered(
     levels: dict[str, int],
     scenario_names: list[str],

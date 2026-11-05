@@ -73,7 +73,7 @@ def test_format_expected_moves_shown_for_one_or_two_flags() -> None:
     many = _format_expected_moves(
         rewards=rewards, legal_row_meta=[run, block, block], passing_legal=[True, True, True]
     )
-    assert many == (3, ["run(2,3->2,15)", "block(2,3->3,3)"])
+    assert many == (3, ["run(2,3->2,15)", "block(2,3->3,3)", "block(2,3->3,3)"])
 
     none = _format_expected_moves(
         rewards=rewards, legal_row_meta=[run, block], passing_legal=[False, False]
@@ -96,10 +96,11 @@ def test_turn1_log_suffix_includes_expected_moves() -> None:
     many_suffix = ScenarioEvalDebug.turn1_log_suffix(
         {
             "expected_move_count": 47,
-            "expected_moves": ["R(7,2->7,3)", "R(8,3->9,2)"],
+            "expected_moves": ["R(7,2->7,3)", "R(8,3->9,2)", "R(9,1->9,2)"],
         }
     )
     assert "expected=47 R(7,2->7,3) R(8,3->9,2)" in many_suffix
+    assert "R(9,1->9,2)" not in many_suffix
 
 
 def test_turn1_log_suffix_annotates_rank_and_p() -> None:
@@ -116,6 +117,48 @@ def test_turn1_log_suffix_annotates_rank_and_p() -> None:
     )
     assert "expected=run(6,13->5,14) [rank=52 p=0.001]" in suffix
     assert "turn1=run(6,13->10,15) [rank=1 p=0.420] reserves(p1)" in suffix
+
+
+def test_turn1_log_suffix_orders_expected_by_best_rank() -> None:
+    suffix = ScenarioEvalDebug.turn1_log_suffix(
+        {
+            "expected_move_count": 2,
+            "expected_moves": ["run(1,13->6,15)", "run(1,13->4,15)"],
+            "opening_move_scores": {
+                "expected": [
+                    {"rank": 38, "p": 0.007},
+                    {"rank": 33, "p": 0.007},
+                ],
+            },
+        }
+    )
+    assert (
+        "expected=run(1,13->4,15) [rank=33 p=0.007] run(1,13->6,15) [rank=38 p=0.007]"
+        in suffix
+    )
+
+    many = ScenarioEvalDebug.turn1_log_suffix(
+        {
+            "expected_move_count": 3,
+            "expected_moves": [
+                "run(1,13->6,15)",
+                "run(1,13->4,15)",
+                "run(1,13->2,15)",
+            ],
+            "opening_move_scores": {
+                "expected": [
+                    {"rank": 38, "p": 0.007},
+                    {"rank": 33, "p": 0.007},
+                    {"rank": 90, "p": 0.001},
+                ],
+            },
+        }
+    )
+    assert (
+        "expected=3 run(1,13->4,15) [rank=33 p=0.007] run(1,13->6,15) [rank=38 p=0.007]"
+        in many
+    )
+    assert "run(1,13->2,15)" not in many
 
 
 def test_describe_satisfied_claim_on_attached_claim() -> None:

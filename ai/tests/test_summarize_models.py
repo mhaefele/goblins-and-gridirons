@@ -35,7 +35,6 @@ from scripts.summarize_models import (
     _scalar_from_summary_value,
     _scenario_eval_difficulty,
     _summarize_target,
-    _train_boost_lines,
     _tb_trend_with_qualifier,
     _value_loss_level,
     _winrate_arrow,
@@ -158,21 +157,6 @@ def test_summary_marks_optional_and_waived_gate_exclusions(monkeypatch, tmp_path
     board_lines = drill_section.split("\n\n", 1)[0].splitlines()
     board_names = [line.split()[1] for line in board_lines if line.startswith("    ")]
     assert board_names.index("td_run") < board_names.index("held_ss_reroll")
-
-
-def test_train_boost_lines_lists_2x_and_4x_drills() -> None:
-    levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
-    levels["TD_RUN"] = 3
-    levels["THROW_OPEN_RECEIVER"] = 4
-    failures = record_gate_failure({}, "THROW_OPEN_RECEIVER", 4)
-    failures = record_gate_failure(failures, "TD_RUN", 3)
-    lines = _train_boost_lines(levels, FULL_NAMES, failures, {}, game_phase=False)
-    joined = "\n".join(lines)
-    assert "train multipliers (next cycle):" in joined
-    assert "4× current fail at pack min" in joined
-    assert "train 2×: throw_open_receiver" in joined
-    assert "td_run" in joined.split("train 4×:")[1]
-    assert "throw_open_receiver" not in joined.split("train 4×:")[1]
 
 
 def test_curriculum_note_combined_excludes_optional_from_counts() -> None:
