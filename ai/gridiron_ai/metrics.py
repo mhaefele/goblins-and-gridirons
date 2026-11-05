@@ -94,8 +94,17 @@ def _empty_aggregate() -> dict[str, Any]:
     }
 
 
-def format_metrics_line(label: str, stats: dict[str, Any]) -> str:
-    """One-line train/eval summary for stdout (TensorBoard callback + CLI)."""
+def format_metrics_line(
+    label: str,
+    stats: dict[str, Any],
+    *,
+    prior: dict[str, Any] | None = None,
+) -> str:
+    """One-line train/eval summary for stdout (TensorBoard callback + CLI).
+
+    When ``prior`` is set (before-eval vs last same-drill eval), winrate and opening
+    score bits render as ``before→after`` drift.
+    """
     kinds = " ".join(
         f"{k}={v:.2f}" for k, v in sorted(stats["kind_count"].items()) if v
     )
@@ -105,10 +114,14 @@ def format_metrics_line(label: str, stats: dict[str, Any]) -> str:
     first_legals_bit = (
         f" first_legals={first_legals:.1f}" if first_legals is not None else ""
     )
-    opening_bit = format_opening_score_bits(stats)
+    opening_bit = format_opening_score_bits(stats, prior=prior)
+    if prior is not None and prior.get("winrate") is not None:
+        winrate_bit = f"{float(prior['winrate']):.3f}→{stats['winrate']:.3f}"
+    else:
+        winrate_bit = f"{stats['winrate']:.3f}"
     return (
         f"{label}: episodes={stats['episodes']} "
-        f"winrate={stats['winrate']:.3f} (W{stats['wins']}/L{stats['losses']}/D{stats['draws']}) "
+        f"winrate={winrate_bit} (W{stats['wins']}/L{stats['losses']}/D{stats['draws']}) "
         f"score={stats['score_us']:.1f}-{stats['score_them']:.1f} (diff={stats['score_diff']:.2f}) "
         f"td={stats['touchdowns']:.2f}/{stats['touchdowns_them']:.2f} "
         f"cards={stats['challenge_cards']:.2f}/{stats['challenge_cards_them']:.2f} "
@@ -123,8 +136,13 @@ def format_metrics_line(label: str, stats: dict[str, Any]) -> str:
     )
 
 
-def print_metrics(label: str, stats: dict[str, Any]) -> None:
-    print(format_metrics_line(label, stats), flush=True)
+def print_metrics(
+    label: str,
+    stats: dict[str, Any],
+    *,
+    prior: dict[str, Any] | None = None,
+) -> None:
+    print(format_metrics_line(label, stats, prior=prior), flush=True)
 
 
 def print_kind_mix(label: str, stats: dict[str, Any]) -> None:

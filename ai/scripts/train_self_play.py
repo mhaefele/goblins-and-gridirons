@@ -187,9 +187,9 @@ DEFAULT_N_ENVS = 30
 DEFAULT_N_STEPS = 128
 DEFAULT_BATCH_SIZE = 256
 
-# Deterministic games for each scenario after-eval (10); delta vs prior after-eval at same @d.
+# Deterministic games for each scenario after-eval (10); delta vs prior eval at same @d.
 _VECNORMALIZE_SUFFIX = "_vecnormalize.pkl"
-# (scenario, difficulty) → stats from the last after-eval this process (winrate + opening p/rank).
+# (scenario, difficulty) → stats from the last scenario eval this process (winrate + opening p/rank).
 _last_scenario_after_eval: dict[tuple[str, int], dict[str, Any]] = {}
 _EVAL_SECTION_GAP = "\n\n\n"
 _scenario_perfect_summaries: list[str] = []
@@ -1033,8 +1033,14 @@ def _eval_one_scenario(
     scenario: str,
     difficulty: int,
 ) -> dict[str, Any]:
-    """Deterministic eval for one drill at its current curriculum difficulty."""
-    return _eval_segment(
+    """Deterministic eval for one drill at its current curriculum difficulty.
+
+    Eval line shows ``before→after`` vs the last same drill@d train-time eval this
+    process (if any). Cache updates only while training — ``--eval-only`` never writes.
+    """
+    key = (scenario, difficulty)
+    prior = _last_scenario_after_eval.get(key)
+    stats = _eval_segment(
         model,
         args=args,
         pool=pool,
@@ -1046,7 +1052,11 @@ def _eval_one_scenario(
         runs_key=runs_key,
         scenario=scenario,
         scenario_difficulty=difficulty,
+        metrics_prior=prior,
     )
+    if not args.eval_only:
+        _last_scenario_after_eval[key] = stats
+    return stats
 
 
 def _apply_scenario_after_eval(
@@ -1291,7 +1301,6 @@ def _train_scenarios_segment(
             row=row,
             slug=slug,
         )
-        _last_scenario_after_eval[(scenario, difficulty)] = after
         levels, gate_failures, drill_stats = _apply_scenario_after_eval(
             scenario=scenario,
             difficulty=difficulty,
@@ -1486,8 +1495,13 @@ def _eval_segment(
     runs_key: str,
     scenario: str | None = None,
     scenario_difficulty: int = 0,
+    metrics_prior: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Deterministic games; shaping off. Soft-mask bias follows ``eval_episode_mode`` (TRAIN=on)."""
+    """Deterministic games; shaping off. Soft-mask bias follows ``eval_episode_mode`` (TRAIN=on).
+
+    ``metrics_prior``: optional prior same-drill eval stats so the Eval line can show
+    ``before→after`` drift (``_eval_one_scenario`` supplies the last eval this process).
+    """
     workers = min(games, DEFAULT_N_ENVS)
     opp_label = opponent_metrics_label(computer_opponent, onnx_profile)
     if scenario is not None:
@@ -1587,12 +1601,17 @@ def _eval_segment(
         if game_lines:
             for line in game_lines:
                 print(line, flush=True)
-        print_metrics(f"Eval {tagged}", stats)
+        print_metrics(f"Eval {tagged}", stats, prior=metrics_prior)
         _note_kind_mix(runs_key, f"Eval {tagged}", stats, print_tables=True, accumulate=False)
         if quiet_scenario:
+            if metrics_prior is not None and metrics_prior.get("winrate") is not None:
+                drill_rate_bit = f"{float(metrics_prior['winrate']):.3f}→{stats['winrate']:.3f}"
+            else:
+                drill_rate_bit = f"{stats['winrate']:.3f}"
             print(
-                f"  scenario success: drill_rate={stats['winrate']:.3f} "
-                f"win_by_4_rate={stats['win_by_4_rate']:.3f}{format_opening_score_bits(stats)}",
+                f"  scenario success: drill_rate={drill_rate_bit} "
+                f"win_by_4_rate={stats['win_by_4_rate']:.3f}"
+                f"{format_opening_score_bits(stats, prior=metrics_prior)}",
                 flush=True,
             )
 
@@ -1680,7 +1699,6 @@ def _eval_scenarios_segment(
             scenario=scenario,
             difficulty=difficulty,
         )
-        _last_scenario_after_eval[(scenario, difficulty)] = stats
         if write_curriculum:
             levels, gate_failures, drill_stats = _apply_scenario_after_eval(
                 scenario=scenario,

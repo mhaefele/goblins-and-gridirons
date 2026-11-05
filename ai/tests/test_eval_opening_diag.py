@@ -88,6 +88,23 @@ def test_format_opening_score_bits_and_episodes_raw_fallback() -> None:
         )
         == " expected_p=0.010 expected_best_p=0.020 first_p=0.100 expected_rank=12.0"
     )
+    assert (
+        format_opening_score_bits(
+            {
+                "opening_expected_p_mean": 0.006,
+                "opening_expected_p_best_mean": 0.006,
+                "opening_chosen_p_mean": 0.157,
+                "opening_expected_rank_best_mean": 17.5,
+            },
+            prior={
+                "opening_expected_p_mean": 0.05,
+                "opening_expected_p_best_mean": 0.08,
+                "opening_chosen_p_mean": 0.2,
+                "opening_expected_rank_best_mean": 10.0,
+            },
+        )
+        == " expected_p=0.050→0.006 expected_best_p=0.080→0.006 first_p=0.200→0.157 expected_rank=10.0→17.5"
+    )
     fields = opening_score_fields(
         {
             "episodes_raw": [

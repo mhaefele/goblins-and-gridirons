@@ -10,6 +10,7 @@ from gridiron_ai.expert_stats import BUCKET_GAMES, BUCKET_SCENARIOS, BUCKET_TOTA
 from gridiron_ai.metrics import (
     accumulate_kind_totals,
     aggregate_episodes,
+    format_metrics_line,
     load_kind_breakdown,
     load_kind_totals,
     print_kind_mix,
@@ -142,3 +143,14 @@ def test_load_kind_breakdown_legacy_counts_json(tmp_path: Path, monkeypatch) -> 
         {BUCKET_GAMES: {"throw": 1}, BUCKET_SCENARIOS: {}, BUCKET_TOTAL: {"throw": 1}},
     )
     assert updated[BUCKET_TOTAL]["run"] == 5 and updated[BUCKET_TOTAL]["throw"] == 1
+
+
+def test_format_metrics_line_winrate_delta_vs_prior() -> None:
+    stats = aggregate_episodes(
+        [{"kind_count": {"run": 1}, "result_kind": "FULL", "result_winner_rel": "THEM"}]
+    )
+    stats["opening_expected_p_mean"] = 0.006
+    prior = {"winrate": 0.2, "opening_expected_p_mean": 0.05}
+    line = format_metrics_line("Eval [baseline] vs-x", stats, prior=prior)
+    assert "winrate=0.200→0.000" in line
+    assert "expected_p=0.050→0.006" in line

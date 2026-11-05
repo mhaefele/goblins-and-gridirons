@@ -319,22 +319,37 @@ def opening_score_fields(stats: dict[str, Any]) -> dict[str, float | None]:
     return {key: None for key in _OPENING_SCORE_KEYS}
 
 
-def format_opening_score_bits(stats: dict[str, Any]) -> str:
-    """Compact `` expected_p=… expected_best_p=… first_p=… expected_rank=…`` or empty."""
+def _fmt_opening_metric(before: float | None, after: float | None, *, digits: int) -> str | None:
+    """``0.300→0.400`` when ``before`` is set, else ``0.400``; ``None`` if after missing."""
+    if after is None:
+        return None
+    if before is None:
+        return f"{after:.{digits}f}"
+    return f"{before:.{digits}f}→{after:.{digits}f}"
+
+
+def format_opening_score_bits(
+    stats: dict[str, Any],
+    *,
+    prior: dict[str, Any] | None = None,
+) -> str:
+    """Compact `` expected_p=… expected_best_p=… first_p=… expected_rank=…`` or empty.
+
+    When ``prior`` has the same aggregates, values render as ``before→after`` drift.
+    """
     fields = opening_score_fields(stats)
+    prior_fields = opening_score_fields(prior) if prior is not None else None
     bits: list[str] = []
-    expected_p = fields["opening_expected_p_mean"]
-    if expected_p is not None:
-        bits.append(f"expected_p={expected_p:.3f}")
-    expected_best = fields["opening_expected_p_best_mean"]
-    if expected_best is not None:
-        bits.append(f"expected_best_p={expected_best:.3f}")
-    first_p = fields["opening_chosen_p_mean"]
-    if first_p is not None:
-        bits.append(f"first_p={first_p:.3f}")
-    expected_rank = fields["opening_expected_rank_best_mean"]
-    if expected_rank is not None:
-        bits.append(f"expected_rank={expected_rank:.1f}")
+    for key, label, digits in (
+        ("opening_expected_p_mean", "expected_p", 3),
+        ("opening_expected_p_best_mean", "expected_best_p", 3),
+        ("opening_chosen_p_mean", "first_p", 3),
+        ("opening_expected_rank_best_mean", "expected_rank", 1),
+    ):
+        before = None if prior_fields is None else prior_fields[key]
+        rendered = _fmt_opening_metric(before, fields[key], digits=digits)
+        if rendered is not None:
+            bits.append(f"{label}={rendered}")
     return (" " + " ".join(bits)) if bits else ""
 
 
