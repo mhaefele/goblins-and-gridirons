@@ -349,11 +349,13 @@ def format_opening_score_bits(
     *,
     prior: dict[str, Any] | None = None,
 ) -> str:
-    """Compact `` expected_p=… expected_best_p=… first_p=… expected_rank=…`` or empty.
+    """Compact `` expected_p=… expected_best_p=… first_p=… expected_best_rank=…`` or empty.
 
     When ``prior`` has the same aggregates, values render as ``before→after`` drift.
     Omits the whole strip when neither side has expected-row scores — chosen-only
     ``first_p`` alone is noise (e.g. openings with no ``expected=`` rows).
+    ``expected_best_rank`` is mean-over-games of each game's best (lowest) expected rank —
+    not the mean of all expected-row ranks within a game.
     """
     fields = opening_score_fields(stats)
     prior_fields = opening_score_fields(prior) if prior is not None else None
@@ -372,7 +374,7 @@ def format_opening_score_bits(
         ("opening_expected_p_mean", "expected_p", 3),
         ("opening_expected_p_best_mean", "expected_best_p", 3),
         ("opening_chosen_p_mean", "first_p", 3),
-        ("opening_expected_rank_best_mean", "expected_rank", 1),
+        ("opening_expected_rank_best_mean", "expected_best_rank", 1),
     ):
         before = None if prior_fields is None else prior_fields[key]
         rendered = fmt_metric_delta(before, fields[key], digits=digits)

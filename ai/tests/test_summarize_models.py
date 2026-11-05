@@ -270,7 +270,7 @@ def test_scenario_drill_line_shows_wld(monkeypatch, tmp_path: Path) -> None:
     assert "expected_p=0.012" in text
     assert "expected_best_p=0.018" in text
     assert "first_p=0.140" in text
-    assert "expected_rank=22.5" in text
+    assert "expected_best_rank=22.5" in text
 
 
 def test_profiles_bottom_summary_aligns_columns(monkeypatch, tmp_path: Path) -> None:

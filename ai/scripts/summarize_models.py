@@ -751,7 +751,7 @@ def _legend() -> str:
             "  expected_p             mean over games of mean expected-row opening p (prior→current when sidecar has both)",
             "  expected_best_p        mean over games of best expected-row opening p",
             "  first_p                mean opening argmax / first-move p",
-            "  expected_rank          mean best (lowest) expected-row opening rank",
+            "  expected_best_rank     mean over games of best (lowest) expected-row opening rank",
             "  d0–d5                 curriculum level (active phase checkpoint)",
             "  (optional)             gatesProgress=false — trained/eval'd, not a curriculum gate (oracle or placement not trusted yet)",
             "  (waived)               claim gate_fails threshold — temporarily excluded from gates (boards never waive)",
