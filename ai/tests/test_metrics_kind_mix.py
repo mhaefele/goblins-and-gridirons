@@ -70,7 +70,7 @@ def test_print_kind_mix_stdout(capsys) -> None:
 
 
 def test_accumulate_kind_totals_persists(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(metrics, "RUNS_DIR", tmp_path)
+    monkeypatch.setattr("gridiron_ai.persistence.kind_totals.RUNS_DIR", tmp_path)
     assert load_kind_totals("scenario_a") == Counter()
     first = accumulate_kind_totals(
         "scenario_a",
@@ -101,7 +101,7 @@ def test_accumulate_kind_totals_persists(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_accumulate_kind_totals_single_family_txt_omits_empty(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(metrics, "RUNS_DIR", tmp_path)
+    monkeypatch.setattr("gridiron_ai.persistence.kind_totals.RUNS_DIR", tmp_path)
     accumulate_kind_totals(
         "scenario_a",
         {
@@ -117,7 +117,7 @@ def test_accumulate_kind_totals_single_family_txt_omits_empty(tmp_path: Path, mo
 
 
 def test_accumulate_kind_totals_legacy_flat(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(metrics, "RUNS_DIR", tmp_path)
+    monkeypatch.setattr("gridiron_ai.persistence.kind_totals.RUNS_DIR", tmp_path)
     lifetime = accumulate_kind_totals("scenario_a", {"run": 2, "block": 1})
     assert lifetime[BUCKET_TOTAL]["run"] == 2
     assert lifetime[BUCKET_SCENARIOS] == Counter()
@@ -128,7 +128,7 @@ def test_accumulate_kind_totals_legacy_flat(tmp_path: Path, monkeypatch) -> None
 
 
 def test_load_kind_breakdown_legacy_counts_json(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(metrics, "RUNS_DIR", tmp_path)
+    monkeypatch.setattr("gridiron_ai.persistence.kind_totals.RUNS_DIR", tmp_path)
     root = tmp_path / "scenario_a"
     root.mkdir(parents=True)
     (root / "kind_totals.json").write_text(

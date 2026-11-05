@@ -3,19 +3,16 @@
 Owner: curriculum *policy* next to a checkpoint stem — levels JSON, unlock/lead gates,
 per-drill train budgets, which drills run this cycle.
 Reads: process/cached ``ScenarioCatalog`` (family + difficultyProxy); levels from disk.
-Writes: ``{stem}.scenario_difficulty.json``. Does **not** place boards (Kotlin) or own
-phase routing (``training_phases``). See ``ai/OWNERSHIP.md`` / ``TRAINING_ROADMAP.md``.
+Writes via ``gridiron_ai.persistence`` (one module per sidecar). Does **not** place boards
+(Kotlin) or own phase routing (``training_phases``). See ``ai/OWNERSHIP.md`` / ``TRAINING_ROADMAP.md``.
 
-File: ``{save_stem}.scenario_difficulty.json`` — name → level; bump after perfect after-eval;
-demote when a drill labeled d5 fails after-eval with ``DEMOTE_FROM_MAX_MAX_WINS`` or fewer
-wins (default 7/10 — 8/10 is a gate fail only). ``{save_stem}.scenario_gate_failures.json``
-counts imperfect after-evals per difficulty level (curriculum key). Per-level counts are kept
-across promotions (all-time = sum); only the current level is cleared on waive recover.
-``{save_stem}.scenario_drill_stats.json`` — per-phase drill ``cycles`` (train sandwich
-units; gate-fail 2× budget counts as 2) and ``d5_demotes``. Summary / train multipliers
-use ``training_phases.load_drill_stats_cumulative`` (scenario_a → … → current).
-``{save_stem}.scenario_last_eval.json`` — last train-time eval metrics per drill@d
-(winrate + opening p/rank) for prior→current deltas across process restarts.
+Sidecars beside the stem: ``.scenario_difficulty.json`` (name → level; bump after perfect
+after-eval; demote when a drill labeled d5 fails after-eval with ``DEMOTE_FROM_MAX_MAX_WINS``
+or fewer wins — default 7/10; 8/10 is a gate fail only); ``.scenario_gate_failures.json``
+(imperfect after-evals per difficulty level; all-time = sum; current level cleared on waive
+recover); ``.scenario_drill_stats.json`` (per-phase ``cycles`` / ``d5_demotes``; summary uses
+``training_phases.load_drill_stats_cumulative``); ``.scenario_last_eval.json`` (last train-time
+eval metrics per drill@d for prior→current deltas across restarts).
 Phases (scenario_a board→d4 / scenario_b all→d5 / profiles games): ``training_phases``.
 Drills with fails at their **current** difficulty get ``SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER``×
 train budget below d5 (gating drills only — ``gatesProgress=false`` never multiplies; d5 gate
@@ -43,12 +40,30 @@ Coach-window end / US|THEM grading: Kotlin. Scenario budgets: DEFAULT_SCENARIO_T
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
-from pathlib import Path
 from typing import Any
 
+from gridiron_ai.persistence.scenario_difficulty import (  # noqa: F401 — re-export
+    load_levels,
+    path_for_stem,
+    save_levels,
+)
+from gridiron_ai.persistence.scenario_drill_stats import (  # noqa: F401 — re-export
+    load_drill_stats,
+    path_for_drill_stats,
+    save_drill_stats,
+)
+from gridiron_ai.persistence.scenario_gate_failures import (  # noqa: F401 — re-export
+    load_gate_failures,
+    path_for_gate_failures,
+    save_gate_failures,
+)
+from gridiron_ai.persistence.scenario_last_eval import (  # noqa: F401 — re-export
+    LAST_EVAL_METRIC_KEYS,
+    extract_last_eval_metrics,
+    load_last_eval,
+    path_for_last_eval,
+    save_last_eval,
+)
 from gridiron_ai.scenarios import require_catalog
 
 # Matches backend TrainingScenarioController / TrainingScenarioPlacer.
@@ -73,18 +88,6 @@ SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER = 2
 SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER = 4
 # d5_demotes at or above this → 4× with a current-level fail only once boards are d4+.
 SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD = 5
-_SUFFIX = ".scenario_difficulty.json"
-_GATE_FAILURES_SUFFIX = ".scenario_gate_failures.json"
-_DRILL_STATS_SUFFIX = ".scenario_drill_stats.json"
-_LAST_EVAL_SUFFIX = ".scenario_last_eval.json"
-# Slim fields persisted for Eval-line / learn-line prior→current deltas.
-LAST_EVAL_METRIC_KEYS = (
-    "winrate",
-    "opening_expected_p_mean",
-    "opening_expected_p_best_mean",
-    "opening_chosen_p_mean",
-    "opening_expected_rank_best_mean",
-)
 
 # Per-scenario PPO timesteps each train cycle (not pooled — each scenario gets its own budget).
 # Sized in whole rollouts at locked defaults (n_envs=30 × n_steps=128 = 3840).
@@ -96,91 +99,6 @@ DEFAULT_SCENARIO_TRAIN_MASTERED = 0
 DEFAULT_SCENARIO_TRAIN_MAINTENANCE = _SCENARIO_ROLLOUT_TIMESTEPS
 
 
-def path_for_stem(save_stem: Path) -> Path:
-    """``…/maskable_ppo_selfplay_final`` → ``…/maskable_ppo_selfplay_final.scenario_difficulty.json``."""
-    return Path(str(save_stem) + _SUFFIX)
-
-
-def path_for_gate_failures(save_stem: Path) -> Path:
-    """``…/maskable_ppo_selfplay_final.scenario_gate_failures.json`` beside difficulty JSON."""
-    return Path(str(save_stem) + _GATE_FAILURES_SUFFIX)
-
-
-def path_for_drill_stats(save_stem: Path) -> Path:
-    """``…/maskable_ppo_selfplay_final.scenario_drill_stats.json`` beside difficulty JSON."""
-    return Path(str(save_stem) + _DRILL_STATS_SUFFIX)
-
-
-def path_for_last_eval(save_stem: Path) -> Path:
-    """``…/maskable_ppo_selfplay_final.scenario_last_eval.json`` beside difficulty JSON."""
-    return Path(str(save_stem) + _LAST_EVAL_SUFFIX)
-
-
-def _atomic_write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(payload, indent=2) + "\n"
-    fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
-            tmp.write(text)
-        os.replace(tmp_name, path)
-    except Exception:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
-
-
-def load_last_eval(path: Path) -> dict[str, dict[str, dict[str, Any]]]:
-    """Scenario curriculum key → difficulty level (str) → slim last-eval metrics."""
-    if not path.is_file():
-        return {}
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        return {}
-    out: dict[str, dict[str, dict[str, Any]]] = {}
-    for scenario, by_level in raw.items():
-        if not isinstance(by_level, dict):
-            continue
-        levels: dict[str, dict[str, Any]] = {}
-        for level_key, metrics in by_level.items():
-            if not isinstance(metrics, dict):
-                continue
-            try:
-                level = str(_clamp(int(level_key)))
-            except (TypeError, ValueError):
-                continue
-            slim: dict[str, Any] = {}
-            for field in LAST_EVAL_METRIC_KEYS:
-                value = metrics.get(field)
-                if value is None:
-                    slim[field] = None
-                else:
-                    try:
-                        slim[field] = float(value)
-                    except (TypeError, ValueError):
-                        slim[field] = None
-            levels[level] = slim
-        if levels:
-            out[str(scenario)] = levels
-    return out
-
-
-def save_last_eval(path: Path, last_eval: dict[str, dict[str, dict[str, Any]]]) -> None:
-    payload = {
-        scenario: {
-            str(_clamp(int(level))): {
-                field: metrics.get(field) for field in LAST_EVAL_METRIC_KEYS
-            }
-            for level, metrics in sorted(by_level.items())
-        }
-        for scenario, by_level in sorted(last_eval.items())
-        if by_level
-    }
-    _atomic_write_json(path, payload)
-
-
 def last_eval_metrics(
     last_eval: dict[str, dict[str, dict[str, Any]]],
     scenario: str,
@@ -189,18 +107,6 @@ def last_eval_metrics(
     """Slim metrics for ``scenario`` at ``difficulty``, or ``None`` when missing."""
     by_level = last_eval.get(curriculum_key(scenario), {})
     return by_level.get(str(_clamp(difficulty)))
-
-
-def extract_last_eval_metrics(stats: dict[str, Any]) -> dict[str, Any]:
-    """Pull the slim prior-delta fields from a full eval ``stats`` dict."""
-    slim: dict[str, Any] = {}
-    for field in LAST_EVAL_METRIC_KEYS:
-        value = stats.get(field)
-        if value is None:
-            slim[field] = None
-        else:
-            slim[field] = float(value)
-    return slim
 
 
 def record_last_eval(
@@ -221,64 +127,6 @@ def record_last_eval(
     return updated
 
 
-def load_levels(path: Path) -> dict[str, int]:
-    if not path.is_file():
-        return {}
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        return {}
-    levels: dict[str, int] = {}
-    for key, value in raw.items():
-        try:
-            levels[str(key)] = _clamp(int(value))
-        except (TypeError, ValueError):
-            continue
-    return levels
-
-
-def load_gate_failures(path: Path) -> dict[str, dict[str, int]]:
-    """Scenario curriculum key → difficulty level (str) → imperfect after-eval count."""
-    if not path.is_file():
-        return {}
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        return {}
-    failures: dict[str, dict[str, int]] = {}
-    for scenario, by_level in raw.items():
-        if not isinstance(by_level, dict):
-            continue
-        counts: dict[str, int] = {}
-        for level_key, count in by_level.items():
-            try:
-                counts[str(_clamp(int(level_key)))] = max(0, int(count))
-            except (TypeError, ValueError):
-                continue
-        if counts:
-            failures[str(scenario)] = counts
-    return failures
-
-
-def save_gate_failures(path: Path, failures: dict[str, dict[str, int]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        scenario: {str(_clamp(int(level))): max(0, int(count)) for level, count in sorted(by_level.items())}
-        for scenario, by_level in sorted(failures.items())
-        if by_level
-    }
-    text = json.dumps(payload, indent=2) + "\n"
-    fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
-            tmp.write(text)
-        os.replace(tmp_name, path)
-    except Exception:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
-
-
 def gate_failure_count(
     failures: dict[str, dict[str, int]],
     scenario: str,
@@ -290,48 +138,6 @@ def gate_failure_count(
     if difficulty is not None:
         return int(by_level.get(str(_clamp(difficulty)), 0))
     return sum(int(count) for count in by_level.values())
-
-
-def load_drill_stats(path: Path) -> dict[str, dict[str, int]]:
-    """Scenario curriculum key → ``cycles`` / ``d5_demotes`` counters."""
-    if not path.is_file():
-        return {}
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        return {}
-    stats: dict[str, dict[str, int]] = {}
-    for scenario, counters in raw.items():
-        if not isinstance(counters, dict):
-            continue
-        cycles = max(0, int(counters.get("cycles", 0) or 0))
-        demotes = max(0, int(counters.get("d5_demotes", 0) or 0))
-        if cycles or demotes:
-            stats[str(scenario)] = {"cycles": cycles, "d5_demotes": demotes}
-    return stats
-
-
-def save_drill_stats(path: Path, drill_stats: dict[str, dict[str, int]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        scenario: {
-            "cycles": max(0, int(counters.get("cycles", 0))),
-            "d5_demotes": max(0, int(counters.get("d5_demotes", 0))),
-        }
-        for scenario, counters in sorted(drill_stats.items())
-        if int(counters.get("cycles", 0) or 0) or int(counters.get("d5_demotes", 0) or 0)
-    }
-    text = json.dumps(payload, indent=2) + "\n"
-    fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
-            tmp.write(text)
-        os.replace(tmp_name, path)
-    except Exception:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
 
 
 def merge_drill_stats(
@@ -367,30 +173,6 @@ def _bump_drill_stat(
     counters = updated.setdefault(key, {"cycles": 0, "d5_demotes": 0})
     counters[field] = max(0, int(counters.get(field, 0) or 0) + by)
     return updated
-
-
-def save_levels(path: Path, levels: dict[str, int]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Drop proxy sources — difficulty is read from the proxy target.
-    proxies = require_catalog().proxy_sources()
-    payload = {
-        name: _clamp(level)
-        for name, level in sorted(levels.items())
-        if name not in proxies
-    }
-    text = json.dumps(payload, indent=2) + "\n"
-    # Atomic replace so a crash mid-write does not corrupt the file.
-    fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
-            tmp.write(text)
-        os.replace(tmp_name, path)
-    except Exception:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
 
 
 def curriculum_key(scenario: str) -> str:

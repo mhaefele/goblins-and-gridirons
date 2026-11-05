@@ -60,7 +60,7 @@ def _patch_roots(monkeypatch, tmp_path: Path) -> tuple[Path, Path]:
     ckpt_root.mkdir(exist_ok=True)
     runs_root.mkdir(exist_ok=True)
     monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.pipeline_state.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.persistence.pipeline.CHECKPOINT_DIR", ckpt_root)
     monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
     return ckpt_root, runs_root
 

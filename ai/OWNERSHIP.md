@@ -33,10 +33,10 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 | Reward margin / terminal / profile shaping / scenario coach-window ± | `gridiron_ai/reward.py` (LegalAction + `rewards.players` / `ballCoordinate`) | Per-move expected-move slap/bonus (soft-mask owns that); packed-row business logic |
 | Episode metrics / TB aggregates / eval·learn stdout lines | `gridiron_ai/metrics.py`, `tb_callback.py` (opening bits → `eval_opening_diag`) | Re-format winrate/opening deltas in `train_self_play` |
 | **Drill board / expected moves / coach window** | Kotlin `api/ai/training/**` + `TrainingScenarioEnum`; semantics in [`backend/TRAINING_SCENARIOS.md`](../backend/TRAINING_SCENARIOS.md) | Script boards in Python |
-| Scenario catalog (name / family / difficultyProxy) | Kotlin `GET /api/ai/training/scenarios` → cached `output/scenario_catalog.json` via `scenarios.py` | Hard-code name lists in Python or frontend |
-| Difficulty JSON, lead, unlock levels, scenario timesteps, gate-failure counts, last-eval metrics sidecar | `gridiron_ai/scenario_curriculum.py` | — |
+| Scenario catalog (name / family / difficultyProxy) | Kotlin `GET /api/ai/training/scenarios` → cached `output/scenario_catalog.json` via `scenarios.py` + `persistence/scenario_catalog.py` | Hard-code name lists in Python or frontend |
+| Difficulty / gate-failure / drill-stats / last-eval JSON | `gridiron_ai/persistence/` (I/O); curriculum *policy* in `scenario_curriculum.py` | — |
 | Phase routing / fork-from-prior / **profile→checkpoint** (`active_targets`, `resolve_targets`, `TrainTarget` paths) / gate transitions (`advance_pipeline`, `force_promote`) | `gridiron_ai/training_phases.py` | Copy expert seed onto shaped profiles; invent `CHECKPOINT_DIR / profile` in summary/play/train; auto-wipe later phases |
-| **Saved pipeline FSM** (stage, split, per-profile climbing/games) | `gridiron_ai/pipeline_state.py` → `checkpoints/pipeline.json` | Re-derive stage from zips / marker files; write it from readers (summary, status) |
+| **Saved pipeline FSM** (stage, split, per-profile climbing/games) | `pipeline_state.py` (types/rewind) + `persistence/pipeline.py` → `checkpoints/pipeline.json` | Re-derive stage from zips / marker files; write it from readers (summary, status) |
 | Train/eval **orchestration** (PPO, vec-env, cycle) | `scripts/train_self_play.py` | Put phase *policy* here — belong in curriculum/phases |
 | Artifact paths + phase-owned output layout | `gridiron_ai/paths.py` | — |
 | Destructive rollback (wipe artifact trees) | `common.sh` (`start_over.sh`) | Partial deletes from Python; auto-wipe on gate regress |
@@ -84,11 +84,12 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `env.py` | Gymnasium API over client |
 | `reward.py` | Step reward + profile presets |
 | `scenarios.py` | Fetch/cache catalog (family + proxy); no hard-coded name lists |
-| `scenario_curriculum.py` | Per-stem difficulty + cycle filters |
+| `persistence/` | JSON load/save — one module per on-disk file (see package docstring) |
+| `scenario_curriculum.py` | Per-stem difficulty + cycle filters (I/O via `persistence/`) |
 | `training_phases.py` | scenario_a / b / profiles routing; `active_targets` / `resolve_targets` (post-split train/eval `all` via `reward.profiles_for_all` — baseline + general + spread; summary `all` includes td/defense) |
-| `pipeline_state.py` | Load / save / rewind `pipeline.json` (no gate checks) |
+| `pipeline_state.py` | Pipeline types + rewind; load/save via `persistence/pipeline` |
 | `scenario_training.py` | Pointer: grading is Kotlin |
-| `metrics.py` / `tb_callback.py` | Episode aggregates / TensorBoard / metrics·success·learn lines; lifetime kind totals under ``runs/{key}/`` |
+| `metrics.py` / `tb_callback.py` | Episode aggregates / TensorBoard / metrics·success·learn lines; kind totals I/O via `persistence/kind_totals` |
 | `eval_opening_diag.py` | Opening join-score aggregates + ``expected_p``/rank format (+ prior deltas) |
 | `eval_debug.py` | Throwaway per-episode turn1 / expected-move logging |
 | `paths.py` | `output/` roots |

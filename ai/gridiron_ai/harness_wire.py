@@ -3,6 +3,10 @@
 Runtime values are still plain dicts from Jackson; these ``TypedDict`` names
 document which Kotlin DTO a payload matches. Expand call-site annotations
 under AI2.22 rather than inventing a second parallel schema.
+
+TODO [AI2.22]: also prefer enums (or catalog-backed closed types) for values like
+scenario name — not bare ``str`` / ``dict[str, Any]`` — without mirroring Kotlin
+catalog membership in Python (server metadata remains source of truth).
 """
 
 from __future__ import annotations

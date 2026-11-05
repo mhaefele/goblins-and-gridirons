@@ -475,8 +475,8 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 | Field | Detail |
 |-------|--------|
 | **Status** | Beachhead started (`harness_wire.py`); expand call sites. |
-| **Problem** | Harness JSON is threaded as bare `dict[str, Any]` — readers cannot tell rewards snapshot vs LegalAction vs legal row vs step envelope. |
-| **Goal** | Named `TypedDict` (or equivalent) aliases matching Kotlin harness DTOs (`HarnessRewardSnapshotDto`, `HarnessPlayerDto`, `AiLegalChoiceDto` / `LegalAction`, packed step/submit). Runtime can stay dict; the **name** is the point. Prefer one module (`harness_wire.py`) over scattering. |
+| **Problem** | Harness JSON is threaded as bare `dict[str, Any]` — readers cannot tell rewards snapshot vs LegalAction vs legal row vs step envelope. Scenario and similar closed values are also bare `str`. |
+| **Goal** | Named `TypedDict` (or equivalent) aliases matching Kotlin harness DTOs (`HarnessRewardSnapshotDto`, `HarnessPlayerDto`, `AiLegalChoiceDto` / `LegalAction`, packed step/submit). Prefer enums / catalog-backed types for scenario (etc.) without mirroring Kotlin catalog membership. Runtime can stay dict; the **name** is the point. Prefer one module (`harness_wire.py`) over scattering. |
 | **Depends on** | [AI2.21](#ai221--harness-legalrows-wrap-legalaction) (done). |
 | **Files** | `gridiron_ai/harness_wire.py`; call sites in `reward.py` / `env.py` / `client.py` / `eval_debug.py` / `actions.py`. |
 | **Acceptance** | Public helpers annotate harness payloads with named types; `dict[str, Any]` not used as the primary name for those shapes; mypy/pyright optional but types importable. |

@@ -50,7 +50,7 @@ _BOARD = list(BOARD_NAMES)
 @pytest.fixture(autouse=True)
 def _pipeline_root(monkeypatch, tmp_path: Path) -> None:
     """Saved pipeline lives beside each test's planted checkpoints — never the real one."""
-    monkeypatch.setattr("gridiron_ai.pipeline_state.CHECKPOINT_DIR", tmp_path / "checkpoints")
+    monkeypatch.setattr("gridiron_ai.persistence.pipeline.CHECKPOINT_DIR", tmp_path / "checkpoints")
 
 
 def _plant(ckpt_root: Path, key: str, levels: dict[str, int], *, steps: int | None = None) -> None:

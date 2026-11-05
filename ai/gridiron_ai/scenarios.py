@@ -11,17 +11,14 @@ Unknown drills in a difficulty JSON are ignored; new catalog names start at diff
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from dataclasses import dataclass
 from typing import Any, Literal, Sequence
 
 from gridiron_ai.paths import SCENARIO_CATALOG_PATH
+from gridiron_ai.persistence.scenario_catalog import load_catalog_payload, save_catalog_payload
 
 ScenarioFamily = Literal["BOARD", "CLAIM"]
 
-_CACHE_SCHEMA = 1
 _process_catalog: ScenarioCatalog | None = None
 
 
@@ -141,27 +138,18 @@ def require_catalog() -> ScenarioCatalog:
 
 
 def load_cached_catalog() -> ScenarioCatalog | None:
-    path = SCENARIO_CATALOG_PATH
-    if not path.is_file():
-        return None
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        return None
-    scenarios = raw.get("scenarios")
-    if not isinstance(scenarios, list):
+    raw = load_catalog_payload()
+    if raw is None:
         return None
     try:
-        return ScenarioCatalog.from_wire(scenarios)
+        return ScenarioCatalog.from_wire(raw["scenarios"])
     except (KeyError, TypeError, ValueError):
         return None
 
 
 def save_catalog(catalog: ScenarioCatalog) -> None:
-    path = SCENARIO_CATALOG_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "schemaVersion": _CACHE_SCHEMA,
-        "scenarios": [
+    save_catalog_payload(
+        [
             {
                 "name": entry.name,
                 "family": entry.family,
@@ -178,19 +166,7 @@ def save_catalog(catalog: ScenarioCatalog) -> None:
             }
             for entry in catalog.entries
         ],
-    }
-    text = json.dumps(payload, indent=2) + "\n"
-    fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
-            tmp.write(text)
-        os.replace(tmp_name, path)
-    except Exception:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
+    )
 
 
 def refresh_catalog(client: Any) -> ScenarioCatalog:
