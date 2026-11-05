@@ -39,17 +39,21 @@ from scripts.train_self_play import (
 from gridiron_ai.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
     MAX_DIFFICULTY,
-    SCENARIO_EVAL_PASS_MIN_WINS,
     all_scenarios_mastered,
     board_scenarios_in_catalog,
     claims_unlocked,
     drill_stat_count,
+    eval_pass_min_wins,
     gate_failure_count,
     get_difficulty,
     is_progress_waived,
+    last_eval_metrics,
+    last_eval_prior_metrics,
     load_gate_failures,
+    load_last_eval,
     load_levels,
     path_for_gate_failures,
+    path_for_last_eval,
     path_for_stem,
     train_multiplier_summary_lines,
 )
@@ -744,7 +748,7 @@ def _legend() -> str:
             "  turns / total_actions  match length + policy submits",
             "  drill_rate             scenario winrate (PASS / decided games)",
             "  W/L/D on drill rows      decided scenario episodes (DISTRACTED → D)",
-            "  expected_p             mean over games of mean expected-row opening p",
+            "  expected_p             mean over games of mean expected-row opening p (prior→current when sidecar has both)",
             "  expected_best_p        mean over games of best expected-row opening p",
             "  first_p                mean opening argmax / first-move p",
             "  expected_rank          mean best (lowest) expected-row opening rank",
@@ -1182,7 +1186,9 @@ def _summarize_target(target: TrainTarget, *, trend_steps: int) -> str:
     eval_dir = target.eval_dir()
     checkpoint_dir = target.checkpoint_dir()
     levels = target.load_levels()
-    gate_failures = load_gate_failures(path_for_gate_failures(target.save_stem()))
+    save_stem = target.save_stem()
+    gate_failures = load_gate_failures(path_for_gate_failures(save_stem))
+    last_eval = load_last_eval(path_for_last_eval(save_stem))
     drill_stats = target.load_drill_stats_cumulative()
     steps = _training_steps(checkpoint_dir)
     key_bit = f" [{checkpoint_key}]" if checkpoint_key != profile else ""
@@ -1265,16 +1271,24 @@ def _summarize_target(target: TrainTarget, *, trend_steps: int) -> str:
                 eval_d = _scenario_eval_difficulty(eval_path, stats)
                 eval_tag = f"@d{eval_d} " if eval_d is not None else ""
                 stale = eval_d is not None and eval_d != level
-                passed = games > 0 and wins >= SCENARIO_EVAL_PASS_MIN_WINS and games >= wins
+                passed = (
+                    games > 0
+                    and wins >= eval_pass_min_wins(games)
+                    and games >= wins
+                )
                 bump = " ↑" if passed and not stale and level < MAX_DIFFICULTY else ""
                 stale_bit = " (stale)" if stale else ""
                 fails = gate_failure_count(gate_failures, scenario, difficulty=level)
                 fails_total = gate_failure_count(gate_failures, scenario)
                 fail_bit = f" gate_fails={fails}/{fails_total}" if fails_total else ""
+                # Opening trend: sidecar current+prior when present; else eval JSON alone.
+                opening_stats = last_eval_metrics(last_eval, scenario, level) or stats
+                opening_prior = last_eval_prior_metrics(last_eval, scenario, level)
                 lines.append(
                     f"{prefix}{eval_tag}drill_rate={_pct(stats['winrate'])} "
                     f"W{wins}/L{losses}/D{draws} ({games} ep)"
-                    f"{format_opening_score_bits(stats)}{bump}{stale_bit}"
+                    f"{format_opening_score_bits(opening_stats, prior=opening_prior)}"
+                    f"{bump}{stale_bit}"
                     f"{fail_bit}{cycle_bit}{demote_bit}{gate_bit}"
                 )
             else:

@@ -1,0 +1,14 @@
+---
+description: Finish in-progress agreed work after interruptions unless redirected
+alwaysApply: true
+---
+
+# Finish interrupted work
+
+When a turn is cut short (user message mid-task, compaction, tool failure) and agreed work is still incomplete:
+
+1. **Resume and finish** that work on the next turn — do not stop at a status report or wait to be told “continue.”
+2. **Answer the interruption first** if it is a question or clarification, then return to the unfinished job in the same turn when practical.
+3. **Only drop or reshape** the in-progress work when the interruption **explicitly cancels it**, **replaces the goal**, or **narrows/redirects** the scope (e.g. “stop”, “different approach”, “just do X instead”).
+
+Clarifying questions about the *same* work (“is that per 10 games?”) are not a cancel — answer, then keep finishing.

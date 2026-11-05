@@ -11,9 +11,10 @@ after-eval; demote when a drill labeled d5 fails after-eval with ``DEMOTE_FROM_M
 or fewer wins — default 7/10; 8/10 is a gate fail only); ``.scenario_gate_failures.json``
 (imperfect after-evals per difficulty level; all-time = sum; current level cleared on waive
 recover); ``.scenario_drill_stats.json`` (per-phase ``cycles`` / ``d5_demotes``; summary uses
-``training_phases.load_drill_stats_cumulative``); ``.scenario_last_eval.json`` (last train-time
-eval metrics per drill@d for prior→current deltas across restarts).
+``training_phases.load_drill_stats_cumulative``); ``.scenario_last_eval.json`` (``current`` +
+``prior`` slim metrics per drill@d for prior→current deltas across restarts / summary).
 Phases (scenario_a board→d4 / scenario_b all→d5 / profiles games): ``training_phases``.
+4× train units use ``SCENARIO_EVAL_GAMES_HEAVY`` (20) after-evals with scaled pass/demote.
 Drills with fails at their **current** difficulty get ``SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER``×
 train budget below d5 (gating drills only — ``gatesProgress=false`` never multiplies; d5 gate
 fails do not double). Gating drills below the pack max (not waived) get the same 2× with no
@@ -78,7 +79,9 @@ FULL_GAME_UNLOCK_DIFFICULTY = MAX_DIFFICULTY
 GATE_PROGRESS_WAIVE_FAILURES = 20
 # Scenario after-eval batch size (train → after-eval).
 SCENARIO_EVAL_GAMES = 10
-# Wins needed to pass / bump (9 or 10 of SCENARIO_EVAL_GAMES).
+# 4× train drills get a longer after-eval (same pass/demote *rates* as the 10-game batch).
+SCENARIO_EVAL_GAMES_HEAVY = 20
+# Wins needed to pass / bump (9 or 10 of SCENARIO_EVAL_GAMES); scaled for heavy batches.
 SCENARIO_EVAL_PASS_MIN_WINS = 9
 # At d5: demote when wins are at or below this (7 or fewer of SCENARIO_EVAL_GAMES).
 DEMOTE_FROM_MAX_MAX_WINS = 7
@@ -88,6 +91,27 @@ SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER = 2
 SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER = 4
 # d5_demotes at or above this → 4× with a current-level fail only once boards are d4+.
 SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD = 5
+
+
+def scenario_eval_games(train_units: int = 1) -> int:
+    """After-eval batch size: 20 games for 4× drills, else ``SCENARIO_EVAL_GAMES``."""
+    if train_units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER:
+        return SCENARIO_EVAL_GAMES_HEAVY
+    return SCENARIO_EVAL_GAMES
+
+
+def eval_pass_min_wins(expected_games: int) -> int:
+    """Pass threshold scaled from ``SCENARIO_EVAL_PASS_MIN_WINS`` / ``SCENARIO_EVAL_GAMES``."""
+    return max(
+        1,
+        (SCENARIO_EVAL_PASS_MIN_WINS * expected_games + SCENARIO_EVAL_GAMES - 1)
+        // SCENARIO_EVAL_GAMES,
+    )
+
+
+def eval_demote_max_wins(expected_games: int) -> int:
+    """Demote ceiling scaled from ``DEMOTE_FROM_MAX_MAX_WINS`` / ``SCENARIO_EVAL_GAMES``."""
+    return (DEMOTE_FROM_MAX_MAX_WINS * expected_games) // SCENARIO_EVAL_GAMES
 
 # Per-scenario PPO timesteps each train cycle (not pooled — each scenario gets its own budget).
 # Sized in whole rollouts at locked defaults (n_envs=30 × n_steps=128 = 3840).
@@ -99,14 +123,40 @@ DEFAULT_SCENARIO_TRAIN_MASTERED = 0
 DEFAULT_SCENARIO_TRAIN_MAINTENANCE = _SCENARIO_ROLLOUT_TIMESTEPS
 
 
+def last_eval_entry(
+    last_eval: dict[str, dict[str, dict[str, Any]]],
+    scenario: str,
+    difficulty: int,
+) -> dict[str, Any] | None:
+    """``{current, prior}`` for ``scenario`` at ``difficulty``, or ``None`` when missing."""
+    by_level = last_eval.get(curriculum_key(scenario), {})
+    return by_level.get(str(_clamp(difficulty)))
+
+
 def last_eval_metrics(
     last_eval: dict[str, dict[str, dict[str, Any]]],
     scenario: str,
     difficulty: int,
 ) -> dict[str, Any] | None:
-    """Slim metrics for ``scenario`` at ``difficulty``, or ``None`` when missing."""
-    by_level = last_eval.get(curriculum_key(scenario), {})
-    return by_level.get(str(_clamp(difficulty)))
+    """Slim **current** metrics for ``scenario`` at ``difficulty``, or ``None`` when missing."""
+    entry = last_eval_entry(last_eval, scenario, difficulty)
+    if entry is None:
+        return None
+    current = entry.get("current")
+    return current if isinstance(current, dict) else None
+
+
+def last_eval_prior_metrics(
+    last_eval: dict[str, dict[str, dict[str, Any]]],
+    scenario: str,
+    difficulty: int,
+) -> dict[str, Any] | None:
+    """Slim **prior** (one-before-last) metrics, or ``None`` when missing."""
+    entry = last_eval_entry(last_eval, scenario, difficulty)
+    if entry is None:
+        return None
+    prior = entry.get("prior")
+    return prior if isinstance(prior, dict) else None
 
 
 def record_last_eval(
@@ -115,14 +165,26 @@ def record_last_eval(
     difficulty: int,
     stats: dict[str, Any],
 ) -> dict[str, dict[str, dict[str, Any]]]:
-    """Return a copy of ``last_eval`` with ``scenario``@``difficulty`` replaced by ``stats``."""
+    """Copy of ``last_eval`` with new ``current``; previous ``current`` becomes ``prior``."""
     updated = {
-        name: {level: dict(metrics) for level, metrics in by_level.items()}
+        name: {
+            level: {
+                "current": dict(entry.get("current") or {}),
+                "prior": dict(entry["prior"]) if entry.get("prior") is not None else None,
+            }
+            for level, entry in by_level.items()
+        }
         for name, by_level in last_eval.items()
     }
     key = curriculum_key(scenario)
     by_level = dict(updated.get(key, {}))
-    by_level[str(_clamp(difficulty))] = extract_last_eval_metrics(stats)
+    level_key = str(_clamp(difficulty))
+    previous = by_level.get(level_key) or {}
+    old_current = previous.get("current")
+    by_level[level_key] = {
+        "current": extract_last_eval_metrics(stats),
+        "prior": dict(old_current) if isinstance(old_current, dict) else None,
+    }
     updated[key] = by_level
     return updated
 
@@ -768,11 +830,11 @@ def _eval_win_count(stats: dict[str, Any], *, expected_games: int) -> int | None
 
 
 def _eval_passes(stats: dict[str, Any], *, expected_games: int) -> bool:
-    """True on a full batch with at least ``SCENARIO_EVAL_PASS_MIN_WINS`` US wins."""
+    """True on a full batch with at least ``eval_pass_min_wins(expected_games)`` US wins."""
     wins = _eval_win_count(stats, expected_games=expected_games)
     if wins is None:
         return False
-    return wins >= SCENARIO_EVAL_PASS_MIN_WINS
+    return wins >= eval_pass_min_wins(expected_games)
 
 
 def _eval_is_perfect(stats: dict[str, Any], *, expected_games: int) -> bool:
@@ -796,7 +858,7 @@ def maybe_bump_after_perfect_eval(
     *,
     expected_games: int,
 ) -> tuple[dict[str, int], bool]:
-    """If eval passed (≥ ``SCENARIO_EVAL_PASS_MIN_WINS`` / ``expected_games``), bump by 1."""
+    """If eval passed (≥ pass-min / ``expected_games``), bump by 1."""
     current = get_difficulty(levels, scenario)
     if current >= MAX_DIFFICULTY:
         return levels, False
@@ -813,14 +875,15 @@ def maybe_demote_after_failed_max_eval(
     stats: dict[str, Any],
     *,
     expected_games: int,
-    max_wins: int = DEMOTE_FROM_MAX_MAX_WINS,
+    max_wins: int | None = None,
 ) -> tuple[dict[str, int], bool]:
     """Drop one level when a d5 drill has ``max_wins`` or fewer US wins in a full pass."""
     current = get_difficulty(levels, scenario)
     if current < MAX_DIFFICULTY:
         return levels, False
+    ceiling = eval_demote_max_wins(expected_games) if max_wins is None else max_wins
     wins = _eval_win_count(stats, expected_games=expected_games)
-    if wins is None or wins > max_wins:
+    if wins is None or wins > ceiling:
         return levels, False
     updated = dict(levels)
     updated[curriculum_key(scenario)] = current - 1

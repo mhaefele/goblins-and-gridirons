@@ -126,6 +126,7 @@ from gridiron_ai.scenario_curriculum import (
     scenarios_for_eval,
     SCENARIO_EVAL_GAMES,
     SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER,
+    scenario_eval_games,
     format_train_multiplier_lines,
     train_multiplier_drill_label,
     train_multiplier_groups,
@@ -1068,19 +1069,20 @@ def _eval_one_scenario(
     save_stem: Path,
     scenario: str,
     difficulty: int,
+    games: int = SCENARIO_EVAL_GAMES,
 ) -> dict[str, Any]:
     """Deterministic eval for one drill at its current curriculum difficulty.
 
     Eval line shows ``before→after`` vs the last same drill@d train-time eval (memory,
     else ``{stem}.scenario_last_eval.json``). Persists only while training — ``--eval-only``
-    never writes the cache or sidecar.
+    never writes the cache or sidecar. ``games`` is 20 for 4× train units, else 10.
     """
     prior = _prior_scenario_eval(scenario, difficulty, save_stem)
     stats = _eval_segment(
         model,
         args=args,
         pool=pool,
-        games=SCENARIO_EVAL_GAMES,
+        games=games,
         opponent_mode=OPPONENT_COMPUTER,
         computer_opponent="LOOKAHEAD",
         onnx_profile=None,
@@ -1106,6 +1108,7 @@ def _apply_scenario_after_eval(
     curriculum_path: Path,
     gate_failures_path: Path,
     drill_stats_path: Path,
+    expected_games: int = SCENARIO_EVAL_GAMES,
 ) -> tuple[dict[str, int], dict[str, dict[str, int]], dict[str, dict[str, int]]]:
     """Persist bump / demote / gate-failure / drill-stat counts from one after-eval pass."""
     levels, gate_failures, drill_stats, action = apply_after_eval_curriculum(
@@ -1113,10 +1116,10 @@ def _apply_scenario_after_eval(
         gate_failures,
         scenario,
         stats,
-        expected_games=SCENARIO_EVAL_GAMES,
+        expected_games=expected_games,
         drill_stats=drill_stats,
     )
-    full_batch = int(stats.get("episodes") or 0) >= SCENARIO_EVAL_GAMES
+    full_batch = int(stats.get("episodes") or 0) >= expected_games
     if not full_batch:
         return levels, gate_failures, drill_stats
     if action in ("bump", "demote"):
@@ -1256,14 +1259,15 @@ def _train_scenarios_segment(
     for scenario, difficulty, timesteps, units in plan_units:
         slug = scenario.lower()
         do_eval = scenario not in proxy_sources
+        eval_games = scenario_eval_games(units)
         fresh_before = do_eval and units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
 
         before: dict[str, Any] | None = None
         before_source: str | None = None
         if fresh_before:
             print(
-                f"Scenario {scenario} d{difficulty}: before-eval ({units}×) → "
-                f"train {timesteps}ts → after-eval",
+                f"Scenario {scenario} d{difficulty}: before-eval ({units}×, {eval_games}g) → "
+                f"train {timesteps}ts → after-eval ({eval_games}g)",
                 flush=True,
             )
             before = _eval_one_scenario(
@@ -1275,6 +1279,7 @@ def _train_scenarios_segment(
                 save_stem=save_stem,
                 scenario=scenario,
                 difficulty=difficulty,
+                games=eval_games,
             )
             before_source = "before-eval"
             row.update(_cycle_stats_fields(f"eval_scenario_{slug}_before", before))
@@ -1283,7 +1288,8 @@ def _train_scenarios_segment(
             if prior is not None:
                 before = prior
                 before_source = "prior-eval"
-            print(f"Scenario {scenario} d{difficulty}: train {timesteps}ts → after-eval", flush=True)
+            games_bit = f" → after-eval ({eval_games}g)" if eval_games != SCENARIO_EVAL_GAMES else " → after-eval"
+            print(f"Scenario {scenario} d{difficulty}: train {timesteps}ts{games_bit}", flush=True)
         else:
             proxy = require_catalog().curriculum_key(scenario)
             print(
@@ -1328,6 +1334,7 @@ def _train_scenarios_segment(
             save_stem=save_stem,
             scenario=scenario,
             difficulty=difficulty,
+            games=eval_games,
         )
         row.update(_cycle_stats_fields(f"eval_scenario_{slug}_after", after))
         _print_scenario_learn_line(
@@ -1349,6 +1356,7 @@ def _train_scenarios_segment(
             curriculum_path=curriculum_path,
             gate_failures_path=gate_failures_path,
             drill_stats_path=drill_stats_path,
+            expected_games=eval_games,
         )
         _eval_section_break()
     if did_train:

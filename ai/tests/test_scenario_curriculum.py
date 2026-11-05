@@ -7,6 +7,7 @@ from gridiron_ai.scenario_curriculum import (
     GATE_PROGRESS_WAIVE_FAILURES,
     MAX_DIFFICULTY,
     SCENARIO_EVAL_GAMES,
+    SCENARIO_EVAL_GAMES_HEAVY,
     SCENARIO_EVAL_PASS_MIN_WINS,
     SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER,
     SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER,
@@ -17,6 +18,8 @@ from gridiron_ai.scenario_curriculum import (
     claims_unlocked,
     drill_stat_count,
     effective_gates_progress,
+    eval_demote_max_wins,
+    eval_pass_min_wins,
     full_game_train_timesteps,
     gate_failure_count,
     gating_pack_max_difficulty,
@@ -25,6 +28,7 @@ from gridiron_ai.scenario_curriculum import (
     get_difficulty,
     is_progress_waived,
     last_eval_metrics,
+    last_eval_prior_metrics,
     load_last_eval,
     maybe_bump_after_perfect_eval,
     merge_drill_stats,
@@ -34,6 +38,7 @@ from gridiron_ai.scenario_curriculum import (
     record_last_eval,
     record_train_cycles,
     save_last_eval,
+    scenario_eval_games,
     scenario_max_coach_turns,
     scenarios_for_cycle,
     scenarios_for_eval,
@@ -216,12 +221,49 @@ def test_last_eval_round_trip(tmp_path) -> None:
     saved = record_last_eval({}, "TD_RUN", 1, stats)
     save_last_eval(path, saved)
     loaded = load_last_eval(path)
-    prior = last_eval_metrics(loaded, "TD_RUN", 1)
-    assert prior is not None
-    assert prior["winrate"] == 0.3
-    assert prior["opening_chosen_p_mean"] == 0.631
-    assert prior["opening_expected_p_mean"] is None
+    current = last_eval_metrics(loaded, "TD_RUN", 1)
+    assert current is not None
+    assert current["winrate"] == 0.3
+    assert current["opening_chosen_p_mean"] == 0.631
+    assert current["opening_expected_p_mean"] is None
+    assert last_eval_prior_metrics(loaded, "TD_RUN", 1) is None
     assert last_eval_metrics(loaded, "TD_RUN", 2) is None
+
+    second = {
+        "winrate": 0.9,
+        "opening_expected_p_mean": 0.77,
+        "opening_expected_p_best_mean": 0.77,
+        "opening_chosen_p_mean": 0.77,
+        "opening_expected_rank_best_mean": 1.0,
+        "episodes": 10,
+    }
+    save_last_eval(path, record_last_eval(loaded, "TD_RUN", 1, second))
+    loaded = load_last_eval(path)
+    assert last_eval_metrics(loaded, "TD_RUN", 1)["opening_expected_p_mean"] == 0.77
+    assert last_eval_prior_metrics(loaded, "TD_RUN", 1)["winrate"] == 0.3
+
+
+def test_last_eval_loads_legacy_flat(tmp_path) -> None:
+    path = path_for_last_eval(tmp_path / "stem")
+    path.write_text(
+        '{"TD_RUN": {"1": {"winrate": 0.5, "opening_expected_p_mean": 0.1, '
+        '"opening_expected_p_best_mean": null, "opening_chosen_p_mean": 0.2, '
+        '"opening_expected_rank_best_mean": 3.0}}}\n',
+        encoding="utf-8",
+    )
+    loaded = load_last_eval(path)
+    assert last_eval_metrics(loaded, "TD_RUN", 1)["winrate"] == 0.5
+    assert last_eval_prior_metrics(loaded, "TD_RUN", 1) is None
+
+
+def test_scenario_eval_games_heavy_for_4x() -> None:
+    assert scenario_eval_games(1) == _EVAL
+    assert scenario_eval_games(2) == _EVAL
+    assert scenario_eval_games(4) == SCENARIO_EVAL_GAMES_HEAVY
+    assert eval_pass_min_wins(_EVAL) == _PASS
+    assert eval_pass_min_wins(SCENARIO_EVAL_GAMES_HEAVY) == 18
+    assert eval_demote_max_wins(_EVAL) == 7
+    assert eval_demote_max_wins(SCENARIO_EVAL_GAMES_HEAVY) == 14
 
 
 def test_bounce_difficulty_tracks_loose_ball_run() -> None:
