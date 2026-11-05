@@ -469,6 +469,20 @@ class GridironEnv(gym.Env):
         after_obs = submit_rewards_after(result)
         terminal = submit_terminal_meta(result)
         scoring = submit_scoring(result)
+        self._action_stats.record_ball_gain(observation_before_move, after_obs)
+        reward = step_reward(
+            rewards_before=observation_before_move,
+            rewards_after=after_obs,
+            result_kind=terminal.get("resultKind"),
+            result_winner_rel=terminal.get("resultWinnerRel"),
+            training_episode_ended=bool(terminal.get("trainingEpisodeEnded")),
+            training_outcome=terminal.get("trainingOutcome"),
+            turn_start_score_us=self._turn_start_score_us,
+            shaping=self.reward_shaping,
+            scoring=scoring,
+            legal_choice=resolved.legal_choice,
+            perspective_seat=self._perspective_seat,
+        )
         if self._scenario_eval_debug is not None:
             scored_td = int(after_obs["touchdownsUs"]) > int(observation_before_move["touchdownsUs"])
             acquired_card = int(scoring["challengeCardsUs"]) > 0
@@ -486,6 +500,7 @@ class GridironEnv(gym.Env):
                 scored_touchdown=scored_td,
                 expected_move=was_expected,
                 acquired_card=acquired_card,
+                step_reward=reward,
                 policy_obs=policy_obs,
                 legal_moves=self._legal_moves,
                 passing_legal=passing,
@@ -493,20 +508,6 @@ class GridironEnv(gym.Env):
                 legal_row_meta=self._legal_row_meta,
                 chosen_row_index=chosen_row_index,
             )
-        self._action_stats.record_ball_gain(observation_before_move, after_obs)
-        reward = step_reward(
-            rewards_before=observation_before_move,
-            rewards_after=after_obs,
-            result_kind=terminal.get("resultKind"),
-            result_winner_rel=terminal.get("resultWinnerRel"),
-            training_episode_ended=bool(terminal.get("trainingEpisodeEnded")),
-            training_outcome=terminal.get("trainingOutcome"),
-            turn_start_score_us=self._turn_start_score_us,
-            shaping=self.reward_shaping,
-            scoring=scoring,
-            legal_choice=resolved.legal_choice,
-            perspective_seat=self._perspective_seat,
-        )
 
         self._apply_submit_result(result)
         return reward, None

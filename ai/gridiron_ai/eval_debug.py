@@ -38,6 +38,7 @@ class ScenarioEvalDebug:
     def __init__(self) -> None:
         self._start_turn: int | None = None
         self._actions: list[str] = []
+        self._action_rewards: list[float] = []
         self._initial_ball: str | None = None
         self._us_positions: str | None = None
         self._them_positions: str | None = None
@@ -53,6 +54,7 @@ class ScenarioEvalDebug:
     def reset(self) -> None:
         self._start_turn = None
         self._actions = []
+        self._action_rewards = []
         self._initial_ball = None
         self._us_positions = None
         self._them_positions = None
@@ -104,6 +106,7 @@ class ScenarioEvalDebug:
         scored_touchdown: bool = False,
         expected_move: bool = False,
         acquired_card: bool = False,
+        step_reward: float | None = None,
         policy_obs: dict[str, np.ndarray] | None = None,
         legal_moves: np.ndarray | None = None,
         passing_legal: list[bool] | None = None,
@@ -139,6 +142,8 @@ class ScenarioEvalDebug:
                 acquired_card=acquired_card,
             )
             self._actions.append(action_label)
+            if step_reward is not None:
+                self._action_rewards.append(float(step_reward))
             if acquired_card:
                 claim_label = _describe_satisfied_claim(legal_choice, action_label=action_label)
                 if claim_label is not None:
@@ -199,6 +204,8 @@ class ScenarioEvalDebug:
             fields["scenario_endzone_y"] = self._endzone_y
         if self._actions:
             fields["first_turn_actions"] = list(self._actions)
+        if self._action_rewards:
+            fields["first_turn_step_rewards"] = list(self._action_rewards)
         if self._available_cards is not None:
             fields["scenario_available_cards"] = self._available_cards
         if self._satisfied_claims:
@@ -269,8 +276,17 @@ class ScenarioEvalDebug:
 
         actions = summary.get("first_turn_actions") or []
         if actions:
+            step_rewards = summary.get("first_turn_step_rewards") or []
             chosen_score = scores.get("chosen")
-            action_bits = [annotate_move_label(actions[0], chosen_score), *actions[1:]]
+            action_bits: list[str] = []
+            for index, label in enumerate(actions):
+                reward = (
+                    float(step_rewards[index])
+                    if index < len(step_rewards)
+                    else None
+                )
+                score = chosen_score if index == 0 else None
+                action_bits.append(annotate_move_label(label, score, reward=reward))
             line4 = f"{indent}turn1=" + " ".join(action_bits)
         else:
             line4 = ""

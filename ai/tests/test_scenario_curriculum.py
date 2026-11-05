@@ -261,9 +261,9 @@ def test_scenario_eval_games_heavy_for_4x() -> None:
     assert scenario_eval_games(2) == _EVAL
     assert scenario_eval_games(4) == SCENARIO_EVAL_GAMES_HEAVY
     assert eval_pass_min_wins(_EVAL) == _PASS
-    assert eval_pass_min_wins(SCENARIO_EVAL_GAMES_HEAVY) == 18
+    assert eval_pass_min_wins(SCENARIO_EVAL_GAMES_HEAVY) == 45
     assert eval_demote_max_wins(_EVAL) == 7
-    assert eval_demote_max_wins(SCENARIO_EVAL_GAMES_HEAVY) == 14
+    assert eval_demote_max_wins(SCENARIO_EVAL_GAMES_HEAVY) == 35
 
 
 def test_bounce_difficulty_tracks_loose_ball_run() -> None:

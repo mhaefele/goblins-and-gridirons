@@ -247,12 +247,27 @@ def diagnose_opening_mispick(
     }
 
 
-def annotate_move_label(label: str, score: dict[str, Any] | None) -> str:
-    """Append ``rank=`` / ``p=`` from opening join-score mass when present."""
-    if not score or score.get("rank") is None:
+def format_step_reward(reward: float) -> str:
+    """Always-signed step reward for turn1 / expected annotations."""
+    return f"{float(reward):+.3g}"
+
+
+def annotate_move_label(
+    label: str,
+    score: dict[str, Any] | None = None,
+    *,
+    reward: float | None = None,
+) -> str:
+    """Append ``rank=`` / ``p=`` / ``reward=`` bits when present."""
+    bits: list[str] = []
+    if score is not None and score.get("rank") is not None:
+        bits.append(f"rank={int(score['rank'])}")
+        bits.append(f"p={float(score.get('p') or 0.0):.3f}")
+    if reward is not None:
+        bits.append(f"reward={format_step_reward(reward)}")
+    if not bits:
         return label
-    p = float(score.get("p") or 0.0)
-    return f"{label} [rank={int(score['rank'])} p={p:.3f}]"
+    return f"{label} [{' '.join(bits)}]"
 
 
 def _mean(values: list[float]) -> float | None:

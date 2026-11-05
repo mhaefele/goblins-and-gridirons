@@ -1095,7 +1095,7 @@ def _eval_one_scenario(
 
     Eval line shows ``before→after`` vs the last same drill@d train-time eval (memory,
     else ``{stem}.scenario_last_eval.json``). Persists only while training — ``--eval-only``
-    never writes the cache or sidecar. ``games`` is 20 for 4× train units, else 10.
+    never writes the cache or sidecar. ``games`` is 50 for 4× train units, else 10.
     """
     prior = _prior_scenario_eval(scenario, difficulty, save_stem)
     stats = _eval_segment(

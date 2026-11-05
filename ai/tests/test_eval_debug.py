@@ -109,6 +109,7 @@ def test_turn1_log_suffix_annotates_rank_and_p() -> None:
             "expected_move_count": 1,
             "expected_moves": ["run(6,13->5,14)"],
             "first_turn_actions": ["run(6,13->10,15)", "reserves(p1)"],
+            "first_turn_step_rewards": [0.12, -1.0],
             "opening_move_scores": {
                 "chosen": {"rank": 1, "p": 0.42, "logit": 1.5},
                 "expected": [{"rank": 52, "p": 0.001, "logit": -2.0}],
@@ -116,7 +117,10 @@ def test_turn1_log_suffix_annotates_rank_and_p() -> None:
         }
     )
     assert "expected=run(6,13->5,14) [rank=52 p=0.001]" in suffix
-    assert "turn1=run(6,13->10,15) [rank=1 p=0.420] reserves(p1)" in suffix
+    assert (
+        "turn1=run(6,13->10,15) [rank=1 p=0.420 reward=+0.12] "
+        "reserves(p1) [reward=-1]"
+    ) in suffix
 
 
 def test_turn1_log_suffix_orders_expected_by_best_rank() -> None:

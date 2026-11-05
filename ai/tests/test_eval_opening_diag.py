@@ -35,6 +35,11 @@ def test_preferred_row_rank_none_without_flags() -> None:
 def test_annotate_move_label_appends_rank_and_p() -> None:
     assert annotate_move_label("run(1,2->3,4)", None) == "run(1,2->3,4)"
     assert annotate_move_label("run(1,2->3,4)", {"rank": 7, "p": 0.0123}) == "run(1,2->3,4) [rank=7 p=0.012]"
+    assert (
+        annotate_move_label("block(1,2->3,4)", {"rank": 1, "p": 0.5}, reward=0.25)
+        == "block(1,2->3,4) [rank=1 p=0.500 reward=+0.25]"
+    )
+    assert annotate_move_label("reserves(p1)", reward=-1.0) == "reserves(p1) [reward=-1]"
 
 
 def test_aggregate_opening_move_scores_means() -> None:
