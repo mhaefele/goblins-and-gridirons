@@ -669,6 +669,8 @@ def train_multiplier_summary_lines(
         if units <= 0:
             continue
         by_units.setdefault(units, []).append(catalog.short_name(scenario))
+    if not by_units:
+        return []
     lines = ["  train multipliers (next cycle):"]
     for units in sorted(by_units):
         lines.append(f"    {units}×: {', '.join(by_units[units])}")

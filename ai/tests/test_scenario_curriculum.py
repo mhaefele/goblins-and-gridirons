@@ -560,6 +560,11 @@ def test_train_multiplier_summary_lines_lists_each_tier() -> None:
     assert "1× default PPO budget" not in joined
 
 
+def test_train_multiplier_summary_lines_empty_when_nothing_trains() -> None:
+    levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
+    assert train_multiplier_summary_lines(levels, FULL_NAMES, {}, {}, game_phase=False) == []
+
+
 def test_train_timesteps_behind_pack_doubles_without_claim_unlock() -> None:
     levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 5}
     assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG) == DEFAULT_SCENARIO_TRAIN_LEARNING * 2

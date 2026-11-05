@@ -695,6 +695,58 @@ def test_compact_board_is_train_then_summary(monkeypatch, tmp_path: Path) -> Non
     assert "Goblins & Gridirons model summary" not in text
 
 
+def test_compact_board_includes_train_multipliers_when_drills_run(monkeypatch, tmp_path: Path) -> None:
+    ckpt_root = tmp_path / "checkpoints"
+    eval_baseline = tmp_path / "evals" / "baseline"
+    eval_baseline.mkdir(parents=True)
+    levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
+    levels["TD_RUN"] = 3
+    _plant(ckpt_root, PHASE_SCENARIO_B, levels, steps=10_000)
+    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr(
+        "scripts.summarize_models._train_health_cells",
+        lambda checkpoint_key, *, trend_steps: (
+            "≈1.00 nats ok",
+            "entropy_loss=-1.000 (flat, ok)",
+            "0.0001 ok",
+            "0.50 ok (flat)",
+            "0.20 ok (flat)",
+            "0.040 ok (flat)",
+        ),
+    )
+    targets = [TrainTarget(phase=PHASE_SCENARIO_B, checkpoint_key=PHASE_SCENARIO_B, reward_profile="baseline")]
+    text = _fmt_compact_board(targets, trend_steps=100_000)
+    assert "train multipliers (next cycle):" in text
+    assert "td_run" in text
+    assert "0×: all others" in text
+
+
+def test_compact_board_omits_train_multipliers_when_nothing_trains(monkeypatch, tmp_path: Path) -> None:
+    ckpt_root = tmp_path / "checkpoints"
+    (tmp_path / "evals" / "baseline").mkdir(parents=True)
+    levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
+    _plant(ckpt_root, PHASE_SCENARIO_B, levels, steps=10_000)
+    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr(
+        "scripts.summarize_models._train_health_cells",
+        lambda checkpoint_key, *, trend_steps: (
+            "≈1.00 nats ok",
+            "entropy_loss=-1.000 (flat, ok)",
+            "0.0001 ok",
+            "0.50 ok (flat)",
+            "0.20 ok (flat)",
+            "0.040 ok (flat)",
+        ),
+    )
+    targets = [TrainTarget(phase=PHASE_SCENARIO_B, checkpoint_key=PHASE_SCENARIO_B, reward_profile="baseline")]
+    text = _fmt_compact_board(targets, trend_steps=100_000)
+    assert "train multipliers" not in text
+
+
 def test_winrate_arrow() -> None:
     assert _winrate_arrow(0.20, 0.30) == "↑"
     assert _winrate_arrow(0.30, 0.20) == "↓"

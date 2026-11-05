@@ -1125,6 +1125,30 @@ def _fmt_profiles_bottom_summary(targets: list[TrainTarget]) -> str:
     )
 
 
+def _fmt_train_multiplier_blocks(targets: list[TrainTarget]) -> str:
+    """Next-cycle train × lines for compact summary; omit targets with nothing to train."""
+    names = require_catalog().names()
+    multi = len(targets) > 1
+    blocks: list[str] = []
+    for target in targets:
+        lines = train_multiplier_summary_lines(
+            target.load_levels(),
+            names,
+            load_gate_failures(path_for_gate_failures(target.save_stem())),
+            target.load_drill_stats_cumulative(),
+            game_phase=game_phase_unlocked(target.checkpoint_key),
+        )
+        if not lines:
+            continue
+        if multi:
+            lines = [
+                f"  {target.checkpoint_key} train multipliers (next cycle):",
+                *lines[1:],
+            ]
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 def _fmt_compact_board(
     targets: list[TrainTarget],
     *,
@@ -1141,6 +1165,9 @@ def _fmt_compact_board(
     tables = "\n\n".join(part for part in (train, summary, la_trend) if part)
     if tables:
         sections.append(tables)
+    multipliers = _fmt_train_multiplier_blocks(targets)
+    if multipliers:
+        sections.append(multipliers)
     return "\n\n".join(section for section in sections if section)
 
 
