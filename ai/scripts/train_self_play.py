@@ -1233,7 +1233,9 @@ def _format_eval_game_line(
             f"  game {game_num}/{games} MISSING bb_episode "
             f"(truncated={truncated}) — not counted"
         )
-    outcome = summary.get("result_winner_rel") or ("DRAW" if summary.get("result_kind") else "OPEN")
+    from gridiron_ai.eval_outcome import format_eval_outcome
+
+    outcome = format_eval_outcome(summary)
     line = (
         f"  game {game_num}/{games} outcome={outcome} "
         f"score={summary.get('score_us')}-{summary.get('score_them')} "

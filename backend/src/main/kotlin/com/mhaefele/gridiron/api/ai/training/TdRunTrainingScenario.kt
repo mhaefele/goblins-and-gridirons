@@ -29,7 +29,7 @@ class TdRunTrainingScenario : AbstractTrainingScenario() {
     }
 
     override fun isSoftMaskOpeningMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
-        val carrier = trainerBallCarrier(state, trainerSide)
+        val carrier = trainerBallCarrierOrNull(state, trainerSide) ?: return false
         if (action !is LegalAction.Run || action.playerId != carrier.id) return false
         return state.board.squareAt(action.path.squares.last()).isEndZone(trainerSide.opposite())
     }

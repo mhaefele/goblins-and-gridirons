@@ -153,7 +153,9 @@ class ScenarioEvalDebug:
         summary: dict[str, Any],
     ) -> str:
         """Multi-line text block for ``scenario_draws.log`` (one draw per episode)."""
-        outcome = summary.get("result_winner_rel") or ("DRAW" if summary.get("result_kind") else "OPEN")
+        from gridiron_ai.eval_outcome import format_eval_outcome
+
+        outcome = format_eval_outcome(summary)
         header = (
             f"=== scenario={scenario} d={difficulty} mode={episode_mode} "
             f"outcome={outcome} score={summary.get('score_us')}-{summary.get('score_them')} ==="

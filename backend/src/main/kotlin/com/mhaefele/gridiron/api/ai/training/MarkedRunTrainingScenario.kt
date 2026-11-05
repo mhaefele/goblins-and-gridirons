@@ -36,7 +36,7 @@ class MarkedRunTrainingScenario : AbstractTrainingScenario() {
     }
 
     override fun isSoftMaskOpeningMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
-        val carrier = trainerBallCarrier(state, trainerSide)
+        val carrier = trainerBallCarrierOrNull(state, trainerSide) ?: return false
         return action is LegalAction.Sidestep && action.playerId == carrier.id
     }
 

@@ -82,14 +82,36 @@ class TrainingScenarios(
     /** Non-scenario matches have no episode — scenario flags stay false. */
     fun isSoftMaskScenarioMove(action: LegalAction, state: MatchState): Boolean {
         val episode = state.trainingEpisode ?: return false
+        if (episode.drillStatus != TrainingDrillStatus.STILL_IN_PROGRESS) return false
         if (!isTrainerOpeningTurn(state)) return false
         return implementation(episode.scenario).isSoftMaskScenarioMove(action, state, episode.trainerSide)
     }
 
     fun isPassingScenarioMove(action: LegalAction, state: MatchState): Boolean {
         val episode = state.trainingEpisode ?: return false
+        if (episode.drillStatus != TrainingDrillStatus.STILL_IN_PROGRESS) return false
         if (!isTrainerOpeningTurn(state)) return false
         return implementation(episode.scenario).isPassingScenarioMove(action, state, episode.trainerSide)
+    }
+
+    /**
+     * Freeze [TrainingEpisodeConfig.openingPassingActionIds] on the first opening player-action
+     * menu (skips replace / mid-player-action / already frozen). Idempotent.
+     */
+    fun freezeOpeningPassingIdsIfNeeded(state: MatchState, legals: List<LegalAction>): MatchState {
+        val episode = state.trainingEpisode ?: return state
+        if (episode.openingPassingActionIds != null) return state
+        if (episode.drillStatus != TrainingDrillStatus.STILL_IN_PROGRESS) return state
+        if (!isTrainerOpeningTurn(state)) return state
+        if (state.currentTurnState.currentPlayerAction != null) return state
+        if (state.currentTurnState.pendingDecision is ReplaceChallenge) return state
+        if (state.currentTurnState.actionsThisTurn.isNotEmpty()) return state
+        val script = implementation(episode.scenario)
+        val ids = legals
+            .filter { script.isPassingOpeningMove(it, state, episode.trainerSide) }
+            .map { it.id.value }
+            .toSet()
+        return state.copy(trainingEpisode = episode.copy(openingPassingActionIds = ids))
     }
 
     /**
@@ -200,7 +222,7 @@ class TrainingScenarios(
         } else {
             val legals = ClaimFillerSelector.attachClaimHints(state, openingMoves)
             script.validateBoard(state, trainerSide, legals)
-            return state
+            return freezeOpeningPassingIdsIfNeeded(state, legals)
         }
     }
 

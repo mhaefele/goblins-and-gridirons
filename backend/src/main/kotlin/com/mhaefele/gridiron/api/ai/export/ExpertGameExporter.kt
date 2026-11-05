@@ -342,6 +342,7 @@ class ExpertGameExporter(
             val pending = checkNotNull(current.currentTurnState.pendingDecision)
             val acting = pending.respondingCoach ?: current.currentTurnState.activeCoach
             val legal = legalMovesGenerator.forActingCoach(current)
+            current = matchGame.ensureOpeningPassingIdsFrozen(current, legal)
             val strategyForSeat = if (acting == TeamSide.HOME) homeStrategy else awayStrategy
             val chosen = strategyForSeat.chooseAction(current, legal)
             val outcome = matchGame.submitActionOutcome(current.id, chosen)

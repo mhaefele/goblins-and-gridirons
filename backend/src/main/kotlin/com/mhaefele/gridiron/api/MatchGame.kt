@@ -273,6 +273,18 @@ class MatchGame(
         legalMenuCache.computeIfAbsent(LegalMenuKey(state.id, state.lastEventId)) { legalMovesGenerator.forActingCoach(state, timer) }
 
     /**
+     * Persist frozen opening PASS action ids when the opening player-action menu is first seen.
+     * No-op when already frozen or not a scenario episode.
+     */
+    fun ensureOpeningPassingIdsFrozen(state: MatchState, legals: List<LegalAction>): MatchState {
+        val next = trainingScenarios.freezeOpeningPassingIdsIfNeeded(state, legals)
+        if (next.trainingEpisode === state.trainingEpisode) return state
+        repository.save(next)
+        invalidateLegalMenuCache(next.id)
+        return next
+    }
+
+    /**
      * Legal menu as seen by [viewerSeat]: empty when the match is over or that seat is not acting.
      * Soft-empty belongs here (external viewer), not on [LegalMovesGenerator].
      */

@@ -178,6 +178,12 @@ data class TrainingEpisodeConfig(
      * Set at placement time so validation and grading know which reserve was cast as the star.
      */
     val starTurnStarId: PlayerId? = null,
+    /**
+     * Content ids of opening-turn PASS moves (`LegalAction.id.value`), frozen on the first
+     * player-action menu. One-shot follow-ups re-flag these when still legal — no predicate
+     * recompute. Null = not frozen yet; empty = opening menu had no PASS rows.
+     */
+    val openingPassingActionIds: Set<String>? = null,
 ) {
     init {
         require(difficulty in 0..5) { "difficulty must be 0–5, was $difficulty" }

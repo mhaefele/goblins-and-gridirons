@@ -158,11 +158,46 @@ class TrainingScenarioApiTest : BaseApiTest() {
             api.aiSubmit(response.matchId, distractor.action.id, forSeat = TeamSide.HOME)
 
             val afterDistractor = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
-            assertThat(afterDistractor.harness.legalRows).noneMatch { it.softMaskLegal }
             val passing = afterDistractor.harness.legalRows.filter { it.passingLegal }
             assertThat(passing).isNotEmpty()
+            // One-shot follow-up soft-masks the frozen opening PASS ids when still legal.
+            assertThat(afterDistractor.harness.legalRows.filter { it.softMaskLegal }).isEqualTo(passing)
             api.aiSubmit(response.matchId, passing.first().action.id, forSeat = TeamSide.HOME)
             assertThat(loadMatch(response.matchId).trainingEpisode!!.drillStatus).isEqualTo(TrainingDrillStatus.PASS)
+        }
+    }
+
+    @Test
+    fun `TD_RUN packs the next step after scoring without trainer-carrier errors`() {
+        withRandomDiceRetries {
+            val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.TD_RUN))
+            val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
+            val passing = opening.harness.legalRows.first { it.passingLegal }
+            val submitted = api.aiSubmit(response.matchId, passing.action.id, forSeat = TeamSide.HOME)
+            assertThat(loadMatch(response.matchId).trainingEpisode!!.drillStatus).isEqualTo(TrainingDrillStatus.PASS)
+            // Packing after PASS must not re-run opening predicates (no ball carrier left).
+            assertThat(submitted.next.harness.legalRows).noneMatch { it.passingLegal || it.softMaskLegal }
+        }
+    }
+
+    @Test
+    fun `TD_RUN throw then former-carrier EZ run does not PASS`() {
+        withRandomDiceRetries {
+            val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.TD_RUN, difficulty = 1))
+            val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
+            val throwAway = opening.harness.legalRows.firstOrNull { it.action is LegalAction.Throw } ?: error("TD_RUN d1: need a Throw legal to exercise throw-then-run")
+            api.aiSubmit(response.matchId, throwAway.action.id, forSeat = TeamSide.HOME)
+
+            val afterThrow = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
+            assertThat(afterThrow.harness.legalRows).noneMatch { it.passingLegal || it.softMaskLegal }
+            val board = loadMatch(response.matchId).board
+            val ezRun = afterThrow.harness.legalRows.firstOrNull { row ->
+                val run = row.action as? LegalAction.Run ?: return@firstOrNull false
+                board.squareAt(run.path.squares.last()).isEndZone(TeamSide.AWAY)
+            } ?: error("TD_RUN d1: need a ball-less EZ Run still legal after the throw")
+            api.aiSubmit(response.matchId, ezRun.action.id, forSeat = TeamSide.HOME)
+            assertThat(loadMatch(response.matchId).trainingEpisode!!.drillStatus)
+                .isEqualTo(TrainingDrillStatus.STILL_IN_PROGRESS)
         }
     }
 

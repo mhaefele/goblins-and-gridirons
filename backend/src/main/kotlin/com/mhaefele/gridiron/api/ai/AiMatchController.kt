@@ -56,15 +56,16 @@ class AiMatchController(
         @RequestParam(required = false) perspectiveSeat: TeamSide?,
         @RequestParam forSeat: TeamSide,
     ): AiNestedStepDto {
-        val state = turnWait.untilSeatOrTerminal(matchId, forSeat)
+        val waited = turnWait.untilSeatOrTerminal(matchId, forSeat)
         val perspective = perspectiveSeat ?: forSeat
-        val episodeOver = state.isGameEnded() || TrainingEpisodeEnd.isCoachWindowExceeded(state)
-        val legals = if (episodeOver) {
-            emptyList()
+        val episodeOver = waited.isGameEnded() || TrainingEpisodeEnd.isCoachWindowExceeded(waited)
+        val (state, legals) = if (episodeOver) {
+            waited to emptyList()
         } else {
-            val acting = state.actingSeat()
+            val acting = waited.actingSeat()
             check(acting == forSeat) { "forSeat=$forSeat but acting=$acting after untilSeatOrTerminal" }
-            matchGame.legalActions(state)
+            val menu = matchGame.legalActions(waited)
+            matchGame.ensureOpeningPassingIdsFrozen(waited, menu) to menu
         }
         return steps.toAiStepDto(state, legals, perspectiveSeat = perspective)
     }
@@ -122,16 +123,17 @@ class AiMatchController(
         val afterState = timing.engine { matchGame.submitActionOutcome(matchId, legalActionId).newState }
         val scoring = scoringDelta(beforeState.progress, afterState.progress, seat)
         val handedOff = !afterState.isGameEnded() && !TrainingEpisodeEnd.isCoachWindowExceeded(afterState) && afterState.actingSeat() != seat
-        val afterWait = timing.turnWait { if(handedOff) turnWait.untilSeatOrTerminal(matchId, seat) else null }
+        val afterWait = timing.turnWait { if (handedOff) turnWait.untilSeatOrTerminal(matchId, seat) else null }
         val latest = afterWait ?: afterState
-        val nextLegals = if (latest.harnessEpisodeOver()) {
-            emptyList()
+        val (stepState, nextLegals) = if (latest.harnessEpisodeOver()) {
+            latest to emptyList()
         } else {
             val nextActing = latest.actingSeat()
             check(nextActing == seat) { "forSeat=$seat but acting=$nextActing after handoff wait" }
-            timing.nextLegals { timer -> matchGame.legalActions(latest, timer = timer) }
+            val menu = timing.nextLegals { timer -> matchGame.legalActions(latest, timer = timer) }
+            matchGame.ensureOpeningPassingIdsFrozen(latest, menu) to menu
         }
-        val dto = timing.packDto { createHarnessSubmitResult(afterState, seat, afterWait, scoring, legalActionId, nextLegals) }
+        val dto = timing.packDto { createHarnessSubmitResult(afterState = afterState, seat = seat, handedOff = afterWait != null, scoring = scoring, chosenLegalActionId = legalActionId, nextLegals = nextLegals, nextState = stepState,) }
         val result = timing.packFlat { encodeSubmit(dto) }
         timing.submit(handedOff)
         return result
@@ -145,19 +147,18 @@ class AiMatchController(
     private fun createHarnessSubmitResult(
         afterState: MatchState,
         seat: TeamSide,
-        afterWait: MatchState?,
+        handedOff: Boolean,
         scoring: AiScoringDeltaDto,
         chosenLegalActionId: LegalActionId,
         nextLegals: List<LegalAction>,
+        nextState: MatchState,
     ): AiNestedSubmitResultDto {
-        val latest = afterWait ?: afterState
-        val sameFrame = afterWait == null
-        val afterSubmitRewards = if (sameFrame) null else gameState.toHarnessRewardSnapshot(afterState, seat)
+        val afterSubmitRewards = if (handedOff) gameState.toHarnessRewardSnapshot(afterState, seat) else null
         return AiNestedSubmitResultDto(
             chosenLegalActionId = chosenLegalActionId,
             scoring = scoring,
             afterSubmitRewards = afterSubmitRewards,
-            next = steps.toAiStepDto(latest, nextLegals, perspectiveSeat = seat),
+            next = steps.toAiStepDto(nextState, nextLegals, perspectiveSeat = seat),
         )
     }
 }

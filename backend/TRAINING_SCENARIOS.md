@@ -161,9 +161,11 @@ Optional drills train and bump local difficulty on perfect eval like any other d
 (`openingTurnNumber`, trainer active). Later window turns never upgrade a miss to PASS;
 coach-window timeout without PASS grades **THEM** (`TrainingEpisodeEnd`).
 
-**One-shot drills** (`expectedBudgetedActions == 1`): PASS uses the same opening predicate on
-any budgeted action of that opening turn (action 2–3 still grade if the lesson move appears).
-Soft-mask stays opening-only. Multi-step drills keep their own follow-up overrides.
+**One-shot drills** (`expectedBudgetedActions == 1`): freeze opening PASS action ids on the first
+player-action menu; later budgeted actions re-flag an id only when it is still legal **and** the
+opening soft-mask / PASS predicate still holds (throw-then-ball-less EZ run keeps the id but
+fails). Soft-mask / PASS packing skips once `drillStatus` is no longer `STILL_IN_PROGRESS`.
+Multi-step drills keep their own follow-up overrides.
 
 ### Claim-specific
 

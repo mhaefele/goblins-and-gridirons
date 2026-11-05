@@ -186,12 +186,15 @@ abstract class AbstractChallengeClaimTrainingScenario(
 
     /**
      * Follow-up soft-mask after the first budgeted action.
-     * Default none — one-shot claims still soft-mask opening-only; PASS follow-up reuses
-     * [isPassingOpeningMove] via [AbstractTrainingScenario.isPassingFollowUpMove] when
-     * [expectedBudgetedActions] == 1. Multi-move drills override.
+     * One-shot claims: frozen opening PASS ids via [AbstractTrainingScenario.isSoftMaskFollowUpMove].
+     * Multi-move drills override (Keep Running / All Hands / Star / …).
      */
     override fun isSoftMaskFollowUpMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
-        false
+        if (expectedBudgetedActions == 1) {
+            super.isSoftMaskFollowUpMove(action, state, trainerSide)
+        } else {
+            false
+        }
 
     protected fun isReplacePending(state: MatchState): Boolean =
         state.currentTurnState.pendingDecision is ReplaceChallenge

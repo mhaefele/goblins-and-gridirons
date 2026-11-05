@@ -140,22 +140,31 @@ abstract class AbstractTrainingScenario {
     open fun isPassingOpeningMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
         isSoftMaskOpeningMove(action, state, trainerSide)
 
-    /** Follow-up on the opening turn after the first budgeted action (soft-mask). Default none. */
-    open fun isSoftMaskFollowUpMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean = false
+    /**
+     * Follow-up on the opening turn after the first budgeted action (soft-mask).
+     * One-shot: frozen opening PASS id still on the menu **and** [isSoftMaskOpeningMove] still
+     * true (e.g. throw-then-ball-less EZ run keeps the id but must not soft-mask). Multi-step override.
+     */
+    open fun isSoftMaskFollowUpMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
+        expectedBudgetedActions == 1 && isSavedOpeningPassingMove(action, state) && isSoftMaskOpeningMove(action, state, trainerSide)
 
     /**
      * Pass-grade follow-up on the opening turn.
-     * One-shot drills ([expectedBudgetedActions] == 1): same predicate as [isPassingOpeningMove] —
-     * do not recompute a new expected move; just accept the lesson action later in the turn.
-     * Soft-mask stays opening-only so training still prefers action 1.
-     * Multi-step drills: same as soft-mask follow-up (override when PASS is a subset).
+     * One-shot: frozen id + [isPassingOpeningMove] still true (snapshot alone is not enough —
+     * geometry ids survive after the ball leaves). Multi-step: soft-mask follow-up.
      */
     open fun isPassingFollowUpMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
         if (expectedBudgetedActions == 1) {
-            isPassingOpeningMove(action, state, trainerSide)
+            isSavedOpeningPassingMove(action, state) && isPassingOpeningMove(action, state, trainerSide)
         } else {
             isSoftMaskFollowUpMove(action, state, trainerSide)
         }
+
+    /** True when [action] matches a frozen opening PASS id on this episode. */
+    protected fun isSavedOpeningPassingMove(action: LegalAction, state: MatchState): Boolean {
+        val ids = state.trainingEpisode?.openingPassingActionIds ?: return false
+        return action.id.value in ids
+    }
 
     /**
      * Drill grade for one submit (curriculum / winrate; harness scenario terminal on window end).
@@ -227,7 +236,7 @@ abstract class AbstractTrainingScenario {
         state: MatchState,
         trainerSide: TeamSide,
     ): Boolean {
-        val carrier = opponentBallCarrier(state, trainerSide)
+        val carrier = opponentBallCarrierOrNull(state, trainerSide) ?: return false
         val carrierCoord = state.board.findSquare(carrier.id).coordinate
         return action is LegalAction.Block && action.destination == carrierCoord
     }
@@ -237,16 +246,22 @@ abstract class AbstractTrainingScenario {
             board.squareAt(run.path.squares.last()).isEndZone(endZone)
         }
 
+    /** Trainer's on-pitch ball carrier, or null when the ball has already left (follow-up menus). */
+    protected fun trainerBallCarrierOrNull(state: MatchState, trainerSide: TeamSide): Player? =
+        state.board.players.values.singleOrNull { it.team == trainerSide && it.heldBallId != null }
+
     /**
      * Trainer's on-pitch ball carrier. Throws when absent — missing carrier is a broken drill
-     * setup, not an expected null. Prefer throwing on unexpected conditions; return null only
-     * when absence is a real domain case callers must branch on.
+     * setup. Soft-mask / PASS predicates use [trainerBallCarrierOrNull] instead.
      */
     protected fun trainerBallCarrier(state: MatchState, trainerSide: TeamSide): Player =
-        state.board.players.values.singleOrNull { it.team == trainerSide && it.heldBallId != null } ?: error("${scenario.name}: no trainer ball carrier on board")
+        trainerBallCarrierOrNull(state, trainerSide) ?: error("${scenario.name}: no trainer ball carrier on board")
+
+    protected fun opponentBallCarrierOrNull(state: MatchState, trainerSide: TeamSide): Player? =
+        state.board.players.values.singleOrNull { it.team == trainerSide.opposite() && it.heldBallId != null }
 
     protected fun opponentBallCarrier(state: MatchState, trainerSide: TeamSide): Player =
-        state.board.players.values.singleOrNull { it.team == trainerSide.opposite() && it.heldBallId != null } ?: error("${scenario.name}: no opponent ball carrier on board")
+        opponentBallCarrierOrNull(state, trainerSide) ?: error("${scenario.name}: no opponent ball carrier on board")
 
     protected fun touchdowns(state: MatchState, side: TeamSide): Int =
         when (side) {
@@ -274,7 +289,8 @@ abstract class AbstractTrainingScenario {
     /** Any [LegalAction.Throw] by the trainer's on-pitch ball carrier. */
     protected fun isTrainerBallCarrierThrow(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
         if (action !is LegalAction.Throw) return false
-        return action.playerId == trainerBallCarrier(state, trainerSide).id
+        val carrier = trainerBallCarrierOrNull(state, trainerSide) ?: return false
+        return action.playerId == carrier.id
     }
 
     protected fun isThrowToScoringEndZone(action: LegalAction, board: Board, trainerSide: TeamSide): Boolean {
