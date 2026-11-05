@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from gridiron_ai.harness_wire import ScenarioCatalogCacheDict, ScenarioCatalogEntryDict
+from gridiron_ai.api.harness_wire import ScenarioCatalogCacheDict, ScenarioCatalogEntryDict
 from gridiron_ai.paths import SCENARIO_CATALOG_PATH
 from gridiron_ai.persistence.json_io import atomic_write_json
 

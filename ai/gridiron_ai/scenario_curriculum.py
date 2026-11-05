@@ -43,7 +43,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gridiron_ai.harness_wire import ScenarioName
+from gridiron_ai.api.harness_wire import ScenarioName
 from gridiron_ai.persistence.scenario_difficulty import (  # noqa: F401 — re-export
     load_levels,
     path_for_stem,
@@ -69,7 +69,7 @@ from gridiron_ai.persistence.scenario_last_eval import (  # noqa: F401 — re-ex
     path_for_last_eval,
     save_last_eval,
 )
-from gridiron_ai.scenarios import require_catalog
+from gridiron_ai.api.scenarios import require_catalog
 
 # Matches backend TrainingScenarioController / TrainingScenarioPlacer.
 MAX_DIFFICULTY = 5

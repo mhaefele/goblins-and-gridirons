@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from gridiron_ai.expert_stats import (
+from gridiron_ai.expert_clone.expert_stats import (
     BUCKET_GAMES,
     BUCKET_SCENARIOS,
     BUCKET_TOTAL,

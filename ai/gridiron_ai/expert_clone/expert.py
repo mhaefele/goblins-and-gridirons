@@ -30,7 +30,7 @@ from gridiron_ai.constants import (
     OBS_KEYS_GAME_STATE,
     SCHEMA_VERSION,
 )
-from gridiron_ai.expert_stats import (
+from gridiron_ai.expert_clone.expert_stats import (
     add_kind_to_breakdown,
     bucket_for_episode_family,
     empty_kind_breakdown,

@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 
 from gridiron_ai.constants import PLAY_HEIGHT
-from gridiron_ai.harness_wire import (
+from gridiron_ai.api.harness_wire import (
     AiLegalChoiceDict,
     EpisodeMode,
     HarnessRewardSnapshotDict,

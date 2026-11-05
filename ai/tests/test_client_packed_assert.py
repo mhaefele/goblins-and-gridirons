@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from gridiron_ai.client import (
+from gridiron_ai.api.client import (
     GridironApiError,
     _assert_packed_step,
     _assert_packed_submit,

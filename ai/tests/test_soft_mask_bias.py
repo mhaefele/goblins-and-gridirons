@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from gridiron_ai.env import GridironEnv
+from gridiron_ai.api.env import GridironEnv
 
 
 def test_soft_mask_bias_off_zeros_obs_flags() -> None:

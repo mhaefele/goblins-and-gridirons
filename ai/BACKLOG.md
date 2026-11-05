@@ -118,7 +118,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 | **Status** | **Done.** |
 | **Goal** | After (or interleaved with) training, play M games as one seat vs built-in `COMPUTER` (lookahead primary; also heuristic baseline). **Submit with `forSeat`** (no `/events`) so the server waits until `actingSeat` is the eval policy’s seat (computer moves in-process). Record winrate, draws, mean score differential, TD / challenge point breakdown, and policy entropy. Snapshot the model with the eval summary. |
 | **Depends on** | AI2.2 |
-| **Files** | [`gridiron_ai/env.py`](gridiron_ai/env.py) (self vs computer; `forSeat` wait); [`scripts/train_self_play.py`](scripts/train_self_play.py) (`--eval-lookahead` / `--eval-heuristic`); create-match `computerOpponent` ([`ComputerOpponentKind`](../backend/src/main/kotlin/com/mhaefele/gridiron/shared/ComputerOpponentKind.kt)). Shared `info["bb_episode"]` + [`aggregate_episodes`](gridiron_ai/metrics.py). |
+| **Files** | [`gridiron_ai/api/env.py`](gridiron_ai/api/env.py) (self vs computer; `forSeat` wait); [`scripts/train_self_play.py`](scripts/train_self_play.py) (`--eval-lookahead` / `--eval-heuristic`); create-match `computerOpponent` ([`ComputerOpponentKind`](../backend/src/main/kotlin/com/mhaefele/gridiron/shared/ComputerOpponentKind.kt)). Shared `info["bb_episode"]` + [`aggregate_episodes`](gridiron_ai/metrics.py). |
 | **Acceptance** | Automated eval run produces a comparable metrics artifact; vs-lookahead and vs-heuristic both runnable **without SSE**; harness only acts when acting-seat says so; results are enough to tell “better than last checkpoint” on winrate and score margin. |
 | **Rulebook** | n/a |
 
@@ -331,7 +331,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 | **Status** | **Done.** |
 | **Goal** | Drop `POST /api/ai/matches/{id}/choose` (and `/choose/packed`). Train/eval never use it — opponent moves via in-process `ComputerCoachAgent` on `COMPUTER` seats. `/choose` duplicates that strategy pick in HTTP with odd constraints (acting seat must be non-`COMPUTER` so the agent does not race). Move scenario solvability checks off the AI HTTP surface. |
 | **Depends on** | None (hygiene). Pairs with [AI2.15](#ai215--coachcontrol-seat-semantics) — no “HUMAN + `/choose`” back door. |
-| **Files** | [`AiMatchController`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/AiMatchController.kt) (`choose`, `choosePacked`, `applyChooseSubmit`, `createChooseSubmitResult`); [`GridironApiClient`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/support/GridironApiClient.kt) `aiChoose`; [`client.py`](gridiron_ai/client.py) `ai_choose`; [`AiSubmitApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/AiSubmitApiTest.kt) choose smoke tests; [`TrainingScenarioLookaheadTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/TrainingScenarioLookaheadTest.kt); [`DESIGN.md`](DESIGN.md) / DTO KDoc mentioning choose. |
+| **Files** | [`AiMatchController`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/AiMatchController.kt) (`choose`, `choosePacked`, `applyChooseSubmit`, `createChooseSubmitResult`); [`GridironApiClient`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/support/GridironApiClient.kt) `aiChoose`; [`client.py`](gridiron_ai/api/client.py) `ai_choose`; [`AiSubmitApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/AiSubmitApiTest.kt) choose smoke tests; [`TrainingScenarioLookaheadTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/TrainingScenarioLookaheadTest.kt); [`DESIGN.md`](DESIGN.md) / DTO KDoc mentioning choose. |
 | **Acceptance** | No `/choose` routes or client helpers. [`TrainingScenarioLookaheadTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/TrainingScenarioLookaheadTest.kt) drives drills via `MatchGame` + injected [`LookaheadOpponentStrategy`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/lookahead/LookaheadOpponentStrategy.kt) (same pattern as [`ExpertGameExporter`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/export/ExpertGameExporter.kt)) — asserts `TrainingDrillStatus.PASS` without `aiStep` / `aiChoose`. Remaining integration tests cover submit + `forSeat` wait only. |
 | **Rulebook** | n/a |
 
@@ -474,11 +474,11 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 | Field | Detail |
 |-------|--------|
-| **Status** | **Done (2026-11).** Named `TypedDict`s + closed `StrEnum`s in `harness_wire.py`; harness call sites + persistence JSON stores annotated. `ScenarioName` is a catalog-backed alias (not a mirrored enum). |
+| **Status** | **Done (2026-11).** Named `TypedDict`s + closed `StrEnum`s in `api/harness_wire.py`; harness call sites + persistence JSON stores annotated. `ScenarioName` is a catalog-backed alias (not a mirrored enum). |
 | **Problem** | Harness JSON is threaded as bare `dict[str, Any]` — readers cannot tell rewards snapshot vs LegalAction vs legal row vs step envelope. Scenario and similar closed values are also bare `str`. |
 | **Goal** | Named `TypedDict` (or equivalent) aliases matching Kotlin harness DTOs (`HarnessRewardSnapshotDto`, `HarnessPlayerDto`, `AiLegalChoiceDto` / `LegalAction`, packed step/submit). Prefer enums / catalog-backed types for scenario (etc.) without mirroring Kotlin catalog membership. Runtime can stay dict; the **name** is the point. Prefer one module (`harness_wire.py`) over scattering. |
 | **Depends on** | [AI2.21](#ai221--harness-legalrows-wrap-legalaction) (done). |
-| **Files** | `gridiron_ai/harness_wire.py`; call sites in `reward.py` / `env.py` / `client.py` / `eval_debug.py` / `actions.py`; `persistence/*` store aliases. |
+| **Files** | `gridiron_ai/api/harness_wire.py`; call sites in `reward.py` / `api/env.py` / `api/client.py` / `eval_debug.py` / `actions.py`; `persistence/*` store aliases. |
 | **Acceptance** | Public helpers annotate harness payloads with named types; `dict[str, Any]` not used as the primary name for those shapes; mypy/pyright optional but types importable. |
 | **Rulebook** | n/a |
 

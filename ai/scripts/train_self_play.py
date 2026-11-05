@@ -64,7 +64,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv, VecNormalize
 from stable_baselines3.common.vec_env.subproc_vec_env import _stack_obs
 
-from gridiron_ai.client import GridironApiError, GridironClient
+from gridiron_ai.api.client import GridironApiError, GridironClient
 from gridiron_ai.reward import (
     FULL_GAME_ONNX_OPPONENT_PROFILES,
     PROFILE_SHAPING,
@@ -74,7 +74,7 @@ from gridiron_ai.reward import (
     RewardShaping,
     profiles_for_all,
 )
-from gridiron_ai.env import (
+from gridiron_ai.api.env import (
     COMPUTER_KIND_ONNX,
     OPPONENT_COMPUTER,
     GridironEnv,
@@ -132,7 +132,7 @@ from gridiron_ai.scenario_curriculum import (
     train_timesteps_for_difficulty,
     train_timesteps_for_scenario,
 )
-from gridiron_ai.scenarios import refresh_catalog, require_catalog, resolve_scenario_pin
+from gridiron_ai.api.scenarios import refresh_catalog, require_catalog, resolve_scenario_pin
 from gridiron_ai.tb_callback import GridironMetricsCallback, PeriodicFinalSaveCallback
 from gridiron_ai.training_phases import (
     EVAL_PHASE_CHOICES,

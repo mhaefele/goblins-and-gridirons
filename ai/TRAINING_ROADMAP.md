@@ -72,7 +72,7 @@ phase trees. Going backwards is explicit (`./start_over.sh --phase …`).
 **What the seed is**
 
 Lookahead dumps (obs → chosen action) are **supervised** into MaskablePPO weights
-(`clone.py`: raise log-prob of the recorded move). That is a **prior**, not a finished
+(`expert_clone/clone.py`: raise log-prob of the recorded move). That is a **prior**, not a finished
 player: the net already puts mass on expert-like choices in similar states, but it has
 not been **reinforced** on our drill openings, soft-mask tilt, or win/score reward.
 Scenario / PPO phases are where those preferences get practiced and locked under our

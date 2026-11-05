@@ -27,10 +27,10 @@ from gridiron_ai.actions import (
     legal_row_action_n,
     resolve_legal_row_index,
 )
-from gridiron_ai.client import GridironApiError, GridironClient, flatten_packed_submit, submit_rewards_after, submit_scoring, submit_terminal_meta
+from gridiron_ai.api.client import GridironApiError, GridironClient, flatten_packed_submit, submit_rewards_after, submit_scoring, submit_terminal_meta
 from gridiron_ai.constants import SCHEMA_VERSION
 from gridiron_ai.eval_debug import ScenarioEvalDebug, append_scenario_draw_log
-from gridiron_ai.harness_wire import (
+from gridiron_ai.api.harness_wire import (
     AiLegalChoiceDict,
     ComputerOpponentKind,
     EpisodeMode,

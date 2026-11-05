@@ -30,7 +30,7 @@ if str(_AI_ROOT) not in sys.path:
 from sb3_contrib import MaskablePPO
 
 from gridiron_ai.dev_stack import DEFAULT_BASE_URL, DEFAULT_FRONTEND_URL, require_dev_stack
-from gridiron_ai.env import OPPONENT_HUMAN, GridironEnv
+from gridiron_ai.api.env import OPPONENT_HUMAN, GridironEnv
 from gridiron_ai.reward import REWARD_PROFILES
 from gridiron_ai.training_phases import resolve_targets
 

@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 from typing import TypeAlias
 
-from gridiron_ai.harness_wire import ScenarioName
+from gridiron_ai.api.harness_wire import ScenarioName
 from gridiron_ai.persistence.json_io import atomic_write_json
-from gridiron_ai.scenarios import require_catalog
+from gridiron_ai.api.scenarios import require_catalog
 
 _SUFFIX = ".scenario_difficulty.json"
 # Keep in sync with ``scenario_curriculum.MAX_DIFFICULTY``.

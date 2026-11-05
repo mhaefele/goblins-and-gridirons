@@ -50,7 +50,7 @@ from gridiron_ai.scenario_curriculum import (
     train_timesteps_for_difficulty,
     train_timesteps_for_scenario,
 )
-from gridiron_ai.scenarios import ScenarioCatalog, ScenarioInfo, set_catalog
+from gridiron_ai.api.scenarios import ScenarioCatalog, ScenarioInfo, set_catalog
 from tests.catalog_fixture import BOARD_NAMES, CLAIM_NAMES, FULL_NAMES, install_fixture_catalog
 
 install_fixture_catalog()

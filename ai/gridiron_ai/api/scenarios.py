@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-from gridiron_ai.harness_wire import ScenarioCatalogEntryDict, ScenarioFamily, ScenarioName
+from gridiron_ai.api.harness_wire import ScenarioCatalogEntryDict, ScenarioFamily, ScenarioName
 from gridiron_ai.paths import SCENARIO_CATALOG_PATH
 from gridiron_ai.persistence.scenario_catalog import load_catalog_payload, save_catalog_payload
 

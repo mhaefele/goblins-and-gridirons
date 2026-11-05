@@ -57,7 +57,7 @@ from gridiron_ai.scenario_curriculum import (
     path_for_stem,
     train_multiplier_summary_lines,
 )
-from gridiron_ai.scenarios import (
+from gridiron_ai.api.scenarios import (
     load_cached_catalog,
     require_catalog,
     scenario_phase_order,

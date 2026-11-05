@@ -80,7 +80,7 @@ from gridiron_ai.scenario_curriculum import (
     path_for_gate_failures,
     path_for_stem,
 )
-from gridiron_ai.scenarios import require_catalog
+from gridiron_ai.api.scenarios import require_catalog
 
 PhaseName = StageName
 

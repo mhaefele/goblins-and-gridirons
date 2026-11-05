@@ -14,7 +14,7 @@ import torch as th
 
 from gridiron_ai.actions import FACTOR_ACTOR, FACTOR_KIND
 from gridiron_ai.constants import OBS_KEY_LEGAL_MOVE_COUNT, OBS_KEY_SOFT_MASK_LEGAL, SOFT_MASK_LOGIT_BIAS
-from gridiron_ai.harness_wire import AiLegalChoiceDict, HarnessRewardSnapshotDict, LegalActionDict
+from gridiron_ai.api.harness_wire import AiLegalChoiceDict, HarnessRewardSnapshotDict, LegalActionDict
 from gridiron_ai.reward import us_ball_carrier
 
 

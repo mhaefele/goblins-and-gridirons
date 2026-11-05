@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from gridiron_ai.constants import PLAY_HEIGHT, PLAY_WIDTH
-from gridiron_ai.harness_wire import (
+from gridiron_ai.api.harness_wire import (
     AiScoringDeltaDict,
     HarnessPlayerDict,
     HarnessRewardSnapshotDict,

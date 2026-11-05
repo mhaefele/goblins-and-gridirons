@@ -6,7 +6,7 @@ plus two claims — enough for curriculum / phase gate tests.
 
 from __future__ import annotations
 
-from gridiron_ai.scenarios import ScenarioCatalog, ScenarioInfo, set_catalog
+from gridiron_ai.api.scenarios import ScenarioCatalog, ScenarioInfo, set_catalog
 
 _FIXTURE = ScenarioCatalog.from_entries(
     [

@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TypeAlias, TypedDict
 
-from gridiron_ai.expert_stats import (
+from gridiron_ai.expert_clone.expert_stats import (
     BUCKET_SCENARIOS,
     BUCKET_TOTAL,
     KIND_BUCKETS,

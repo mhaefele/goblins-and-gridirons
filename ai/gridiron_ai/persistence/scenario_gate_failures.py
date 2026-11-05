@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import TypeAlias
 
-from gridiron_ai.harness_wire import ScenarioName
+from gridiron_ai.api.harness_wire import ScenarioName
 from gridiron_ai.persistence.json_io import atomic_write_json
 
 _SUFFIX = ".scenario_gate_failures.json"

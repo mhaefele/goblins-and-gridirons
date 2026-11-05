@@ -16,7 +16,7 @@ from typing import NamedTuple, TypeAlias
 import numpy as np
 
 from gridiron_ai.constants import ACTION_FACTOR_WIDTHS, LEGAL_ROW_SCORE_WIDTH, MAX_LEGAL_MOVES
-from gridiron_ai.harness_wire import AiLegalChoiceDict, LegalActionDict
+from gridiron_ai.api.harness_wire import AiLegalChoiceDict, LegalActionDict
 
 # Canonical index in the factor tuple packed on each legal row.
 # Slots 0..8 = row identity (kind + free/sugar that distinguish the legal choice).

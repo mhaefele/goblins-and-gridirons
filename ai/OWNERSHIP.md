@@ -28,12 +28,13 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 | Legal row pack / join-score action / soft-mask | Kotlin `AiLegalPacker` + `actions.py` / `legal_row_policy.py` | Hard-mask distractors; duplicate `expectedScenarioMove` in Python; factor MultiDiscrete remask; use packed ints for reward/business logic |
 | Harness reward snapshot (`players` + `ballCoordinate`) | Kotlin `HarnessRewardSnapshotDto` / `AiGameStateMapper` | HxW cells; `hasBall` on every player; jam board facts onto legal rows |
 | Harness legal rows | Kotlin `AiLegalChoiceDto` (LegalAction + curriculum flags) | Actor / ball-carrier sidecars; scrape packed ints for reward |
-| HTTP create / step / submit / scenarios list | Kotlin `/api/ai/...` + `gridiron_ai/client.py` | Open `/events` from the harness |
-| Gym env (reset/step/reward call) | `gridiron_ai/env.py` | Own drill grading |
+| HTTP create / step / submit / scenarios list | Kotlin `/api/ai/...` + `gridiron_ai/api/client.py` | Open `/events` from the harness |
+| Gym env (reset/step/reward call) | `gridiron_ai/api/env.py` | Own drill grading |
+| Harness wire TypedDicts / closed wire enums | `gridiron_ai/api/harness_wire.py` | Mirror scenario catalog membership |
 | Reward margin / terminal / profile shaping / scenario coach-window ± | `gridiron_ai/reward.py` (LegalAction + `rewards.players` / `ballCoordinate`) | Per-move expected-move slap/bonus (soft-mask owns that); packed-row business logic |
 | Episode metrics / TB aggregates / eval·learn stdout lines | `gridiron_ai/metrics.py`, `tb_callback.py` (opening bits → `eval_opening_diag`) | Re-format winrate/opening deltas in `train_self_play` |
 | **Drill board / expected moves / coach window** | Kotlin `api/ai/training/**` + `TrainingScenarioEnum`; semantics in [`backend/TRAINING_SCENARIOS.md`](../backend/TRAINING_SCENARIOS.md) | Script boards in Python |
-| Scenario catalog (name / family / difficultyProxy) | Kotlin `GET /api/ai/training/scenarios` → cached `output/scenario_catalog.json` via `scenarios.py` + `persistence/scenario_catalog.py` | Hard-code name lists in Python or frontend |
+| Scenario catalog (name / family / difficultyProxy) | Kotlin `GET /api/ai/training/scenarios` → cached `output/scenario_catalog.json` via `api/scenarios.py` + `persistence/scenario_catalog.py` | Hard-code name lists in Python or frontend |
 | Difficulty / gate-failure / drill-stats / last-eval JSON | `gridiron_ai/persistence/` (I/O); curriculum *policy* in `scenario_curriculum.py` | — |
 | Phase routing / fork-from-prior / **profile→checkpoint** (`active_targets`, `resolve_targets`, `TrainTarget` paths) / gate transitions (`advance_pipeline`, `force_promote`) | `gridiron_ai/training_phases.py` | Copy expert seed onto shaped profiles; invent `CHECKPOINT_DIR / profile` in summary/play/train; auto-wipe later phases |
 | **Saved pipeline FSM** (stage, split, per-profile climbing/games) | `pipeline_state.py` (types/rewind) + `persistence/pipeline.py` → `checkpoints/pipeline.json` | Re-derive stage from zips / marker files; write it from readers (summary, status) |
@@ -41,7 +42,7 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 | Artifact paths + phase-owned output layout | `gridiron_ai/paths.py` | — |
 | Destructive rollback (wipe artifact trees) | `common.sh` (`start_over.sh`) | Partial deletes from Python; auto-wipe on gate regress |
 | Expert dump | Kotlin `--export-expert` | — |
-| Pack / clone | `expert.py` / `clone.py` + scripts | Play HTTP during clone |
+| Pack / clone | `expert_clone/` + scripts | Play HTTP during clone |
 | ONNX product opponent | `export_opponent.sh` → `backend/.../resources/ai-opponent/`; Kotlin `game/opponent/onnx/` | Re-encode features/logits in Kotlin; soft-load missing artifacts |
 | Shell entrypoints | `train.sh`, `eval.sh`, `export_opponent.sh`, `start_over.sh`, `common.sh` | Duplicate mix defaults in shell |
 
@@ -76,14 +77,15 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | Module | Owns |
 |--------|------|
 | `constants.py` | Schema + head/obs sizes (must match Kotlin) |
-| `client.py` | REST only |
+| `api/client.py` | REST only |
+| `api/harness_wire.py` | TypedDicts / StrEnums for Kotlin harness DTOs |
+| `api/env.py` | Gymnasium API over client |
+| `api/scenarios.py` | Fetch/cache catalog (family + proxy); no hard-coded name lists |
 | `obs.py` | Packed float → gym Dict |
 | `actions.py` | Pad / match / resolve legal-row index |
 | `legal_row_policy.py` | Join-score legal rows (+ soft-mask bias on preferred rows) |
 | `features.py` | Embeddings → MLP vector; `encode_legal_rows` reuses board embs (does not re-pack) |
-| `env.py` | Gymnasium API over client |
 | `reward.py` | Step reward + profile presets |
-| `scenarios.py` | Fetch/cache catalog (family + proxy); no hard-coded name lists |
 | `persistence/` | JSON load/save — one module per on-disk file (see package docstring) |
 | `scenario_curriculum.py` | Per-stem difficulty + cycle filters (I/O via `persistence/`) |
 | `training_phases.py` | scenario_a / b / profiles routing; `active_targets` / `resolve_targets` (post-split train/eval `all` via `reward.profiles_for_all` — baseline + general + spread; summary `all` includes td/defense) |
@@ -93,5 +95,5 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `eval_opening_diag.py` | Opening join-score aggregates + ``expected_p``/rank format (+ prior deltas) |
 | `eval_debug.py` | Throwaway per-episode turn1 / expected-move logging |
 | `paths.py` | `output/` roots |
-| `expert.py` / `expert_stats.py` / `clone.py` | Dump → npz (+ kind stats) → seed zip |
+| `expert_clone/` | Dump → npz (+ kind stats) → seed zip |
 | `scripts/train_self_play.py` | Train/eval loop entrypoint |

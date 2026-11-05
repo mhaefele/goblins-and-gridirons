@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import gridiron_ai.clone as clone
-from gridiron_ai.clone import (
+import gridiron_ai.expert_clone.clone as clone
+from gridiron_ai.expert_clone.clone import (
     clone_epoch_zip_path,
     clone_progress_json_path,
     find_clone_epoch_zip,

@@ -6,7 +6,7 @@ from collections import Counter
 from pathlib import Path
 
 import gridiron_ai.metrics as metrics
-from gridiron_ai.expert_stats import BUCKET_GAMES, BUCKET_SCENARIOS, BUCKET_TOTAL
+from gridiron_ai.expert_clone.expert_stats import BUCKET_GAMES, BUCKET_SCENARIOS, BUCKET_TOTAL
 from gridiron_ai.metrics import (
     accumulate_kind_totals,
     aggregate_episodes,

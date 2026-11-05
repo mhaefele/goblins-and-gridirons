@@ -16,7 +16,7 @@ from gridiron_ai.constants import (
     OBSERVATION_VECTOR_LENGTH,
     SCHEMA_VERSION,
 )
-from gridiron_ai.expert import (
+from gridiron_ai.expert_clone.expert import (
     NPZ_KEY_ACTION,
     NPZ_KEY_LEGAL_MOVES_FLAT,
     NPZ_KEY_LEGAL_ROW_OFFSET,
@@ -76,8 +76,8 @@ def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
     assert int(obs[OBS_KEY_SOFT_MASK_LEGAL].sum()) == 0
 
     stats = (tmp_path / "tiny_kind_stats.txt").read_text(encoding="utf-8")
-    # Untagged legacy lines → total section only (empty scenarios/games omitted).
-    assert "=== total ===" in stats
+    # Untagged legacy lines → total table only; lone-bucket formatter omits ``=== total ===``.
+    assert "=== total ===" not in stats
     assert "=== scenarios ===" not in stats and "=== games ===" not in stats
     assert "RUN" in stats and "BLOCK" in stats
     assert "50.00%" in stats

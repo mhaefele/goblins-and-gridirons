@@ -16,7 +16,7 @@ from gridiron_ai.scenario_curriculum import (
     path_for_gate_failures,
     record_gate_failure,
 )
-from gridiron_ai.scenarios import ScenarioCatalog, ScenarioInfo, set_catalog
+from gridiron_ai.api.scenarios import ScenarioCatalog, ScenarioInfo, set_catalog
 from gridiron_ai.training_phases import PHASE_SCENARIO_A, PHASE_SCENARIO_B, TrainTarget, resolve_targets
 from scripts.summarize_models import (
     _approx_kl_level,

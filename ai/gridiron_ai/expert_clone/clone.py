@@ -30,7 +30,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from gridiron_ai.actions import legal_row_action_mask, legal_row_action_n
 from gridiron_ai.checkpoints import atomic_model_save
 from gridiron_ai.constants import OBS_KEY_SOFT_MASK_LEGAL
-from gridiron_ai.expert import NPZ_KEY_ACTION, batch_gym_obs, load_npz
+from gridiron_ai.expert_clone.expert import NPZ_KEY_ACTION, batch_gym_obs, load_npz
 from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
 from gridiron_ai.obs import dict_observation_space, empty_step_observation
 

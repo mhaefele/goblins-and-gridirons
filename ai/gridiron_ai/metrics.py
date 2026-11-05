@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from gridiron_ai.harness_wire import HarnessRewardSnapshotDict, TeamSide
+from gridiron_ai.api.harness_wire import HarnessRewardSnapshotDict, TeamSide
 
 from gridiron_ai.eval_opening_diag import format_opening_score_bits, fmt_metric_delta
-from gridiron_ai.expert_stats import (
+from gridiron_ai.expert_clone.expert_stats import (
     BUCKET_GAMES,
     BUCKET_SCENARIOS,
     BUCKET_TOTAL,

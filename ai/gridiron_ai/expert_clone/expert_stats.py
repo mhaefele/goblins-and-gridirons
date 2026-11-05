@@ -65,7 +65,7 @@ def wire_kind_from_action_id(action_id: Any) -> str:
 def count_kind_breakdown_from_jsonl(path: Path) -> dict[str, Counter[str]]:
     """Stream dump lines; tally kinds into scenarios / games / total via ``episodeFamily``."""
     # Lazy import: expert.py imports format helpers from this module.
-    from gridiron_ai.expert import load_jsonl_records
+    from gridiron_ai.expert_clone.expert import load_jsonl_records
 
     breakdown = empty_kind_breakdown()
     for record in load_jsonl_records(path):
@@ -86,7 +86,7 @@ def count_kinds_from_jsonl(path: Path) -> Counter[str]:
 def count_kinds_from_npz(path: Path) -> Counter[str]:
     """Tally packed kind ordinals as ``kind_{ord}`` (no AiLegalKind name mirror; total only)."""
     from gridiron_ai.actions import FACTOR_KIND
-    from gridiron_ai.expert import (
+    from gridiron_ai.expert_clone.expert import (
         NPZ_KEY_ACTION,
         NPZ_KEY_LEGAL_MOVES_FLAT,
         NPZ_KEY_LEGAL_ROW_OFFSET,

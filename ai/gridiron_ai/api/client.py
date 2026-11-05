@@ -20,7 +20,7 @@ from gridiron_ai.constants import (
     PLAY_WIDTH,
     SCHEMA_VERSION,
 )
-from gridiron_ai.harness_wire import (
+from gridiron_ai.api.harness_wire import (
     AiLegalChoiceDict,
     AiScoringDeltaDict,
     ComputerOpponentKind,

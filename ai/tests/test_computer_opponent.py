@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from gridiron_ai.env import (
+from gridiron_ai.api.env import (
     COMPUTER_KIND_HEURISTIC,
     COMPUTER_KIND_LOOKAHEAD,
     COMPUTER_KIND_ONNX,

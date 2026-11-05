@@ -22,7 +22,7 @@ _AI_ROOT = Path(__file__).resolve().parents[1]
 if str(_AI_ROOT) not in sys.path:
     sys.path.insert(0, str(_AI_ROOT))
 
-from gridiron_ai.expert import jsonl_to_npz
+from gridiron_ai.expert_clone.expert import jsonl_to_npz
 from gridiron_ai.paths import EXPERT_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", force=True)
