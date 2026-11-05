@@ -639,7 +639,7 @@ def scenario_train_budget_units(
     return max(1, timesteps // base)
 
 
-def _train_multiplier_drill_label(
+def train_multiplier_drill_label(
     scenario: str,
     levels: dict[str, int],
     *,
@@ -662,15 +662,35 @@ def _train_multiplier_drill_label(
     return f"{catalog.short_name(scenario)} ({detail})"
 
 
-def train_multiplier_summary_lines(
+def format_train_multiplier_lines(
+    by_units: dict[int, list[str]],
+    *,
+    header: str = "  train multipliers (next cycle):",
+    include_zero: bool = True,
+) -> list[str]:
+    """Render ``{units: [drill labels…]}`` as the shared 1×/2×/4× listing."""
+    if not by_units:
+        return []
+    lines = [header]
+    for units in sorted(by_units):
+        lines.append(f"    {units}×: {', '.join(by_units[units])}")
+    if include_zero:
+        lines.append("    0×: all others")
+    return lines
+
+
+def train_multiplier_groups(
     levels: dict[str, int],
     scenario_names: list[str],
     gate_failures: dict[str, dict[str, int]] | None = None,
     drill_stats: dict[str, dict[str, int]] | None = None,
     *,
+    learning: int = DEFAULT_SCENARIO_TRAIN_LEARNING,
+    mastered: int = DEFAULT_SCENARIO_TRAIN_MASTERED,
+    maintenance: int = DEFAULT_SCENARIO_TRAIN_MAINTENANCE,
     game_phase: bool = False,
-) -> list[str]:
-    """Next-cycle train × listing from ``scenario_train_budget_units`` (0× = everyone else)."""
+) -> dict[int, list[str]]:
+    """Next-cycle train × → drill labels from ``scenario_train_budget_units``."""
     failures = gate_failures if gate_failures is not None else {}
     stats = drill_stats if drill_stats is not None else {}
     catalog = require_catalog()
@@ -684,6 +704,9 @@ def train_multiplier_summary_lines(
             scenario,
             levels,
             scenario_names,
+            learning=learning,
+            mastered=mastered,
+            maintenance=maintenance,
             all_mastered=mastered_pack,
             game_phase=game_phase,
             gate_failures=failures,
@@ -693,17 +716,37 @@ def train_multiplier_summary_lines(
             continue
         difficulty = get_difficulty(levels, scenario)
         by_units.setdefault(units, []).append(
-            _train_multiplier_drill_label(
+            train_multiplier_drill_label(
                 scenario, levels, difficulty=difficulty, gate_failures=failures
             )
         )
-    if not by_units:
-        return []
-    lines = ["  train multipliers (next cycle):"]
-    for units in sorted(by_units):
-        lines.append(f"    {units}×: {', '.join(by_units[units])}")
-    lines.append("    0×: all others")
-    return lines
+    return by_units
+
+
+def train_multiplier_summary_lines(
+    levels: dict[str, int],
+    scenario_names: list[str],
+    gate_failures: dict[str, dict[str, int]] | None = None,
+    drill_stats: dict[str, dict[str, int]] | None = None,
+    *,
+    learning: int = DEFAULT_SCENARIO_TRAIN_LEARNING,
+    mastered: int = DEFAULT_SCENARIO_TRAIN_MASTERED,
+    maintenance: int = DEFAULT_SCENARIO_TRAIN_MAINTENANCE,
+    game_phase: bool = False,
+) -> list[str]:
+    """Next-cycle train × listing (0× = everyone else)."""
+    return format_train_multiplier_lines(
+        train_multiplier_groups(
+            levels,
+            scenario_names,
+            gate_failures,
+            drill_stats,
+            learning=learning,
+            mastered=mastered,
+            maintenance=maintenance,
+            game_phase=game_phase,
+        )
+    )
 
 
 def gating_scenarios_mastered(

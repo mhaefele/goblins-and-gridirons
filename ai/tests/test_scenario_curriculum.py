@@ -34,6 +34,8 @@ from gridiron_ai.scenario_curriculum import (
     scenarios_for_eval,
     scenario_needs_maintenance,
     scenario_train_budget_units,
+    format_train_multiplier_lines,
+    train_multiplier_groups,
     train_multiplier_summary_lines,
     train_timesteps_for_difficulty,
     train_timesteps_for_scenario,
@@ -563,6 +565,8 @@ def test_train_multiplier_summary_lines_lists_each_tier() -> None:
 def test_train_multiplier_summary_lines_empty_when_nothing_trains() -> None:
     levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
     assert train_multiplier_summary_lines(levels, FULL_NAMES, {}, {}, game_phase=False) == []
+    assert train_multiplier_groups(levels, FULL_NAMES, {}, {}, game_phase=False) == {}
+    assert format_train_multiplier_lines({}) == []
 
 
 def test_train_multiplier_summary_lines_notes_soft_and_proxy() -> None:

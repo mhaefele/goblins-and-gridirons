@@ -98,7 +98,6 @@ from gridiron_ai.scenario_curriculum import (
     DEFAULT_SCENARIO_TRAIN_MASTERED,
     DEFAULT_SCENARIO_TRAIN_MAINTENANCE,
     MAX_DIFFICULTY,
-    all_scenarios_mastered,
     apply_after_eval_curriculum,
     claims_unlocked,
     full_game_train_timesteps,
@@ -119,6 +118,9 @@ from gridiron_ai.scenario_curriculum import (
     scenarios_for_eval,
     SCENARIO_EVAL_GAMES,
     SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER,
+    format_train_multiplier_lines,
+    train_multiplier_drill_label,
+    train_multiplier_groups,
     train_timesteps_for_difficulty,
     train_timesteps_for_scenario,
 )
@@ -1180,14 +1182,9 @@ def _train_scenarios_segment(
         return row
 
     prefix = "Game phase scenario train" if game_phase else "Train scenarios contiguous"
-    budget = ", ".join(f"{scenario} d{difficulty}→{timesteps}ts" for scenario, difficulty, timesteps in plan)
-    print(f"{prefix} ({len(plan)} drills): {budget}", flush=True)
-
-    did_train = False
-    proxy_sources = require_catalog().proxy_sources()
+    by_units: dict[int, list[str]] = {}
+    plan_units: list[tuple[str, int, int, int]] = []
     for scenario, difficulty, timesteps in plan:
-        slug = scenario.lower()
-        do_eval = scenario not in proxy_sources
         base_ts = train_timesteps_for_difficulty(
             difficulty,
             learning=args.train_scenario_learning,
@@ -1195,6 +1192,24 @@ def _train_scenarios_segment(
             game_phase=game_phase,
         )
         units = max(1, timesteps // base_ts) if base_ts > 0 else 1
+        plan_units.append((scenario, difficulty, timesteps, units))
+        by_units.setdefault(units, []).append(
+            train_multiplier_drill_label(
+                scenario, levels, difficulty=difficulty, gate_failures=gate_failures
+            )
+        )
+    for line in format_train_multiplier_lines(
+        by_units,
+        header=f"{prefix} ({len(plan)} drills):",
+        include_zero=False,
+    ):
+        print(line, flush=True)
+
+    did_train = False
+    proxy_sources = require_catalog().proxy_sources()
+    for scenario, difficulty, timesteps, units in plan_units:
+        slug = scenario.lower()
+        do_eval = scenario not in proxy_sources
         fresh_before = do_eval and units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
 
         before: dict[str, Any] | None = None
@@ -2039,7 +2054,7 @@ def _print_startup_train_plan(
     targets: list[TrainTarget],
     forever: bool,
 ) -> None:
-    """Log config knobs and the curriculum-gated timesteps that will actually run."""
+    """Log config knobs, full-game budgets, and shared 1×/2×/4× scenario train listing."""
     print(
         f"Cycles={'∞' if forever else args.cycles} profile={args.profile} lr={_DEFAULT_LEARNING_RATE} "
         f"n_envs={DEFAULT_N_ENVS} "
@@ -2063,7 +2078,6 @@ def _print_startup_train_plan(
         levels = target.load_levels()
         gate_failures = load_gate_failures(path_for_gate_failures(target.save_stem()))
         stem_note = target.curriculum_path().name
-        all_mastered = all_scenarios_mastered(levels, scenarios) if scenarios else False
         game_phase = game_phase_unlocked(target.checkpoint_key) if scenarios else False
         gating_mastered = gating_scenarios_mastered(levels, scenarios, gate_failures) if scenarios else False
         heuristic = full_game_train_timesteps(
@@ -2075,23 +2089,21 @@ def _print_startup_train_plan(
         onnx_ts = full_game_train_timesteps(
             args.train_onnx, levels, scenarios, gate_failures, game_phase_unlocked=game_phase
         )
-        active = scenarios_for_cycle(levels, scenarios, gate_failures) if scenarios else []
-        scenario_bits: list[str] = []
-        for scenario in active:
-            difficulty = get_difficulty(levels, scenario)
-            timesteps = train_timesteps_for_scenario(
-                scenario,
+        drill_stats = load_drill_stats_cumulative(target.checkpoint_key) if scenarios else {}
+        by_units = (
+            train_multiplier_groups(
                 levels,
                 scenarios,
+                gate_failures,
+                drill_stats,
                 learning=args.train_scenario_learning,
                 mastered=args.train_scenario_mastered,
-                all_mastered=all_mastered,
                 game_phase=game_phase,
-                gate_failures=gate_failures,
-                drill_stats=load_drill_stats_cumulative(target.checkpoint_key),
             )
-            if timesteps > 0:
-                scenario_bits.append(f"{scenario} d{difficulty}→{timesteps}ts")
+            if scenarios
+            else {}
+        )
+        n_scenario_train = sum(len(labels) for labels in by_units.values())
         if not claims_unlocked(levels, scenarios, gate_failures):
             gate = f"claims deferred until board drills d{CLAIM_UNLOCK_BOARD_DIFFICULTY}"
         elif game_phase:
@@ -2100,8 +2112,8 @@ def _print_startup_train_plan(
                 if target.phase == PHASE_PROFILES
                 else "game phase (scenario_b unlocked) — full-game first"
             )
-            if scenario_bits:
-                gate += f"; scenario train: {len(scenario_bits)}"
+            if n_scenario_train:
+                gate += f"; scenario train: {n_scenario_train}"
             elif _skip_scenario_eval(args):
                 gate += "; full-game eval only"
             else:
@@ -2113,11 +2125,15 @@ def _print_startup_train_plan(
         order = "games→scenarios" if game_phase else "scenarios→games"
         print(
             f"  effective [{target.phase}/{target.checkpoint_key}/{target.reward_profile}] ({stem_note}): "
-            f"order={order} scenarios=[{', '.join(scenario_bits) or 'none'}] "
+            f"order={order} "
             f"heuristic={heuristic} lookahead={lookahead} "
             f"onnx={onnx_ts}×[{','.join(FULL_GAME_ONNX_OPPONENT_PROFILES)}] — {gate}",
             flush=True,
         )
+        for line in format_train_multiplier_lines(by_units):
+            print(line, flush=True)
+        if scenarios and not by_units:
+            print("  train multipliers (next cycle): none", flush=True)
 
 
 def main() -> None:
