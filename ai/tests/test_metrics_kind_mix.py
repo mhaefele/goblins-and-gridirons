@@ -111,9 +111,10 @@ def test_accumulate_kind_totals_single_family_txt_omits_empty(tmp_path: Path, mo
         },
     )
     txt = (tmp_path / "scenario_a" / "kind_totals.txt").read_text(encoding="utf-8")
-    assert "=== scenarios ===" in txt
+    assert "=== scenarios ===" not in txt
     assert "=== games ===" not in txt
     assert "=== total ===" not in txt
+    assert "run" in txt and "TOTAL" in txt
 
 
 def test_accumulate_kind_totals_legacy_flat(tmp_path: Path, monkeypatch) -> None:
@@ -123,8 +124,9 @@ def test_accumulate_kind_totals_legacy_flat(tmp_path: Path, monkeypatch) -> None
     assert lifetime[BUCKET_SCENARIOS] == Counter()
     assert lifetime[BUCKET_GAMES] == Counter()
     txt = (tmp_path / "scenario_a" / "kind_totals.txt").read_text(encoding="utf-8")
-    assert "=== total ===" in txt
+    assert "=== total ===" not in txt
     assert "=== scenarios ===" not in txt
+    assert "run" in txt and "block" in txt
 
 
 def test_load_kind_breakdown_legacy_counts_json(tmp_path: Path, monkeypatch) -> None:
@@ -165,9 +167,8 @@ def test_format_metrics_line_winrate_delta_vs_prior() -> None:
         difficulty=1,
         after=stats,
         before=prior,
-        before_source="before-eval",
     )
     assert "scenario learn: TD_RUN d1" in learn
     assert "drill_rate 0.200→0.000 (Δ=-0.200)" in learn
     assert "expected_p=0.050→0.006" in learn
-    assert "before=before-eval" in learn
+    assert "before=" not in learn

@@ -164,12 +164,19 @@ def format_kind_breakdown(
         buckets = (BUCKET_GAMES,)
     else:
         buckets = (BUCKET_TOTAL,)
-    sections: list[str] = []
-    if title:
-        sections.append(title)
-    for bucket in buckets:
-        sections.append(format_kind_table(breakdown[bucket], title=f"=== {bucket} ==="))
-    return "\n\n".join(sections)
+    # Single family: outer title (if any) is enough — skip redundant ``=== scenarios ===``.
+    omit_section_titles = len(buckets) == 1
+    tables = [
+        format_kind_table(
+            breakdown[bucket],
+            title=None if omit_section_titles else f"=== {bucket} ===",
+        )
+        for bucket in buckets
+    ]
+    if not title:
+        return "\n\n".join(tables)
+    # Title then table with one newline (no blank line); blank lines only between families.
+    return title + "\n" + "\n\n".join(tables)
 
 
 def write_kind_stats(

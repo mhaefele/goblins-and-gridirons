@@ -167,7 +167,6 @@ def format_scenario_learn_line(
     difficulty: int,
     after: dict[str, Any],
     before: dict[str, Any] | None = None,
-    before_source: str | None = None,
 ) -> str:
     """Post-sandwich ``scenario learn:`` drill_rate + opening bits vs ``before``."""
     after_rate = float(after["winrate"])
@@ -180,9 +179,13 @@ def format_scenario_learn_line(
     opening = format_opening_score_bits(after, prior=before).lstrip()
     if opening:
         bits.append(opening)
-    if before_source is not None:
-        bits.append(f"before={before_source}")
     return "  " + " ".join(bits)
+
+
+def _print_indented(text: str, *, indent: int = 0) -> None:
+    prefix = "  " * indent
+    for line in text.splitlines():
+        print(f"{prefix}{line}" if line else "", flush=True)
 
 
 def print_metrics(
@@ -190,11 +193,12 @@ def print_metrics(
     stats: dict[str, Any],
     *,
     prior: dict[str, Any] | None = None,
+    indent: int = 0,
 ) -> None:
-    print(format_metrics_line(label, stats, prior=prior), flush=True)
+    _print_indented(format_metrics_line(label, stats, prior=prior), indent=indent)
 
 
-def print_kind_mix(label: str, stats: dict[str, Any]) -> None:
+def print_kind_mix(label: str, stats: dict[str, Any], *, indent: int = 0) -> None:
     """Session chosen-move kinds (same shape as expert pack stats; omits empty sections)."""
     breakdown = stats.get("kind_breakdown")
     if not breakdown:
@@ -204,7 +208,10 @@ def print_kind_mix(label: str, stats: dict[str, Any]) -> None:
         breakdown = {BUCKET_TOTAL: totals}
     if not any(breakdown.get(bucket) for bucket in KIND_BUCKETS):
         return
-    print(format_kind_breakdown(breakdown, title=f"{label} chosen-move kinds"), flush=True)
+    _print_indented(
+        format_kind_breakdown(breakdown, title=f"{label} chosen-move kinds"),
+        indent=indent,
+    )
 
 
 def aggregate_episodes(episodes: list[dict[str, Any]]) -> dict[str, Any]:

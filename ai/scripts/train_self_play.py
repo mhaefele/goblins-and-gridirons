@@ -90,7 +90,6 @@ from gridiron_ai.metrics import (
     accumulate_kind_totals,
     aggregate_episodes,
     format_scenario_learn_line,
-    format_scenario_success_line,
     load_kind_breakdown,
     print_kind_mix,
     print_metrics,
@@ -200,8 +199,10 @@ DEFAULT_BATCH_SIZE = 256
 _VECNORMALIZE_SUFFIX = "_vecnormalize.pkl"
 # (scenario, difficulty) → last train-time eval this process; disk mirror is scenario_last_eval.json.
 _last_scenario_after_eval: dict[tuple[str, int], dict[str, Any]] = {}
-_EVAL_SECTION_GAP = "\n\n\n"
+# One blank line between drills (phase banners carry the rest of the structure).
+_EVAL_SECTION_GAP = "\n"
 _scenario_perfect_summaries: list[str] = []
+_SECTION_INDENT = "  "
 
 
 def _prior_scenario_eval(
@@ -236,6 +237,7 @@ def _note_kind_mix(
     print_tables: bool,
     print_lifetime: bool = False,
     accumulate: bool = True,
+    indent: int = 0,
 ) -> None:
     """Optionally print segment kind tables; train also merges into ``kind_totals.*``.
 
@@ -247,15 +249,16 @@ def _note_kind_mix(
         segment = stats.get("kind_breakdown") or stats.get("kind_totals") or {}
         accumulate_kind_totals(runs_key, segment)
     if print_tables:
-        print_kind_mix(label, stats)
+        print_kind_mix(label, stats, indent=indent)
     if print_lifetime:
-        _print_kind_lifetime(runs_key, label)
+        _print_kind_lifetime(runs_key, label, indent=indent)
 
 
-def _print_kind_lifetime(runs_key: str, label: str) -> None:
+def _print_kind_lifetime(runs_key: str, label: str, *, indent: int = 0) -> None:
     print_kind_mix(
         f"{label} lifetime [{runs_key}]",
         {"kind_breakdown": load_kind_breakdown(runs_key)},
+        indent=indent,
     )
 
 
@@ -269,6 +272,20 @@ def _eval_batch_all_wins(stats: dict[str, Any], *, games: int) -> bool:
 
 def _eval_section_break() -> None:
     print(_EVAL_SECTION_GAP, end="", flush=True)
+
+
+def _section_print(text: str, *, indent: int = 1) -> None:
+    """Print ``text`` with ``indent`` levels of nesting under a phase banner."""
+    prefix = _SECTION_INDENT * indent
+    for line in text.splitlines():
+        print(f"{prefix}{line}" if line else "", flush=True)
+
+
+def _scenario_phase_banner(label: str, *, blank_before: bool = False) -> None:
+    """Stdout fence between before-eval / train / after-eval for one drill."""
+    if blank_before:
+        print(flush=True)
+    print(f"---- {label} ----", flush=True)
 
 
 def _record_scenario_perfect_summary(
@@ -853,12 +870,12 @@ class _SegmentTimer:
         self._t0 = time.perf_counter()
         self._last = self._t0
 
-    def lap(self, label: str, *, echo: bool = True) -> float:
+    def lap(self, label: str, *, echo: bool = True, indent: int = 1) -> float:
         now = time.perf_counter()
         dt = now - self._last
         self._last = now
         if echo:
-            print(f"  {label}: {_fmt_wall_s(dt)}", flush=True)
+            _section_print(f"{label}: {_fmt_wall_s(dt)}", indent=indent)
         return dt
 
     def total_s(self) -> float:
@@ -975,12 +992,16 @@ def _train_segment(
     opp_label = opponent_metrics_label(computer_opponent, onnx_profile)
     if scenario is not None:
         label = f"vs-{opp_label}-scenario-{scenario.lower()}-d{scenario_difficulty}"
+        body_indent = 1
+        lap_indent = 2
     else:
         label = f"vs-{opp_label}"
-    print(
+        body_indent = 0
+        lap_indent = 1
+    _section_print(
         f"Train {label}: {timesteps} timesteps "
         f"(n_envs={DEFAULT_N_ENVS}, n_steps={model.n_steps}, batch_size={model.batch_size})",
-        flush=True,
+        indent=body_indent,
     )
     clk = _SegmentTimer()
     pool.configure(
@@ -994,9 +1015,9 @@ def _train_segment(
         episode_mode="TRAIN",
         soft_mask_bias=True,
     )
-    configure_s = clk.lap("configure workers")
+    clk.lap("configure workers", indent=lap_indent)
     env = _wrap_vecnormalize(pool.vec_env(DEFAULT_N_ENVS), save_stem, training=True)
-    vecnorm_s = clk.lap("vecnormalize load")
+    clk.lap("vecnormalize load", indent=lap_indent)
     model.set_env(env)
     _require_batch_divides_rollout(int(model.n_steps), DEFAULT_N_ENVS, int(model.batch_size))
 
@@ -1005,7 +1026,8 @@ def _train_segment(
         computer_opponent=opp_label,
         scenario=scenario if scenario is not None else "regular game",
         scenario_difficulty=scenario_difficulty if scenario is not None else None,
-        verbose=1,
+        # Scenario sandwich: final Train metrics line only (no per-rollout reprint).
+        verbose=0 if scenario is not None else 1,
     )
     callbacks: list[Any] = [metrics_cb]
     if FINAL_SAVE_FREQ > 0 and timesteps >= FINAL_SAVE_FREQ:
@@ -1022,21 +1044,18 @@ def _train_segment(
     except (GridironApiError, EOFError):
         _release_segment_env(env, pool)
         raise SystemExit(1) from None
-    learn_s = clk.lap("learn")
+    clk.lap("learn", indent=lap_indent)
     _save_vecnormalize(env, save_stem)
-    vecnorm_save_s = clk.lap("vecnormalize save")
+    clk.lap("vecnormalize save", indent=lap_indent)
     atomic_model_save(model, save_stem)
     _save_step_checkpoint(model, save_dir, name_prefix=name_prefix, timesteps=timesteps)
-    ckpt_save_s = clk.lap("checkpoint save")
+    clk.lap("checkpoint save", indent=lap_indent)
     stats = metrics_cb.session_summary()
     if scenario is not None:
         stats["scenario_difficulty"] = scenario_difficulty
     _release_segment_env(env, pool)
-    print(
-        f"  timing: {clk.summary(('configure', configure_s), ('vecnorm', vecnorm_s), ('learn', learn_s), ('vecnorm save', vecnorm_save_s), ('ckpt save', ckpt_save_s))}",
-        flush=True,
-    )
-    print_metrics(f"Train {label}", stats)
+    # Laps already printed — no second timing summary line.
+    print_metrics(f"Train {label}", stats, indent=body_indent)
     # Segment table only — lifetime once after all scenarios (or after full-game train).
     _note_kind_mix(
         runs_key,
@@ -1044,6 +1063,7 @@ def _train_segment(
         stats,
         print_tables=True,
         print_lifetime=scenario is None,
+        indent=body_indent,
     )
     return stats
 
@@ -1131,33 +1151,33 @@ def _apply_scenario_after_eval(
     new_level = get_difficulty(levels, scenario)
     fails = gate_failure_count(gate_failures, scenario, difficulty=difficulty)
     if action == "bump":
-        print(
-            f"  curriculum: {scenario} passed at d{difficulty} → d{new_level} ({curriculum_path.name})",
-            flush=True,
+        _section_print(
+            f"curriculum: {scenario} passed at d{difficulty} → d{new_level} ({curriculum_path.name})",
+            indent=1,
         )
     elif action == "demote":
-        print(
-            f"  curriculum: {scenario} failed at d{difficulty} → d{new_level} "
+        _section_print(
+            f"curriculum: {scenario} failed at d{difficulty} → d{new_level} "
             f"(gate_failures d{difficulty}={fails}; {curriculum_path.name})",
-            flush=True,
+            indent=1,
         )
     elif action == "waive":
-        print(
-            f"  curriculum: {scenario} progress gating waived at d{difficulty} "
+        _section_print(
+            f"curriculum: {scenario} progress gating waived at d{difficulty} "
             f"({fails} fails; still training; {gate_failures_path.name})",
-            flush=True,
+            indent=1,
         )
     elif action == "recover":
-        print(
-            f"  curriculum: {scenario} passed at d{difficulty} — progress gating restored "
+        _section_print(
+            f"curriculum: {scenario} passed at d{difficulty} — progress gating restored "
             f"({curriculum_path.name})",
-            flush=True,
+            indent=1,
         )
     elif action == "fail":
-        print(
-            f"  curriculum: {scenario} gate fail at d{difficulty} "
+        _section_print(
+            f"curriculum: {scenario} gate fail at d{difficulty} "
             f"(failures={fails}; {gate_failures_path.name})",
-            flush=True,
+            indent=1,
         )
     return levels, gate_failures, drill_stats
 
@@ -1263,13 +1283,12 @@ def _train_scenarios_segment(
         fresh_before = do_eval and units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
 
         before: dict[str, Any] | None = None
-        before_source: str | None = None
+        tag = f"{scenario} d{difficulty}"
         if fresh_before:
-            print(
-                f"Scenario {scenario} d{difficulty}: before-eval ({units}×, {eval_games}g) → "
-                f"train {timesteps}ts → after-eval ({eval_games}g)",
-                flush=True,
+            _scenario_phase_banner(
+                f"before-eval starting — {tag} ({units}×, {eval_games}g)"
             )
+            phase_t0 = time.perf_counter()
             before = _eval_one_scenario(
                 model,
                 args=args,
@@ -1281,23 +1300,26 @@ def _train_scenarios_segment(
                 difficulty=difficulty,
                 games=eval_games,
             )
-            before_source = "before-eval"
             row.update(_cycle_stats_fields(f"eval_scenario_{slug}_before", before))
+            _scenario_phase_banner(
+                f"before-eval complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
+            )
         elif do_eval:
             prior = _prior_scenario_eval(scenario, difficulty, save_stem)
             if prior is not None:
                 before = prior
-                before_source = "prior-eval"
-            games_bit = f" → after-eval ({eval_games}g)" if eval_games != SCENARIO_EVAL_GAMES else " → after-eval"
-            print(f"Scenario {scenario} d{difficulty}: train {timesteps}ts{games_bit}", flush=True)
+
+        if do_eval:
+            train_detail = f"{timesteps} ts"
         else:
             proxy = require_catalog().curriculum_key(scenario)
-            print(
-                f"Scenario {scenario} d{difficulty}: train {timesteps}ts "
-                f"(no scenario eval — difficulty tracks {proxy})",
-                flush=True,
-            )
+            train_detail = f"{timesteps} ts; no eval — tracks {proxy}"
+        _scenario_phase_banner(
+            f"training starting — {tag} ({train_detail})",
+            blank_before=fresh_before,
+        )
 
+        phase_t0 = time.perf_counter()
         stats = _train_segment(
             model,
             args=args,
@@ -1320,11 +1342,19 @@ def _train_scenarios_segment(
         row.update(_cycle_stats_fields(f"train_scenario_{slug}", stats))
         drill_stats = record_train_cycles(drill_stats, scenario, units=units)
         save_drill_stats(drill_stats_path, drill_stats)
+        _scenario_phase_banner(
+            f"training complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
+        )
 
         if not do_eval:
             _eval_section_break()
             continue
 
+        _scenario_phase_banner(
+            f"after-eval starting — {tag} ({eval_games}g)",
+            blank_before=True,
+        )
+        phase_t0 = time.perf_counter()
         after = _eval_one_scenario(
             model,
             args=args,
@@ -1342,7 +1372,6 @@ def _train_scenarios_segment(
             difficulty=difficulty,
             before=before,
             after=after,
-            before_source=before_source,
             row=row,
             slug=slug,
         )
@@ -1358,6 +1387,9 @@ def _train_scenarios_segment(
             drill_stats_path=drill_stats_path,
             expected_games=eval_games,
         )
+        _scenario_phase_banner(
+            f"after-eval complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
+        )
         _eval_section_break()
     if did_train:
         _print_kind_lifetime(runs_key, "Train scenarios")
@@ -1370,7 +1402,6 @@ def _print_scenario_learn_line(
     difficulty: int,
     before: dict[str, Any] | None,
     after: dict[str, Any],
-    before_source: str | None,
     row: dict[str, Any],
     slug: str,
 ) -> None:
@@ -1380,15 +1411,15 @@ def _print_scenario_learn_line(
         delta = float(after["winrate"]) - prior_rate
         row[f"eval_scenario_{slug}_prior_winrate"] = f"{prior_rate:.6f}"
         row[f"eval_scenario_{slug}_delta_winrate"] = f"{delta:.6f}"
-    print(
+    # Strip leading spaces from formatter — section indent owns nesting.
+    _section_print(
         format_scenario_learn_line(
             scenario=scenario,
             difficulty=difficulty,
             after=after,
             before=before,
-            before_source=before_source,
-        ),
-        flush=True,
+        ).lstrip(),
+        indent=1,
     )
 
 
@@ -1543,10 +1574,9 @@ def _eval_segment(
     quiet_scenario = scenario is not None
     game_lines: list[str] | None = [] if quiet_scenario else None
     echo_laps = not quiet_scenario
-    if echo_laps:
-        print(header, flush=True)
-    elif not args.eval_only:
-        print(header, flush=True)
+    body_indent = 1 if quiet_scenario else 0
+    # One header only — no second reprint with timing after the games.
+    _section_print(header, indent=body_indent)
     clk = _SegmentTimer()
     pool.configure(
         opponent_mode=opponent_mode,
@@ -1559,12 +1589,12 @@ def _eval_segment(
         episode_mode=episode_mode,
         soft_mask_bias=soft_mask_bias,
     )
-    configure_s = clk.lap("configure workers", echo=echo_laps)
+    configure_s = clk.lap("configure workers", echo=echo_laps, indent=1)
     env = pool.vec_env(workers)
     episodes: list[dict[str, Any]] = []
     try:
         obs = env.reset()
-        reset_s = clk.lap(f"reset {workers} matches", echo=echo_laps)
+        reset_s = clk.lap(f"reset {workers} matches", echo=echo_laps, indent=1)
         completions = 0
         while completions < games:
             actions, _states = model.predict(obs, deterministic=True)
@@ -1597,7 +1627,7 @@ def _eval_segment(
                     episodes.append(summary)
                 if completions >= games:
                     break
-        games_s = clk.lap(f"play {games} games", echo=echo_laps)
+        games_s = clk.lap(f"play {games} games", echo=echo_laps, indent=1)
     except (GridironApiError, EOFError):
         _release_segment_env(env, pool)
         raise
@@ -1608,7 +1638,6 @@ def _eval_segment(
     if scenario is not None:
         stats["scenario_difficulty"] = scenario_difficulty
         stats.update(aggregate_opening_move_scores(episodes))
-    timing_bit = f" ({clk.summary(('configure', configure_s), ('reset', reset_s), ('games', games_s))})"
     quiet_perfect = quiet_scenario and _eval_batch_all_wins(stats, games=games)
     if quiet_perfect:
         _record_scenario_perfect_summary(
@@ -1617,18 +1646,25 @@ def _eval_segment(
             scenario_difficulty=scenario_difficulty,
         )
     else:
-        if quiet_scenario:
-            _eval_section_break()
-            print(f"{header}{timing_bit}", flush=True)
-        else:
-            print(f"  timing: {timing_bit.lstrip(' (').rstrip(')')}", flush=True)
+        if echo_laps:
+            _section_print(
+                f"timing: {clk.summary(('configure', configure_s), ('reset', reset_s), ('games', games_s))}",
+                indent=1,
+            )
         if game_lines:
             for line in game_lines:
-                print(line, flush=True)
-        print_metrics(f"Eval {tagged}", stats, prior=metrics_prior)
-        _note_kind_mix(runs_key, f"Eval {tagged}", stats, print_tables=True, accumulate=False)
-        if quiet_scenario:
-            print(format_scenario_success_line(stats, prior=metrics_prior), flush=True)
+                # Built-in ``  game`` + detail indents; +1 nests under the Eval header.
+                _section_print(line, indent=body_indent)
+        print_metrics(f"Eval {tagged}", stats, prior=metrics_prior, indent=body_indent)
+        _note_kind_mix(
+            runs_key,
+            f"Eval {tagged}",
+            stats,
+            print_tables=True,
+            accumulate=False,
+            indent=body_indent,
+        )
+        # No ``scenario success:`` — same drill_rate / opening bits as the Eval metrics line.
 
     if not args.eval_only:
         eval_dir = EVAL_DIR / profile
@@ -1648,14 +1684,8 @@ def _eval_segment(
         t0 = time.perf_counter()
         out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         write_s = time.perf_counter() - t0
-        if quiet_scenario:
-            timing_on_wrote = (
-                f"{clk.summary(('configure', configure_s), ('reset', reset_s), ('games', games_s))}; "
-                f"write {_fmt_wall_s(write_s)}"
-            )
-        else:
-            timing_on_wrote = f"total {_fmt_wall_s(clk.total_s())}; write {_fmt_wall_s(write_s)}"
-        print(f"Wrote {out} ({timing_on_wrote})", flush=True)
+        # Phase banner carries wall time; only note write cost + basename here.
+        _section_print(f"wrote {out.name} (write {_fmt_wall_s(write_s)})", indent=body_indent)
     return stats
 
 
