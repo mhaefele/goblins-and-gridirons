@@ -7,10 +7,10 @@ import com.mhaefele.gridiron.model.TrainingScenarioEnum
 import com.mhaefele.gridiron.shared.TeamSide
 import org.springframework.stereotype.Component
 
+/** Soft-mask: no ball → pickup runs; has ball → carrier runs into the scoring end zone. */
 @Component
 class LooseBallRunTrainingScenario : AbstractLooseBallTrainingScenario(contested = false) {
     override val scenario = TrainingScenarioEnum.LOOSE_BALL_RUN
-    override val expectedBudgetedActions = 2
 
     override fun validateBoard(state: MatchState, trainerSide: TeamSide, legals: List<LegalAction>) {
         require(
@@ -20,6 +20,20 @@ class LooseBallRunTrainingScenario : AbstractLooseBallTrainingScenario(contested
         ) { "LOOSE_BALL_RUN: no legal trainer run picks up the loose ball" }
     }
 
-    override fun isSoftMaskOpeningMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
-        action is LegalAction.Run && action.ballEncounter == BallEncounter.PICK_UP && state.board.players[action.playerId]?.team == trainerSide
+    override fun isSoftMaskScenarioMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
+        isLessonRun(action, state, trainerSide)
+
+    /** PASS only once carrying — pickup soft-masks but does not grade PASS. */
+    override fun isPassingScenarioMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
+        trainerBallCarrierOrNull(state, trainerSide) != null && isLessonRun(action, state, trainerSide)
+
+    private fun isLessonRun(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
+        if (action !is LegalAction.Run || state.board.players[action.playerId]?.team != trainerSide) return false
+        val carrier = trainerBallCarrierOrNull(state, trainerSide)
+        return if (carrier == null) {
+            action.ballEncounter == BallEncounter.PICK_UP
+        } else {
+            action.playerId == carrier.id && state.board.squareAt(action.path.squares.last()).isEndZone(trainerSide.opposite())
+        }
+    }
 }

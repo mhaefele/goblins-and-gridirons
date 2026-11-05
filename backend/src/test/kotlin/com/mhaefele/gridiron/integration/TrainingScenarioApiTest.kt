@@ -93,7 +93,10 @@ class TrainingScenarioApiTest : BaseApiTest() {
         val softMask = step.harness.legalRows.filter { it.softMaskLegal }
         val passing = step.harness.legalRows.filter { it.passingLegal }
         when (scenario) {
-            TrainingScenarioEnum.MARKED_RUN -> {
+            TrainingScenarioEnum.MARKED_RUN,
+            TrainingScenarioEnum.LOOSE_BALL_RUN,
+                                         -> {
+                // Soft-mask the setup move; PASS waits for the scoring follow-up.
                 assertThat(softMask).isNotEmpty()
                 assertThat(passing).isEmpty()
             }
@@ -123,28 +126,31 @@ class TrainingScenarioApiTest : BaseApiTest() {
     }
 
     @Test
-    fun `GUI submit grades training drill status on scenario matches`() {
-        withRandomDiceRetries {
-            val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.LOOSE_BALL_RUN))
-            val state = loadMatch(response.matchId)
-            assertThat(state.trainingEpisode!!.drillStatus).isEqualTo(TrainingDrillStatus.STILL_IN_PROGRESS)
-            val passing = legalMovesGenerator.forActingCoach(state).filter { trainingScenarios.isPassingScenarioMove(it, state) }
-            check(passing.isNotEmpty()) { "LOOSE_BALL_RUN: expected a passing opening move" }
-            api.play(response.matchId, passing.first().id)
-            assertThat(loadMatch(response.matchId).trainingEpisode!!.drillStatus).isEqualTo(TrainingDrillStatus.PASS)
-        }
-    }
-
-    @Test
-    fun `soft-mask scenario flags clear after the first player action`() {
+    fun `LOOSE_BALL_RUN soft-masks pickup then EZ continue and PASSes on score`() {
         withRandomDiceRetries {
             val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.LOOSE_BALL_RUN))
             val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
-            val pickup = opening.harness.legalRows.first { it.softMaskLegal }
-            val submitted = api.aiSubmit(response.matchId, pickup.action.id, forSeat = TeamSide.HOME)
-            val nextChoices = submitted.next.harness.legalRows.ifEmpty { api.aiStep(response.matchId, forSeat = TeamSide.HOME).harness.legalRows }
-            assertThat(nextChoices).isNotEmpty()
-            assertThat(nextChoices).noneMatch { it.softMaskLegal }
+            val openingSoft = opening.harness.legalRows.filter { it.softMaskLegal }
+            assertThat(openingSoft).isNotEmpty()
+            assertThat(opening.harness.legalRows.filter { it.passingLegal }).isEmpty()
+            // Shortest pickup leaves the most residual MA for the EZ continue.
+            val pickup = openingSoft.map { it.action }.filterIsInstance<LegalAction.Run>().minBy { it.path.steps }
+
+            val afterPickup = api.aiSubmit(response.matchId, pickup.id, forSeat = TeamSide.HOME)
+            val afterPickupState = loadMatch(response.matchId)
+            assertThat(afterPickupState.trainingEpisode!!.drillStatus).isEqualTo(TrainingDrillStatus.STILL_IN_PROGRESS)
+            val continueRows = afterPickup.next.harness.legalRows.ifEmpty { api.aiStep(response.matchId, forSeat = TeamSide.HOME).harness.legalRows }
+            val continueSoft = continueRows.filter { it.softMaskLegal }
+            assertThat(continueSoft).isNotEmpty()
+            assertThat(continueRows.filter { it.passingLegal }).isEqualTo(continueSoft)
+            val scoringEndZone = afterPickupState.trainingEpisode!!.trainerSide.opposite()
+            assertThat(continueSoft).allMatch { row ->
+                val run = row.action as? LegalAction.Run ?: return@allMatch false
+                afterPickupState.board.squareAt(run.path.squares.last()).isEndZone(scoringEndZone)
+            }
+
+            api.aiSubmit(response.matchId, continueSoft.first().action.id, forSeat = TeamSide.HOME)
+            assertThat(loadMatch(response.matchId).trainingEpisode!!.drillStatus).isEqualTo(TrainingDrillStatus.PASS)
         }
     }
 
