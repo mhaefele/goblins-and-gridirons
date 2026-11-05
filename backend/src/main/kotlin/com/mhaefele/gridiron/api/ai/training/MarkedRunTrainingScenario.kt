@@ -3,12 +3,17 @@ package com.mhaefele.gridiron.api.ai.training
 import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.game.action.utils.standingStatus
 import com.mhaefele.gridiron.model.MatchState
+import com.mhaefele.gridiron.model.TrainingDrillStatus
 import com.mhaefele.gridiron.model.TrainingScenarioEnum
 import com.mhaefele.gridiron.shared.StandingStatus
 import com.mhaefele.gridiron.shared.TeamSide
 import org.springframework.stereotype.Component
 import kotlin.math.abs
 
+/**
+ * Soft-mask / expected: marked → carrier sidestep; open → carrier EZ run.
+ * Drill PASSes on touchdown only — opening expected sidestep must not grade PASS.
+ */
 @Component
 class MarkedRunTrainingScenario : AbstractTrainingScenario() {
     override val scenario = TrainingScenarioEnum.MARKED_RUN
@@ -40,10 +45,22 @@ class MarkedRunTrainingScenario : AbstractTrainingScenario() {
         return action is LegalAction.Sidestep && action.playerId == carrier.id
     }
 
-    override fun isPassingOpeningMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean = false
+    override fun isPassingOpeningMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
+        isSoftMaskOpeningMove(action, state, trainerSide)
 
-    override fun isPassingFollowUpMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
-        val carrier = state.board.players.values.singleOrNull { it.team == trainerSide && it.heldBallId != null } ?: return false
+    override fun isSoftMaskFollowUpMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
+        isScoringRun(action, state, trainerSide)
+
+    override fun isPassingFollowUpMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
+        isScoringRun(action, state, trainerSide)
+
+    override fun drillStatus(before: MatchState, after: MatchState, action: LegalAction): TrainingDrillStatus {
+        if (scoredTouchdown(before, after, trainerSide(before))) return TrainingDrillStatus.PASS
+        return TrainingDrillStatus.STILL_IN_PROGRESS
+    }
+
+    private fun isScoringRun(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
+        val carrier = trainerBallCarrierOrNull(state, trainerSide) ?: return false
         if (action !is LegalAction.Run || action.playerId != carrier.id) return false
         return state.board.squareAt(action.path.squares.last()).isEndZone(trainerSide.opposite())
     }

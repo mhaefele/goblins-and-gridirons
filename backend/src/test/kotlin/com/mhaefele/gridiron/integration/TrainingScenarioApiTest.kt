@@ -96,9 +96,9 @@ class TrainingScenarioApiTest : BaseApiTest() {
             TrainingScenarioEnum.MARKED_RUN,
             TrainingScenarioEnum.LOOSE_BALL_RUN,
                                          -> {
-                // Soft-mask the setup move; PASS waits for the scoring follow-up.
+                // Multi-step: opening expected (= passing) matches soft-mask; drill PASSes on TD only.
                 assertThat(softMask).isNotEmpty()
-                assertThat(passing).isEmpty()
+                assertThat(passing).isEqualTo(softMask)
             }
             TrainingScenarioEnum.THROW_TO_ENDZONE,
             TrainingScenarioEnum.THROW_CLOSER_RANGE,
@@ -132,7 +132,7 @@ class TrainingScenarioApiTest : BaseApiTest() {
             val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
             val openingSoft = opening.harness.legalRows.filter { it.softMaskLegal }
             assertThat(openingSoft).isNotEmpty()
-            assertThat(opening.harness.legalRows.filter { it.passingLegal }).isEmpty()
+            assertThat(opening.harness.legalRows.filter { it.passingLegal }).isEqualTo(openingSoft)
             // Shortest pickup leaves the most residual MA for the EZ continue.
             val pickup = openingSoft.map { it.action }.filterIsInstance<LegalAction.Run>().minBy { it.path.steps }
 

@@ -336,9 +336,21 @@ def format_opening_score_bits(
     """Compact `` expected_p=… expected_best_p=… first_p=… expected_rank=…`` or empty.
 
     When ``prior`` has the same aggregates, values render as ``before→after`` drift.
+    Omits the whole strip when neither side has expected-row scores — chosen-only
+    ``first_p`` alone is noise (e.g. openings with no ``expected=`` rows).
     """
     fields = opening_score_fields(stats)
     prior_fields = opening_score_fields(prior) if prior is not None else None
+    expected_keys = (
+        "opening_expected_p_mean",
+        "opening_expected_p_best_mean",
+        "opening_expected_rank_best_mean",
+    )
+    has_expected = any(fields[key] is not None for key in expected_keys) or (
+        prior_fields is not None and any(prior_fields[key] is not None for key in expected_keys)
+    )
+    if not has_expected:
+        return ""
     bits: list[str] = []
     for key, label, digits in (
         ("opening_expected_p_mean", "expected_p", 3),

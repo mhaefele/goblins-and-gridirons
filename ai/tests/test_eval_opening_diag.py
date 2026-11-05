@@ -77,6 +77,7 @@ def test_aggregate_opening_move_scores_empty() -> None:
 
 def test_format_opening_score_bits_and_episodes_raw_fallback() -> None:
     assert format_opening_score_bits({}) == ""
+    assert format_opening_score_bits({"opening_chosen_p_mean": 0.631}) == ""
     assert (
         format_opening_score_bits(
             {

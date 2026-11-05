@@ -14,6 +14,8 @@ across promotions (all-time = sum); only the current level is cleared on waive r
 ``{save_stem}.scenario_drill_stats.json`` — per-phase drill ``cycles`` (train sandwich
 units; gate-fail 2× budget counts as 2) and ``d5_demotes``. Summary / train multipliers
 use ``training_phases.load_drill_stats_cumulative`` (scenario_a → … → current).
+``{save_stem}.scenario_last_eval.json`` — last train-time eval metrics per drill@d
+(winrate + opening p/rank) for prior→current deltas across process restarts.
 Phases (scenario_a board→d4 / scenario_b all→d5 / profiles games): ``training_phases``.
 Drills with fails at their **current** difficulty get ``SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER``×
 train budget below d5 (gating drills only — ``gatesProgress=false`` never multiplies; d5 gate
@@ -74,6 +76,15 @@ SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD = 5
 _SUFFIX = ".scenario_difficulty.json"
 _GATE_FAILURES_SUFFIX = ".scenario_gate_failures.json"
 _DRILL_STATS_SUFFIX = ".scenario_drill_stats.json"
+_LAST_EVAL_SUFFIX = ".scenario_last_eval.json"
+# Slim fields persisted for Eval-line / learn-line prior→current deltas.
+LAST_EVAL_METRIC_KEYS = (
+    "winrate",
+    "opening_expected_p_mean",
+    "opening_expected_p_best_mean",
+    "opening_chosen_p_mean",
+    "opening_expected_rank_best_mean",
+)
 
 # Per-scenario PPO timesteps each train cycle (not pooled — each scenario gets its own budget).
 # Sized in whole rollouts at locked defaults (n_envs=30 × n_steps=128 = 3840).
@@ -98,6 +109,116 @@ def path_for_gate_failures(save_stem: Path) -> Path:
 def path_for_drill_stats(save_stem: Path) -> Path:
     """``…/maskable_ppo_selfplay_final.scenario_drill_stats.json`` beside difficulty JSON."""
     return Path(str(save_stem) + _DRILL_STATS_SUFFIX)
+
+
+def path_for_last_eval(save_stem: Path) -> Path:
+    """``…/maskable_ppo_selfplay_final.scenario_last_eval.json`` beside difficulty JSON."""
+    return Path(str(save_stem) + _LAST_EVAL_SUFFIX)
+
+
+def _atomic_write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, indent=2) + "\n"
+    fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+            tmp.write(text)
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def load_last_eval(path: Path) -> dict[str, dict[str, dict[str, Any]]]:
+    """Scenario curriculum key → difficulty level (str) → slim last-eval metrics."""
+    if not path.is_file():
+        return {}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    for scenario, by_level in raw.items():
+        if not isinstance(by_level, dict):
+            continue
+        levels: dict[str, dict[str, Any]] = {}
+        for level_key, metrics in by_level.items():
+            if not isinstance(metrics, dict):
+                continue
+            try:
+                level = str(_clamp(int(level_key)))
+            except (TypeError, ValueError):
+                continue
+            slim: dict[str, Any] = {}
+            for field in LAST_EVAL_METRIC_KEYS:
+                value = metrics.get(field)
+                if value is None:
+                    slim[field] = None
+                else:
+                    try:
+                        slim[field] = float(value)
+                    except (TypeError, ValueError):
+                        slim[field] = None
+            levels[level] = slim
+        if levels:
+            out[str(scenario)] = levels
+    return out
+
+
+def save_last_eval(path: Path, last_eval: dict[str, dict[str, dict[str, Any]]]) -> None:
+    payload = {
+        scenario: {
+            str(_clamp(int(level))): {
+                field: metrics.get(field) for field in LAST_EVAL_METRIC_KEYS
+            }
+            for level, metrics in sorted(by_level.items())
+        }
+        for scenario, by_level in sorted(last_eval.items())
+        if by_level
+    }
+    _atomic_write_json(path, payload)
+
+
+def last_eval_metrics(
+    last_eval: dict[str, dict[str, dict[str, Any]]],
+    scenario: str,
+    difficulty: int,
+) -> dict[str, Any] | None:
+    """Slim metrics for ``scenario`` at ``difficulty``, or ``None`` when missing."""
+    by_level = last_eval.get(curriculum_key(scenario), {})
+    return by_level.get(str(_clamp(difficulty)))
+
+
+def extract_last_eval_metrics(stats: dict[str, Any]) -> dict[str, Any]:
+    """Pull the slim prior-delta fields from a full eval ``stats`` dict."""
+    slim: dict[str, Any] = {}
+    for field in LAST_EVAL_METRIC_KEYS:
+        value = stats.get(field)
+        if value is None:
+            slim[field] = None
+        else:
+            slim[field] = float(value)
+    return slim
+
+
+def record_last_eval(
+    last_eval: dict[str, dict[str, dict[str, Any]]],
+    scenario: str,
+    difficulty: int,
+    stats: dict[str, Any],
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Return a copy of ``last_eval`` with ``scenario``@``difficulty`` replaced by ``stats``."""
+    updated = {
+        name: {level: dict(metrics) for level, metrics in by_level.items()}
+        for name, by_level in last_eval.items()
+    }
+    key = curriculum_key(scenario)
+    by_level = dict(updated.get(key, {}))
+    by_level[str(_clamp(difficulty))] = extract_last_eval_metrics(stats)
+    updated[key] = by_level
+    return updated
 
 
 def load_levels(path: Path) -> dict[str, int]:

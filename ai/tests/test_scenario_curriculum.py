@@ -24,11 +24,16 @@ from gridiron_ai.scenario_curriculum import (
     gating_scenarios_mastered,
     get_difficulty,
     is_progress_waived,
+    last_eval_metrics,
+    load_last_eval,
     maybe_bump_after_perfect_eval,
     merge_drill_stats,
     maybe_demote_after_failed_max_eval,
+    path_for_last_eval,
     record_gate_failure,
+    record_last_eval,
     record_train_cycles,
+    save_last_eval,
     scenario_max_coach_turns,
     scenarios_for_cycle,
     scenarios_for_eval,
@@ -195,6 +200,28 @@ def test_scenarios_for_cycle_orders_by_ascending_difficulty() -> None:
 def test_train_timesteps_zero_knobs_skip() -> None:
     assert train_timesteps_for_difficulty(0, learning=0, mastered=0) == 0
     assert train_timesteps_for_difficulty(MAX_DIFFICULTY, learning=0, mastered=0) == 0
+
+
+def test_last_eval_round_trip(tmp_path) -> None:
+    path = path_for_last_eval(tmp_path / "maskable_ppo_selfplay_final")
+    assert load_last_eval(path) == {}
+    stats = {
+        "winrate": 0.3,
+        "opening_expected_p_mean": None,
+        "opening_expected_p_best_mean": 0.05,
+        "opening_chosen_p_mean": 0.631,
+        "opening_expected_rank_best_mean": 12.0,
+        "episodes": 10,
+    }
+    saved = record_last_eval({}, "TD_RUN", 1, stats)
+    save_last_eval(path, saved)
+    loaded = load_last_eval(path)
+    prior = last_eval_metrics(loaded, "TD_RUN", 1)
+    assert prior is not None
+    assert prior["winrate"] == 0.3
+    assert prior["opening_chosen_p_mean"] == 0.631
+    assert prior["opening_expected_p_mean"] is None
+    assert last_eval_metrics(loaded, "TD_RUN", 2) is None
 
 
 def test_bounce_difficulty_tracks_loose_ball_run() -> None:

@@ -106,15 +106,20 @@ from gridiron_ai.scenario_curriculum import (
     gate_failure_count,
     gating_scenarios_mastered,
     get_difficulty,
+    last_eval_metrics,
     load_drill_stats,
     load_gate_failures,
+    load_last_eval,
     load_levels,
     path_for_drill_stats,
     path_for_gate_failures,
+    path_for_last_eval,
     path_for_stem,
+    record_last_eval,
     record_train_cycles,
     save_drill_stats,
     save_gate_failures,
+    save_last_eval,
     save_levels,
     scenarios_for_cycle,
     scenarios_for_eval,
@@ -191,10 +196,34 @@ DEFAULT_BATCH_SIZE = 256
 
 # Deterministic games for each scenario after-eval (10); delta vs prior eval at same @d.
 _VECNORMALIZE_SUFFIX = "_vecnormalize.pkl"
-# (scenario, difficulty) → stats from the last scenario eval this process (winrate + opening p/rank).
+# (scenario, difficulty) → last train-time eval this process; disk mirror is scenario_last_eval.json.
 _last_scenario_after_eval: dict[tuple[str, int], dict[str, Any]] = {}
 _EVAL_SECTION_GAP = "\n\n\n"
 _scenario_perfect_summaries: list[str] = []
+
+
+def _prior_scenario_eval(
+    scenario: str,
+    difficulty: int,
+    save_stem: Path,
+) -> dict[str, Any] | None:
+    """In-memory last eval, else slim metrics from ``{stem}.scenario_last_eval.json``."""
+    prior = _last_scenario_after_eval.get((scenario, difficulty))
+    if prior is not None:
+        return prior
+    return last_eval_metrics(load_last_eval(path_for_last_eval(save_stem)), scenario, difficulty)
+
+
+def _remember_scenario_eval(
+    scenario: str,
+    difficulty: int,
+    stats: dict[str, Any],
+    save_stem: Path,
+) -> None:
+    """Update process cache + persist slim metrics beside the checkpoint stem."""
+    _last_scenario_after_eval[(scenario, difficulty)] = stats
+    path = path_for_last_eval(save_stem)
+    save_last_eval(path, record_last_eval(load_last_eval(path), scenario, difficulty, stats))
 
 
 def _note_kind_mix(
@@ -1021,16 +1050,17 @@ def _eval_one_scenario(
     pool: WorkerPool,
     profile: RewardProfileName,
     runs_key: str,
+    save_stem: Path,
     scenario: str,
     difficulty: int,
 ) -> dict[str, Any]:
     """Deterministic eval for one drill at its current curriculum difficulty.
 
-    Eval line shows ``before→after`` vs the last same drill@d train-time eval this
-    process (if any). Cache updates only while training — ``--eval-only`` never writes.
+    Eval line shows ``before→after`` vs the last same drill@d train-time eval (memory,
+    else ``{stem}.scenario_last_eval.json``). Persists only while training — ``--eval-only``
+    never writes the cache or sidecar.
     """
-    key = (scenario, difficulty)
-    prior = _last_scenario_after_eval.get(key)
+    prior = _prior_scenario_eval(scenario, difficulty, save_stem)
     stats = _eval_segment(
         model,
         args=args,
@@ -1046,7 +1076,7 @@ def _eval_one_scenario(
         metrics_prior=prior,
     )
     if not args.eval_only:
-        _last_scenario_after_eval[key] = stats
+        _remember_scenario_eval(scenario, difficulty, stats, save_stem)
     return stats
 
 
@@ -1227,16 +1257,17 @@ def _train_scenarios_segment(
                 pool=pool,
                 profile=profile,
                 runs_key=runs_key,
+                save_stem=save_stem,
                 scenario=scenario,
                 difficulty=difficulty,
             )
             before_source = "before-eval"
             row.update(_cycle_stats_fields(f"eval_scenario_{slug}_before", before))
         elif do_eval:
-            prior = _last_scenario_after_eval.get((scenario, difficulty))
+            prior = _prior_scenario_eval(scenario, difficulty, save_stem)
             if prior is not None:
                 before = prior
-                before_source = "prior-cycle"
+                before_source = "prior-eval"
             print(f"Scenario {scenario} d{difficulty}: train {timesteps}ts → after-eval", flush=True)
         else:
             proxy = require_catalog().curriculum_key(scenario)
@@ -1279,6 +1310,7 @@ def _train_scenarios_segment(
             pool=pool,
             profile=profile,
             runs_key=runs_key,
+            save_stem=save_stem,
             scenario=scenario,
             difficulty=difficulty,
         )
@@ -1654,6 +1686,7 @@ def _eval_scenarios_segment(
             pool=pool,
             profile=profile,
             runs_key=runs_key,
+            save_stem=save_stem,
             scenario=scenario,
             difficulty=difficulty,
         )

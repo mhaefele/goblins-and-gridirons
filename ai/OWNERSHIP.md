@@ -34,7 +34,7 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 | Episode metrics / TB aggregates / eval·learn stdout lines | `gridiron_ai/metrics.py`, `tb_callback.py` (opening bits → `eval_opening_diag`) | Re-format winrate/opening deltas in `train_self_play` |
 | **Drill board / expected moves / coach window** | Kotlin `api/ai/training/**` + `TrainingScenarioEnum`; semantics in [`backend/TRAINING_SCENARIOS.md`](../backend/TRAINING_SCENARIOS.md) | Script boards in Python |
 | Scenario catalog (name / family / difficultyProxy) | Kotlin `GET /api/ai/training/scenarios` → cached `output/scenario_catalog.json` via `scenarios.py` | Hard-code name lists in Python or frontend |
-| Difficulty JSON, lead, unlock levels, scenario timesteps, gate-failure counts | `gridiron_ai/scenario_curriculum.py` | — |
+| Difficulty JSON, lead, unlock levels, scenario timesteps, gate-failure counts, last-eval metrics sidecar | `gridiron_ai/scenario_curriculum.py` | — |
 | Phase routing / fork-from-prior / **profile→checkpoint** (`active_targets`, `resolve_targets`, `TrainTarget` paths) / gate transitions (`advance_pipeline`, `force_promote`) | `gridiron_ai/training_phases.py` | Copy expert seed onto shaped profiles; invent `CHECKPOINT_DIR / profile` in summary/play/train; auto-wipe later phases |
 | **Saved pipeline FSM** (stage, split, per-profile climbing/games) | `gridiron_ai/pipeline_state.py` → `checkpoints/pipeline.json` | Re-derive stage from zips / marker files; write it from readers (summary, status) |
 | Train/eval **orchestration** (PPO, vec-env, cycle) | `scripts/train_self_play.py` | Put phase *policy* here — belong in curriculum/phases |
