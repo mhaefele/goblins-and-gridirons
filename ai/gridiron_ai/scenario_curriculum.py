@@ -639,6 +639,29 @@ def scenario_train_budget_units(
     return max(1, timesteps // base)
 
 
+def _train_multiplier_drill_label(
+    scenario: str,
+    levels: dict[str, int],
+    *,
+    difficulty: int,
+    gate_failures: dict[str, dict[str, int]],
+) -> str:
+    """``name (dN)`` plus soft/proxy/optional when 1× is not plain pack-level learning."""
+    catalog = require_catalog()
+    notes: list[str] = []
+    if scenario_needs_maintenance(scenario, difficulty=difficulty, gate_failures=gate_failures):
+        notes.append("soft")
+    entry = catalog.get(scenario)
+    if entry is not None and entry.difficulty_proxy:
+        notes.append("proxy")
+    elif not catalog.gates_progress(scenario):
+        notes.append("optional")
+    detail = f"d{difficulty}"
+    if notes:
+        detail = f"{detail}; {', '.join(notes)}"
+    return f"{catalog.short_name(scenario)} ({detail})"
+
+
 def train_multiplier_summary_lines(
     levels: dict[str, int],
     scenario_names: list[str],
@@ -668,7 +691,12 @@ def train_multiplier_summary_lines(
         )
         if units <= 0:
             continue
-        by_units.setdefault(units, []).append(catalog.short_name(scenario))
+        difficulty = get_difficulty(levels, scenario)
+        by_units.setdefault(units, []).append(
+            _train_multiplier_drill_label(
+                scenario, levels, difficulty=difficulty, gate_failures=failures
+            )
+        )
     if not by_units:
         return []
     lines = ["  train multipliers (next cycle):"]

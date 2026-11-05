@@ -245,6 +245,10 @@ def test_scenario_drill_line_shows_wld(monkeypatch, tmp_path: Path) -> None:
                 "draws": 2,
                 "episodes": 10,
                 "scenario_difficulty": 0,
+                "opening_expected_p_mean": 0.012,
+                "opening_expected_p_best_mean": 0.018,
+                "opening_chosen_p_mean": 0.14,
+                "opening_expected_rank_best_mean": 22.5,
             }
         ),
         encoding="utf-8",
@@ -263,6 +267,10 @@ def test_scenario_drill_line_shows_wld(monkeypatch, tmp_path: Path) -> None:
     text = _summarize_target(target, trend_steps=100_000)
     assert "td_run" in text
     assert "W5/L3/D2 (10 ep)" in text
+    assert "expected_p=0.012" in text
+    assert "expected_best_p=0.018" in text
+    assert "first_p=0.140" in text
+    assert "expected_rank=22.5" in text
 
 
 def test_profiles_bottom_summary_aligns_columns(monkeypatch, tmp_path: Path) -> None:

@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from gridiron_ai.eval_opening_diag import format_opening_score_bits
 from gridiron_ai.paths import EVAL_DIR
 from gridiron_ai.reward import FULL_GAME_ONNX_OPPONENT_PROFILES, REWARD_PROFILES, SHAPED_PROFILES
 from scripts.train_self_play import (
@@ -743,6 +744,10 @@ def _legend() -> str:
             "  turns / total_actions  match length + policy submits",
             "  drill_rate             scenario winrate (PASS / decided games)",
             "  W/L/D on drill rows      decided scenario episodes (DISTRACTED → D)",
+            "  expected_p             mean over games of mean expected-row opening p",
+            "  expected_best_p        mean over games of best expected-row opening p",
+            "  first_p                mean opening argmax / first-move p",
+            "  expected_rank          mean best (lowest) expected-row opening rank",
             "  d0–d5                 curriculum level (active phase checkpoint)",
             "  (optional)             gatesProgress=false — trained/eval'd, not a curriculum gate (oracle or placement not trusted yet)",
             "  (waived)               claim gate_fails threshold — temporarily excluded from gates (boards never waive)",
@@ -1268,7 +1273,8 @@ def _summarize_target(target: TrainTarget, *, trend_steps: int) -> str:
                 fail_bit = f" gate_fails={fails}/{fails_total}" if fails_total else ""
                 lines.append(
                     f"{prefix}{eval_tag}drill_rate={_pct(stats['winrate'])} "
-                    f"W{wins}/L{losses}/D{draws} ({games} ep){bump}{stale_bit}"
+                    f"W{wins}/L{losses}/D{draws} ({games} ep)"
+                    f"{format_opening_score_bits(stats)}{bump}{stale_bit}"
                     f"{fail_bit}{cycle_bit}{demote_bit}{gate_bit}"
                 )
             else:

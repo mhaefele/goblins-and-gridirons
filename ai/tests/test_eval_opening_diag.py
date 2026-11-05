@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from gridiron_ai.eval_opening_diag import (
+    aggregate_opening_move_scores,
     annotate_move_label,
     ball_carrier_player_index,
     format_opening_mispick_diag,
+    format_opening_score_bits,
+    opening_score_fields,
     preferred_row_rank,
 )
 
@@ -31,6 +35,73 @@ def test_preferred_row_rank_none_without_flags() -> None:
 def test_annotate_move_label_appends_rank_and_p() -> None:
     assert annotate_move_label("run(1,2->3,4)", None) == "run(1,2->3,4)"
     assert annotate_move_label("run(1,2->3,4)", {"rank": 7, "p": 0.0123}) == "run(1,2->3,4) [rank=7 p=0.012]"
+
+
+def test_aggregate_opening_move_scores_means() -> None:
+    stats = aggregate_opening_move_scores(
+        [
+            {
+                "opening_move_scores": {
+                    "chosen": {"rank": 1, "p": 0.20},
+                    "expected": [
+                        {"rank": 10, "p": 0.02},
+                        {"rank": 4, "p": 0.08},
+                    ],
+                }
+            },
+            {
+                "opening_move_scores": {
+                    "chosen": {"rank": 2, "p": 0.10},
+                    "expected": [
+                        {"rank": 6, "p": 0.04},
+                        {"rank": 8, "p": 0.06},
+                    ],
+                }
+            },
+            {"opening_move_scores": None},
+        ]
+    )
+    assert stats["opening_chosen_p_mean"] == pytest.approx(0.15)
+    assert stats["opening_expected_p_mean"] == pytest.approx(0.05)  # mean of (0.05, 0.05)
+    assert stats["opening_expected_p_best_mean"] == pytest.approx(0.07)  # mean of (0.08, 0.06)
+    assert stats["opening_expected_rank_best_mean"] == pytest.approx(5.0)  # mean of (4, 6)
+
+
+def test_aggregate_opening_move_scores_empty() -> None:
+    stats = aggregate_opening_move_scores([{}, {"opening_move_scores": {}}])
+    assert stats["opening_chosen_p_mean"] is None
+    assert stats["opening_expected_p_mean"] is None
+    assert stats["opening_expected_p_best_mean"] is None
+    assert stats["opening_expected_rank_best_mean"] is None
+
+
+def test_format_opening_score_bits_and_episodes_raw_fallback() -> None:
+    assert format_opening_score_bits({}) == ""
+    assert (
+        format_opening_score_bits(
+            {
+                "opening_expected_p_mean": 0.01,
+                "opening_expected_p_best_mean": 0.02,
+                "opening_chosen_p_mean": 0.1,
+                "opening_expected_rank_best_mean": 12,
+            }
+        )
+        == " expected_p=0.010 expected_best_p=0.020 first_p=0.100 expected_rank=12.0"
+    )
+    fields = opening_score_fields(
+        {
+            "episodes_raw": [
+                {
+                    "opening_move_scores": {
+                        "chosen": {"p": 0.2},
+                        "expected": [{"rank": 3, "p": 0.05}],
+                    }
+                }
+            ]
+        }
+    )
+    assert fields["opening_chosen_p_mean"] == pytest.approx(0.2)
+    assert fields["opening_expected_rank_best_mean"] == pytest.approx(3.0)
 
 
 def test_ball_carrier_player_index_from_rewards() -> None:

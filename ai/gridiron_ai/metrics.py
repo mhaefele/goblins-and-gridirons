@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from gridiron_ai.eval_opening_diag import format_opening_score_bits
 from gridiron_ai.expert_stats import (
     BUCKET_GAMES,
     BUCKET_SCENARIOS,
@@ -104,6 +105,7 @@ def format_metrics_line(label: str, stats: dict[str, Any]) -> str:
     first_legals_bit = (
         f" first_legals={first_legals:.1f}" if first_legals is not None else ""
     )
+    opening_bit = format_opening_score_bits(stats)
     return (
         f"{label}: episodes={stats['episodes']} "
         f"winrate={stats['winrate']:.3f} (W{stats['wins']}/L{stats['losses']}/D{stats['draws']}) "
@@ -117,7 +119,7 @@ def format_metrics_line(label: str, stats: dict[str, Any]) -> str:
         f"kinds[{kinds}] "
         f"trunc={stats['truncation_rate']:.3f} submit_err={stats['submit_error_rate']:.3f} "
         f"submit_ms={stats['submit_avg_ms']:.1f}"
-        f"{difficulty_bit}{first_legals_bit}"
+        f"{difficulty_bit}{first_legals_bit}{opening_bit}"
     )
 
 

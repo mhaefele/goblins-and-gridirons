@@ -255,6 +255,89 @@ def annotate_move_label(label: str, score: dict[str, Any] | None) -> str:
     return f"{label} [rank={int(score['rank'])} p={p:.3f}]"
 
 
+def _mean(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return float(sum(values) / len(values))
+
+
+def aggregate_opening_move_scores(episodes: list[dict[str, Any]]) -> dict[str, float | None]:
+    """Batch means from per-game ``opening_move_scores`` (None when no scored openings).
+
+    - ``opening_expected_p_mean`` — mean over games of that game's mean expected-row ``p``
+    - ``opening_expected_p_best_mean`` — mean over games of max expected-row ``p``
+    - ``opening_chosen_p_mean`` — mean first-move (argmax) ``p``
+    - ``opening_expected_rank_best_mean`` — mean over games of best (lowest) expected rank
+    """
+    expected_means: list[float] = []
+    expected_bests: list[float] = []
+    chosen_ps: list[float] = []
+    expected_best_ranks: list[float] = []
+    for episode in episodes:
+        scores = episode.get("opening_move_scores")
+        if not isinstance(scores, dict):
+            continue
+        expected = scores.get("expected") or []
+        if isinstance(expected, list) and expected:
+            ps = [float(row["p"]) for row in expected if isinstance(row, dict) and row.get("p") is not None]
+            ranks = [
+                float(row["rank"])
+                for row in expected
+                if isinstance(row, dict) and row.get("rank") is not None
+            ]
+            if ps:
+                expected_means.append(sum(ps) / len(ps))
+                expected_bests.append(max(ps))
+            if ranks:
+                expected_best_ranks.append(min(ranks))
+        chosen = scores.get("chosen")
+        if isinstance(chosen, dict) and chosen.get("p") is not None:
+            chosen_ps.append(float(chosen["p"]))
+    return {
+        "opening_expected_p_mean": _mean(expected_means),
+        "opening_expected_p_best_mean": _mean(expected_bests),
+        "opening_chosen_p_mean": _mean(chosen_ps),
+        "opening_expected_rank_best_mean": _mean(expected_best_ranks),
+    }
+
+
+_OPENING_SCORE_KEYS = (
+    "opening_expected_p_mean",
+    "opening_expected_p_best_mean",
+    "opening_chosen_p_mean",
+    "opening_expected_rank_best_mean",
+)
+
+
+def opening_score_fields(stats: dict[str, Any]) -> dict[str, float | None]:
+    """Four opening aggregates from ``stats``, or recompute from ``episodes_raw``."""
+    if any(stats.get(key) is not None for key in _OPENING_SCORE_KEYS):
+        return {key: (float(stats[key]) if stats.get(key) is not None else None) for key in _OPENING_SCORE_KEYS}
+    raw = stats.get("episodes_raw")
+    if isinstance(raw, list) and raw:
+        return aggregate_opening_move_scores(raw)
+    return {key: None for key in _OPENING_SCORE_KEYS}
+
+
+def format_opening_score_bits(stats: dict[str, Any]) -> str:
+    """Compact `` expected_p=… expected_best_p=… first_p=… expected_rank=…`` or empty."""
+    fields = opening_score_fields(stats)
+    bits: list[str] = []
+    expected_p = fields["opening_expected_p_mean"]
+    if expected_p is not None:
+        bits.append(f"expected_p={expected_p:.3f}")
+    expected_best = fields["opening_expected_p_best_mean"]
+    if expected_best is not None:
+        bits.append(f"expected_best_p={expected_best:.3f}")
+    first_p = fields["opening_chosen_p_mean"]
+    if first_p is not None:
+        bits.append(f"first_p={first_p:.3f}")
+    expected_rank = fields["opening_expected_rank_best_mean"]
+    if expected_rank is not None:
+        bits.append(f"expected_rank={expected_rank:.1f}")
+    return (" " + " ".join(bits)) if bits else ""
+
+
 def format_opening_mispick_diag(diag: dict[str, Any]) -> str:
     """Summary line after ``turn1=``; optional full ranked menu when ``ranked_rows`` present."""
     if diag.get("error"):

@@ -16,7 +16,9 @@ _FIXTURE = ScenarioCatalog.from_entries(
         ScenarioInfo("THROW_CLOSER_RANGE", "BOARD"),
         ScenarioInfo("THROW_OPEN_RECEIVER", "BOARD"),
         ScenarioInfo("LOOSE_BALL_RUN", "BOARD"),
-        ScenarioInfo("LOOSE_BALL_BOUNCE", "BOARD", difficulty_proxy="LOOSE_BALL_RUN"),
+        ScenarioInfo(
+            "LOOSE_BALL_BOUNCE", "BOARD", difficulty_proxy="LOOSE_BALL_RUN", gates_progress=False
+        ),
         ScenarioInfo("STRIP_AND_SCORE", "BOARD"),
         ScenarioInfo("CLAIM_GRAB_IT", "CLAIM"),
         ScenarioInfo("CLAIM_HUDDLE_UP", "CLAIM"),

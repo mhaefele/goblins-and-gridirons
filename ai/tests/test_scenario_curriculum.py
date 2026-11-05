@@ -553,8 +553,8 @@ def test_train_multiplier_summary_lines_lists_each_tier() -> None:
     lines = train_multiplier_summary_lines(levels, FULL_NAMES, failures, {}, game_phase=False)
     joined = "\n".join(lines)
     assert lines[0] == "  train multipliers (next cycle):"
-    assert "    2×: throw_open_receiver" in lines
-    assert any(line.startswith("    4×:") and "td_run" in line for line in lines)
+    assert "    2×: throw_open_receiver (d4)" in lines
+    assert any(line.startswith("    4×:") and "td_run (d3)" in line for line in lines)
     assert "throw_open_receiver" not in next(line for line in lines if line.startswith("    4×:"))
     assert lines[-1] == "    0×: all others"
     assert "1× default PPO budget" not in joined
@@ -563,6 +563,18 @@ def test_train_multiplier_summary_lines_lists_each_tier() -> None:
 def test_train_multiplier_summary_lines_empty_when_nothing_trains() -> None:
     levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
     assert train_multiplier_summary_lines(levels, FULL_NAMES, {}, {}, game_phase=False) == []
+
+
+def test_train_multiplier_summary_lines_notes_soft_and_proxy() -> None:
+    levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
+    levels["LOOSE_BALL_RUN"] = 0
+    failures = record_gate_failure({}, "THROW_TO_ENDZONE", MAX_DIFFICULTY)
+    lines = train_multiplier_summary_lines(levels, FULL_NAMES, failures, {}, game_phase=False)
+    joined = "\n".join(lines)
+    assert "throw_to_endzone (d5; soft)" in joined
+    assert "loose_ball_bounce (d0; proxy)" in joined
+    assert "loose_ball_run (d0)" in joined
+    assert "loose_ball_run (d0; " not in joined
 
 
 def test_train_timesteps_behind_pack_doubles_without_claim_unlock() -> None:

@@ -81,7 +81,11 @@ from gridiron_ai.env import (
     opponent_metrics_label,
 )
 from gridiron_ai.eval_debug import ScenarioEvalDebug
-from gridiron_ai.eval_opening_diag import diagnose_opening_mispick
+from gridiron_ai.eval_opening_diag import (
+    aggregate_opening_move_scores,
+    diagnose_opening_mispick,
+    format_opening_score_bits,
+)
 from gridiron_ai.metrics import (
     accumulate_kind_totals,
     aggregate_episodes,
@@ -114,6 +118,7 @@ from gridiron_ai.scenario_curriculum import (
     scenarios_for_cycle,
     scenarios_for_eval,
     SCENARIO_EVAL_GAMES,
+    SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER,
     train_timesteps_for_difficulty,
     train_timesteps_for_scenario,
 )
@@ -182,7 +187,7 @@ DEFAULT_BATCH_SIZE = 256
 
 # Deterministic games for each scenario after-eval (10); delta vs prior after-eval at same @d.
 _VECNORMALIZE_SUFFIX = "_vecnormalize.pkl"
-# (scenario, difficulty) → stats from the last after-eval this process (cycle TSV / stdout delta).
+# (scenario, difficulty) → stats from the last after-eval this process (winrate + opening p/rank).
 _last_scenario_after_eval: dict[tuple[str, int], dict[str, Any]] = {}
 _EVAL_SECTION_GAP = "\n\n\n"
 _scenario_perfect_summaries: list[str] = []
@@ -236,7 +241,10 @@ def _record_scenario_perfect_summary(
     games = int(stats.get("episodes") or 0)
     winrate = float(stats.get("winrate") or 0.0)
     short = require_catalog().short_name(scenario)
-    line = f"  {short} d{scenario_difficulty}  drill_rate={winrate:.3f} W{wins}/L{losses}/D{draws} ({games} ep)"
+    line = (
+        f"  {short} d{scenario_difficulty}  drill_rate={winrate:.3f} "
+        f"W{wins}/L{losses}/D{draws} ({games} ep){format_opening_score_bits(stats)}"
+    )
     _scenario_perfect_summaries.append(line)
 
 
@@ -734,11 +742,18 @@ def _release_segment_env(env: Any, pool: WorkerPool | None) -> None:
 
 
 def _close_vec_env(env: Any) -> None:
-    """Close a VecEnv; SB3 SubprocVecEnv leaves parent Pipe FDs open after ``close()``."""
+    """Close a VecEnv; SB3 SubprocVecEnv leaves parent Pipe FDs open after ``close()``.
+
+    Ctrl-C during the SB3 ``remote.recv()`` handshake must not dump a traceback after a
+    clean interrupt save — swallow pipe/interrupt noise and force-close remotes/procs.
+    """
     subproc: SubprocVecEnv | None = env.venv if isinstance(env, VecNormalize) else env
     if not isinstance(subproc, SubprocVecEnv):
         subproc = None
-    env.close()
+    try:
+        env.close()
+    except (KeyboardInterrupt, EOFError, BrokenPipeError, OSError):
+        pass
     if subproc is None:
         return
     for remote in subproc.remotes:
@@ -748,8 +763,13 @@ def _close_vec_env(env: Any) -> None:
             pass
     for process in subproc.processes:
         try:
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=1.0)
+            if process.is_alive():
+                process.kill()
             process.close()
-        except OSError:
+        except (OSError, ValueError):
             pass
 
 
@@ -843,7 +863,28 @@ def _cycle_stats_fields(key: str, stats: dict[str, Any]) -> dict[str, Any]:
             if stats.get("first_action_legal_count") is not None
             else ""
         ),
+        f"{key}_expected_p": _fmt_optional_float(stats.get("opening_expected_p_mean")),
+        f"{key}_expected_p_best": _fmt_optional_float(stats.get("opening_expected_p_best_mean")),
+        f"{key}_first_p": _fmt_optional_float(stats.get("opening_chosen_p_mean")),
+        f"{key}_expected_rank_best": _fmt_optional_float(stats.get("opening_expected_rank_best_mean")),
     }
+
+
+def _fmt_optional_float(value: Any, *, digits: int = 6) -> str:
+    if value is None:
+        return ""
+    return f"{float(value):.{digits}f}"
+
+
+def _fmt_metric_delta(before: Any, after: Any, *, digits: int = 3) -> str | None:
+    """``0.300→0.400`` or ``0.400`` when before is missing."""
+    if after is None:
+        return None
+    after_f = float(after)
+    if before is None:
+        return f"{after_f:.{digits}f}"
+    before_f = float(before)
+    return f"{before_f:.{digits}f}→{after_f:.{digits}f}"
 
 
 def _episode_success_rates(episodes: list[dict[str, Any]]) -> dict[str, float]:
@@ -1147,15 +1188,47 @@ def _train_scenarios_segment(
     for scenario, difficulty, timesteps in plan:
         slug = scenario.lower()
         do_eval = scenario not in proxy_sources
-        if not do_eval:
+        base_ts = train_timesteps_for_difficulty(
+            difficulty,
+            learning=args.train_scenario_learning,
+            mastered=args.train_scenario_mastered,
+            game_phase=game_phase,
+        )
+        units = max(1, timesteps // base_ts) if base_ts > 0 else 1
+        fresh_before = do_eval and units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
+
+        before: dict[str, Any] | None = None
+        before_source: str | None = None
+        if fresh_before:
+            print(
+                f"Scenario {scenario} d{difficulty}: before-eval ({units}×) → "
+                f"train {timesteps}ts → after-eval",
+                flush=True,
+            )
+            before = _eval_one_scenario(
+                model,
+                args=args,
+                pool=pool,
+                profile=profile,
+                runs_key=runs_key,
+                scenario=scenario,
+                difficulty=difficulty,
+            )
+            before_source = "before-eval"
+            row.update(_cycle_stats_fields(f"eval_scenario_{slug}_before", before))
+        elif do_eval:
+            prior = _last_scenario_after_eval.get((scenario, difficulty))
+            if prior is not None:
+                before = prior
+                before_source = "prior-cycle"
+            print(f"Scenario {scenario} d{difficulty}: train {timesteps}ts → after-eval", flush=True)
+        else:
             proxy = require_catalog().curriculum_key(scenario)
             print(
                 f"Scenario {scenario} d{difficulty}: train {timesteps}ts "
                 f"(no scenario eval — difficulty tracks {proxy})",
                 flush=True,
             )
-        else:
-            print(f"Scenario {scenario} d{difficulty}: train {timesteps}ts → after-eval", flush=True)
 
         stats = _train_segment(
             model,
@@ -1177,13 +1250,6 @@ def _train_scenarios_segment(
         )
         did_train = True
         row.update(_cycle_stats_fields(f"train_scenario_{slug}", stats))
-        base_ts = train_timesteps_for_difficulty(
-            difficulty,
-            learning=args.train_scenario_learning,
-            mastered=args.train_scenario_mastered,
-            game_phase=game_phase,
-        )
-        units = max(1, timesteps // base_ts) if base_ts > 0 else 1
         drill_stats = record_train_cycles(drill_stats, scenario, units=units)
         save_drill_stats(drill_stats_path, drill_stats)
 
@@ -1201,23 +1267,15 @@ def _train_scenarios_segment(
             difficulty=difficulty,
         )
         row.update(_cycle_stats_fields(f"eval_scenario_{slug}_after", after))
-        after_rate = float(after["winrate"])
-        prior = _last_scenario_after_eval.get((scenario, difficulty))
-        if prior is not None:
-            prior_rate = float(prior["winrate"])
-            delta = after_rate - prior_rate
-            row[f"eval_scenario_{slug}_prior_winrate"] = f"{prior_rate:.6f}"
-            row[f"eval_scenario_{slug}_delta_winrate"] = f"{delta:.6f}"
-            print(
-                f"  scenario learn: {scenario} d{difficulty} "
-                f"drill_rate {prior_rate:.3f} → {after_rate:.3f} (Δ={delta:+.3f})",
-                flush=True,
-            )
-        else:
-            print(
-                f"  scenario learn: {scenario} d{difficulty} drill_rate {after_rate:.3f}",
-                flush=True,
-            )
+        _print_scenario_learn_line(
+            scenario=scenario,
+            difficulty=difficulty,
+            before=before,
+            after=after,
+            before_source=before_source,
+            row=row,
+            slug=slug,
+        )
         _last_scenario_after_eval[(scenario, difficulty)] = after
         levels, gate_failures, drill_stats = _apply_scenario_after_eval(
             scenario=scenario,
@@ -1232,6 +1290,58 @@ def _train_scenarios_segment(
         )
         _eval_section_break()
     return row
+
+
+def _print_scenario_learn_line(
+    *,
+    scenario: str,
+    difficulty: int,
+    before: dict[str, Any] | None,
+    after: dict[str, Any],
+    before_source: str | None,
+    row: dict[str, Any],
+    slug: str,
+) -> None:
+    """Stdout + cycle-row deltas for drill_rate and opening expected/first p + rank."""
+    after_rate = float(after["winrate"])
+    bits = [f"scenario learn: {scenario} d{difficulty}"]
+    if before is not None:
+        prior_rate = float(before["winrate"])
+        delta = after_rate - prior_rate
+        row[f"eval_scenario_{slug}_prior_winrate"] = f"{prior_rate:.6f}"
+        row[f"eval_scenario_{slug}_delta_winrate"] = f"{delta:.6f}"
+        bits.append(f"drill_rate {prior_rate:.3f}→{after_rate:.3f} (Δ={delta:+.3f})")
+    else:
+        bits.append(f"drill_rate {after_rate:.3f}")
+
+    expected_p = _fmt_metric_delta(
+        None if before is None else before.get("opening_expected_p_mean"),
+        after.get("opening_expected_p_mean"),
+    )
+    expected_p_best = _fmt_metric_delta(
+        None if before is None else before.get("opening_expected_p_best_mean"),
+        after.get("opening_expected_p_best_mean"),
+    )
+    first_p = _fmt_metric_delta(
+        None if before is None else before.get("opening_chosen_p_mean"),
+        after.get("opening_chosen_p_mean"),
+    )
+    expected_rank = _fmt_metric_delta(
+        None if before is None else before.get("opening_expected_rank_best_mean"),
+        after.get("opening_expected_rank_best_mean"),
+        digits=1,
+    )
+    if expected_p is not None:
+        bits.append(f"expected_p {expected_p}")
+    if expected_p_best is not None:
+        bits.append(f"expected_best_p {expected_p_best}")
+    if first_p is not None:
+        bits.append(f"first_p {first_p}")
+    if expected_rank is not None:
+        bits.append(f"expected_rank {expected_rank}")
+    if before_source is not None:
+        bits.append(f"before={before_source}")
+    print("  " + " ".join(bits), flush=True)
 
 
 def _format_eval_game_line(
@@ -1444,6 +1554,7 @@ def _eval_segment(
     stats.update(_episode_success_rates(episodes))
     if scenario is not None:
         stats["scenario_difficulty"] = scenario_difficulty
+        stats.update(aggregate_opening_move_scores(episodes))
     timing_bit = f" ({clk.summary(('configure', configure_s), ('reset', reset_s), ('games', games_s))})"
     quiet_perfect = quiet_scenario and _eval_batch_all_wins(stats, games=games)
     if quiet_perfect:
@@ -1465,7 +1576,8 @@ def _eval_segment(
         _note_kind_mix(runs_key, f"Eval {tagged}", stats, print_tables=True, accumulate=False)
         if quiet_scenario:
             print(
-                f"  scenario success: drill_rate={stats['winrate']:.3f} win_by_4_rate={stats['win_by_4_rate']:.3f}",
+                f"  scenario success: drill_rate={stats['winrate']:.3f} "
+                f"win_by_4_rate={stats['win_by_4_rate']:.3f}{format_opening_score_bits(stats)}",
                 flush=True,
             )
 
@@ -1553,6 +1665,7 @@ def _eval_scenarios_segment(
             scenario=scenario,
             difficulty=difficulty,
         )
+        _last_scenario_after_eval[(scenario, difficulty)] = stats
         if write_curriculum:
             levels, gate_failures, drill_stats = _apply_scenario_after_eval(
                 scenario=scenario,
@@ -2226,11 +2339,17 @@ def main() -> None:
                 loaded_key = None
     except KeyboardInterrupt:
         print("\nInterrupted — saving and exiting.", flush=True)
-        if model is not None and save_stem is not None and args.phase is None:
-            atomic_model_save(model, save_stem)
-        _print_scenario_perfect_summaries()
+        try:
+            if model is not None and save_stem is not None and args.phase is None:
+                atomic_model_save(model, save_stem)
+            _print_scenario_perfect_summaries()
+        except KeyboardInterrupt:
+            print("Interrupted again during save — exiting.", flush=True)
     finally:
-        pool.close()
+        try:
+            pool.close()
+        except KeyboardInterrupt:
+            pass
 
 
 if __name__ == "__main__":
