@@ -256,10 +256,11 @@ def test_last_eval_loads_legacy_flat(tmp_path) -> None:
     assert last_eval_prior_metrics(loaded, "TD_RUN", 1) is None
 
 
-def test_scenario_eval_games_heavy_for_4x() -> None:
+def test_scenario_eval_games_heavy_for_8x() -> None:
     assert scenario_eval_games(1) == _EVAL
     assert scenario_eval_games(2) == _EVAL
-    assert scenario_eval_games(4) == SCENARIO_EVAL_GAMES_HEAVY
+    assert scenario_eval_games(4) == _EVAL
+    assert scenario_eval_games(8) == SCENARIO_EVAL_GAMES_HEAVY
     assert eval_pass_min_wins(_EVAL) == _PASS
     assert eval_pass_min_wins(SCENARIO_EVAL_GAMES_HEAVY) == 45
     assert eval_demote_max_wins(_EVAL) == 7
@@ -625,8 +626,8 @@ def test_train_multiplier_summary_lines_lists_each_tier() -> None:
     joined = "\n".join(lines)
     assert lines[0] == "  train multipliers (next cycle):"
     assert "    2×: throw_open_receiver (d4)" in lines
-    assert any(line.startswith("    4×:") and "td_run (d3)" in line for line in lines)
-    assert "throw_open_receiver" not in next(line for line in lines if line.startswith("    4×:"))
+    assert any(line.startswith("    8×:") and "td_run (d3)" in line for line in lines)
+    assert "throw_open_receiver" not in next(line for line in lines if line.startswith("    8×:"))
     assert lines[-1] == "    0×: all others"
     assert "1× default PPO budget" not in joined
 
@@ -669,17 +670,17 @@ def test_train_timesteps_game_phase_no_multipliers() -> None:
 
 def test_train_timesteps_double_below_pack_when_healthy() -> None:
     levels = {"TD_RUN": 5, "LOOSE_BALL_RUN": 4, "MARKED_RUN": 5}
-    assert SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER == 4
+    assert SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER == 8
     assert train_timesteps_for_scenario("LOOSE_BALL_RUN", levels, _CATALOG) == DEFAULT_SCENARIO_TRAIN_LEARNING * 2
     assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG) == 0
 
 
-def test_train_timesteps_bottleneck_fail_quadruples_before_claim_unlock() -> None:
+def test_train_timesteps_bottleneck_fail_octuples_before_claim_unlock() -> None:
     levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 5}
     failures = record_gate_failure({}, "TD_RUN", 0)
     assert (
         train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, gate_failures=failures)
-        == DEFAULT_SCENARIO_TRAIN_LEARNING * 4
+        == DEFAULT_SCENARIO_TRAIN_LEARNING * 8
     )
 
 
@@ -692,17 +693,17 @@ def test_train_timesteps_non_bottleneck_fail_stays_double() -> None:
     )
 
 
-def test_train_timesteps_opening_straggler_quadruples_with_fail() -> None:
-    # Below claim-unlock floor with fails → 4× even when not the absolute pack min.
+def test_train_timesteps_opening_straggler_octuples_with_fail() -> None:
+    # Below claim-unlock floor with fails → 8× even when not the absolute pack min.
     levels = {"TD_RUN": 1, "LOOSE_BALL_RUN": 5, "MARKED_RUN": 0}
     failures = record_gate_failure({}, "TD_RUN", 1)
     assert (
         train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, gate_failures=failures)
-        == DEFAULT_SCENARIO_TRAIN_LEARNING * 4
+        == DEFAULT_SCENARIO_TRAIN_LEARNING * 8
     )
 
 
-def test_train_timesteps_high_demotes_need_claim_unlock_for_quadruple() -> None:
+def test_train_timesteps_high_demotes_need_claim_unlock_for_octuple() -> None:
     levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": 4, "MARKED_RUN": 5}
     failures = record_gate_failure({}, "LOOSE_BALL_RUN", 4)
     stats = {"LOOSE_BALL_RUN": {"d5_demotes": SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD, "cycles": 0}}
@@ -714,13 +715,13 @@ def test_train_timesteps_high_demotes_need_claim_unlock_for_quadruple() -> None:
     )
     unlocked = {"TD_RUN": 4, "LOOSE_BALL_RUN": 4, "MARKED_RUN": 5, "CLAIM_GRAB_IT": 0}
     catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN", "CLAIM_GRAB_IT"]
-    # Claim at d0 is the bottleneck; board demote treadmill gets 4× only via high_demotes.
+    # Claim at d0 is the bottleneck; board demote treadmill gets 8× only via high_demotes.
     failures = record_gate_failure({}, "LOOSE_BALL_RUN", 4)
     assert (
         train_timesteps_for_scenario(
             "LOOSE_BALL_RUN", unlocked, catalog, gate_failures=failures, drill_stats=stats
         )
-        == DEFAULT_SCENARIO_TRAIN_LEARNING * 4
+        == DEFAULT_SCENARIO_TRAIN_LEARNING * 8
     )
 
 
@@ -729,7 +730,7 @@ def test_train_timesteps_bottleneck_and_gate_fail_take_max_multiplier() -> None:
     failures = record_gate_failure({}, "LOOSE_BALL_RUN", 4)
     assert (
         train_timesteps_for_scenario("LOOSE_BALL_RUN", levels, _CATALOG, gate_failures=failures)
-        == DEFAULT_SCENARIO_TRAIN_LEARNING * 4
+        == DEFAULT_SCENARIO_TRAIN_LEARNING * 8
     )
 
 

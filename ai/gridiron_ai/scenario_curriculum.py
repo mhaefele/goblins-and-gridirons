@@ -14,7 +14,7 @@ recover); ``.scenario_drill_stats.json`` (per-phase ``cycles`` / ``d5_demotes``;
 ``training_phases.load_drill_stats_cumulative``); ``.scenario_last_eval.json`` (``current`` +
 ``prior`` slim metrics per drill@d for prior→current deltas across restarts / summary).
 Phases (scenario_a board→d4 / scenario_b all→d5 / profiles games): ``training_phases``.
-4× train units use ``SCENARIO_EVAL_GAMES_HEAVY`` (50) after-evals with scaled pass/demote.
+8× train units use ``SCENARIO_EVAL_GAMES_HEAVY`` (50) after-evals with scaled pass/demote.
 Drills with fails at their **current** difficulty get ``SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER``×
 train budget below d5 (gating drills only — ``gatesProgress=false`` never multiplies; d5 gate
 fails do not double). Gating drills below the pack max (not waived) get the same 2× with no
@@ -83,7 +83,7 @@ FULL_GAME_UNLOCK_DIFFICULTY = MAX_DIFFICULTY
 GATE_PROGRESS_WAIVE_FAILURES = 20
 # Scenario after-eval batch size (train → after-eval).
 SCENARIO_EVAL_GAMES = 10
-# 4× train drills get a longer after-eval (same pass/demote *rates* as the 10-game batch).
+# Bottleneck (8×) train drills get a longer after-eval (same pass/demote *rates* as the 10-game batch).
 SCENARIO_EVAL_GAMES_HEAVY = 50
 # Wins needed to pass / bump (9 or 10 of SCENARIO_EVAL_GAMES); scaled for heavy batches.
 SCENARIO_EVAL_PASS_MIN_WINS = 9
@@ -92,13 +92,13 @@ DEMOTE_FROM_MAX_MAX_WINS = 7
 # Extra train when the drill has imperfect after-evals at its current difficulty.
 SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER = 2
 # Current-level fail at pack min / below-d4 opening / high demotes after board d4+.
-SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER = 4
-# d5_demotes at or above this → 4× with a current-level fail only once boards are d4+.
+SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER = 8
+# d5_demotes at or above this → 8× with a current-level fail only once boards are d4+.
 SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD = 5
 
 
 def scenario_eval_games(train_units: int = 1) -> int:
-    """After-eval batch size: 50 games for 4× drills, else ``SCENARIO_EVAL_GAMES``."""
+    """After-eval batch size: 50 games for bottleneck (8×) drills, else ``SCENARIO_EVAL_GAMES``."""
     if train_units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER:
         return SCENARIO_EVAL_GAMES_HEAVY
     return SCENARIO_EVAL_GAMES
@@ -450,7 +450,7 @@ def scenario_train_multiplier(
     pack_max = gating_pack_max_difficulty(levels, scenario_names, gate_failures)
     pack_min = gating_pack_min_difficulty(levels, scenario_names, gate_failures)
     behind_pack = pack_max is not None and difficulty < pack_max
-    # Pack min only counts as a bottleneck when someone is ahead (else every fail would 4×).
+    # Pack min only counts as a bottleneck when someone is ahead (else every fail would 8×).
     at_bottleneck = (
         pack_min is not None
         and pack_max is not None
@@ -458,7 +458,7 @@ def scenario_train_multiplier(
         and difficulty == pack_min
     )
     boards_ready = gating_board_at_claim_unlock(levels, scenario_names, gate_failures)
-    # While openings still block claim unlock, every below-d4 failing drill gets 4× — not only the min.
+    # While openings still block claim unlock, every below-d4 failing drill gets 8× — not only the min.
     opening_straggler = (
         not boards_ready and difficulty < CLAIM_UNLOCK_BOARD_DIFFICULTY
     )
@@ -526,7 +526,7 @@ def train_timesteps_for_scenario(
     gate_failures: dict[str, dict[str, int]] | None = None,
     drill_stats: dict[str, dict[str, int]] | None = None,
 ) -> int:
-    """Per-scenario train budget; up to 4× while climbing; soft d5 + game-phase stragglers at 1×."""
+    """Per-scenario train budget; up to 8× while climbing; soft d5 + game-phase stragglers at 1×."""
     failures = gate_failures if gate_failures is not None else {}
     difficulty = get_difficulty(levels, scenario)
     base = train_timesteps_for_difficulty(
@@ -637,7 +637,7 @@ def format_train_multiplier_lines(
     header: str = "  train multipliers (next cycle):",
     include_zero: bool = True,
 ) -> list[str]:
-    """Render ``{units: [drill labels…]}`` as the shared 1×/2×/4× listing."""
+    """Render ``{units: [drill labels…]}`` as the shared 1×/2×/8× listing."""
     if not by_units:
         return []
     lines = [header]
