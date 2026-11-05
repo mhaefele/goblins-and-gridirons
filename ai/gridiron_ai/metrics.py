@@ -126,7 +126,7 @@ def print_metrics(label: str, stats: dict[str, Any]) -> None:
 
 
 def print_kind_mix(label: str, stats: dict[str, Any]) -> None:
-    """Session chosen-move kinds as scenarios / games / total (same shape as expert pack stats)."""
+    """Session chosen-move kinds (same shape as expert pack stats; omits empty sections)."""
     breakdown = stats.get("kind_breakdown")
     if not breakdown:
         totals = stats.get("kind_totals") or {}

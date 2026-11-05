@@ -52,6 +52,25 @@ def test_format_kind_breakdown_sections() -> None:
     assert breakdown[BUCKET_TOTAL]["THROWTEAMMATE"] == 1
 
 
+def test_format_kind_breakdown_single_family_omits_empty_and_total() -> None:
+    breakdown = empty_kind_breakdown()
+    add_kind_to_breakdown(breakdown, "RUN", bucket=BUCKET_SCENARIOS, count=2)
+    text = format_kind_breakdown(breakdown, title="scenario only")
+    assert "=== scenarios ===" in text
+    assert "=== games ===" not in text
+    assert "=== total ===" not in text
+    assert "(no steps)" not in text
+
+
+def test_format_kind_breakdown_untagged_total_only() -> None:
+    breakdown = empty_kind_breakdown()
+    add_kind_to_breakdown(breakdown, "RUN", bucket=None, count=3)
+    text = format_kind_breakdown(breakdown)
+    assert "=== total ===" in text
+    assert "=== scenarios ===" not in text
+    assert "=== games ===" not in text
+
+
 def test_untagged_family_counts_total_only() -> None:
     breakdown = empty_kind_breakdown()
     add_kind_to_breakdown(breakdown, "RUN", bucket=bucket_for_episode_family(None), count=3)

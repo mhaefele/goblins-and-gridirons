@@ -188,14 +188,28 @@ _EVAL_SECTION_GAP = "\n\n\n"
 _scenario_perfect_summaries: list[str] = []
 
 
-def _note_kind_mix(runs_key: str, label: str, stats: dict[str, Any], *, print_tables: bool) -> None:
-    """Accumulate segment kinds into ``runs/{runs_key}/kind_totals.*``; optionally print segment + lifetime."""
-    segment = stats.get("kind_breakdown") or stats.get("kind_totals") or {}
-    lifetime = accumulate_kind_totals(runs_key, segment)
+def _note_kind_mix(
+    runs_key: str,
+    label: str,
+    stats: dict[str, Any],
+    *,
+    print_tables: bool,
+    accumulate: bool = True,
+) -> None:
+    """Optionally print segment kind tables; train also merges into ``kind_totals.*``.
+
+    Lifetime under ``runs/{runs_key}/`` tracks **training** mix only — eval prints
+    the segment table when asked and must not pollute that file.
+    """
+    lifetime = None
+    if accumulate:
+        segment = stats.get("kind_breakdown") or stats.get("kind_totals") or {}
+        lifetime = accumulate_kind_totals(runs_key, segment)
     if not print_tables:
         return
     print_kind_mix(label, stats)
-    print_kind_mix(f"{label} lifetime [{runs_key}]", {"kind_breakdown": lifetime})
+    if lifetime is not None:
+        print_kind_mix(f"{label} lifetime [{runs_key}]", {"kind_breakdown": lifetime})
 
 
 def _eval_batch_all_wins(stats: dict[str, Any], *, games: int) -> bool:
@@ -1438,7 +1452,6 @@ def _eval_segment(
             scenario=scenario,
             scenario_difficulty=scenario_difficulty,
         )
-        _note_kind_mix(runs_key, f"Eval {tagged}", stats, print_tables=False)
     else:
         if quiet_scenario:
             _eval_section_break()
@@ -1449,7 +1462,7 @@ def _eval_segment(
             for line in game_lines:
                 print(line, flush=True)
         print_metrics(f"Eval {tagged}", stats)
-        _note_kind_mix(runs_key, f"Eval {tagged}", stats, print_tables=True)
+        _note_kind_mix(runs_key, f"Eval {tagged}", stats, print_tables=True, accumulate=False)
         if quiet_scenario:
             print(
                 f"  scenario success: drill_rate={stats['winrate']:.3f} win_by_4_rate={stats['win_by_4_rate']:.3f}",

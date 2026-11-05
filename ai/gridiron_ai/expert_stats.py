@@ -138,17 +138,36 @@ def _as_breakdown(
     return out
 
 
+def _bucket_nonempty(counts: Counter[str]) -> bool:
+    return bool(sum(counts.values()))
+
+
 def format_kind_breakdown(
     counts_or_breakdown: Counter[str] | Mapping[str, Counter[str] | Mapping[str, int]],
     *,
     title: str | None = None,
 ) -> str:
-    """Three tables: scenarios, games, total (flat Counter → total section only)."""
+    """Kind tables by episode family.
+
+    Both scenarios + games → show those two plus total. Only one family → that
+    table alone (total is redundant). Untagged / flat Counter → total only.
+    Empty → total with ``(no steps)``.
+    """
     breakdown = _as_breakdown(counts_or_breakdown)
+    has_scenarios = _bucket_nonempty(breakdown[BUCKET_SCENARIOS])
+    has_games = _bucket_nonempty(breakdown[BUCKET_GAMES])
+    if has_scenarios and has_games:
+        buckets = KIND_BUCKETS
+    elif has_scenarios:
+        buckets = (BUCKET_SCENARIOS,)
+    elif has_games:
+        buckets = (BUCKET_GAMES,)
+    else:
+        buckets = (BUCKET_TOTAL,)
     sections: list[str] = []
     if title:
         sections.append(title)
-    for bucket in KIND_BUCKETS:
+    for bucket in buckets:
         sections.append(format_kind_table(breakdown[bucket], title=f"=== {bucket} ==="))
     return "\n\n".join(sections)
 
@@ -157,7 +176,7 @@ def write_kind_stats(
     path: Path,
     counts_or_breakdown: Counter[str] | Mapping[str, Counter[str] | Mapping[str, int]],
 ) -> None:
-    """Write scenarios / games / total tables next to a pack or train artifact."""
+    """Write kind tables next to a pack or train artifact (omits empty / redundant sections)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(format_kind_breakdown(counts_or_breakdown) + "\n", encoding="utf-8")
 

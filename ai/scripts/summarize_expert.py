@@ -32,7 +32,7 @@ from gridiron_ai.paths import EXPERT_DIR
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Tally expert chosen-move kinds (scenarios / games / total)")
+    p = argparse.ArgumentParser(description="Tally expert chosen-move kinds (scenarios / games; total when both)")
     p.add_argument("--in", dest="path", type=Path, default=EXPERT_DIR / "lookahead.jsonl.gz", help="Expert JSONL/JSONL.GZ or packed npz")
     return p.parse_args()
 
