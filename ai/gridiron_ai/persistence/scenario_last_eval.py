@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TypeAlias, TypedDict
 
+from gridiron_ai.harness_wire import ScenarioName
 from gridiron_ai.persistence.json_io import atomic_write_json
 
 _SUFFIX = ".scenario_last_eval.json"
@@ -20,8 +21,26 @@ LAST_EVAL_METRIC_KEYS = (
     "opening_expected_rank_best_mean",
 )
 
-# scenario → level → ``{"current": slim, "prior": slim | None}``
-LastEvalStore = dict[str, dict[str, dict[str, Any]]]
+
+class LastEvalMetricsDict(TypedDict):
+    """Slim prior-delta fields from a full eval ``stats`` dict."""
+
+    winrate: float | None
+    opening_expected_p_mean: float | None
+    opening_expected_p_best_mean: float | None
+    opening_chosen_p_mean: float | None
+    opening_expected_rank_best_mean: float | None
+
+
+class LastEvalEntryDict(TypedDict):
+    """One drill@d slot: current metrics plus optional prior."""
+
+    current: LastEvalMetricsDict
+    prior: LastEvalMetricsDict | None
+
+
+# scenario → level (str) → ``{"current": slim, "prior": slim | None}``
+LastEvalStore: TypeAlias = dict[ScenarioName, dict[str, LastEvalEntryDict]]
 
 
 def path_for_last_eval(save_stem: Path) -> Path:
@@ -33,23 +52,33 @@ def _clamp(level: int) -> int:
     return max(0, min(_MAX_DIFFICULTY, int(level)))
 
 
-def _slim_metrics(raw: Any) -> dict[str, Any] | None:
+def _empty_slim() -> LastEvalMetricsDict:
+    return {
+        "winrate": None,
+        "opening_expected_p_mean": None,
+        "opening_expected_p_best_mean": None,
+        "opening_chosen_p_mean": None,
+        "opening_expected_rank_best_mean": None,
+    }
+
+
+def _slim_metrics(raw: object) -> LastEvalMetricsDict | None:
     if not isinstance(raw, dict):
         return None
-    slim: dict[str, Any] = {}
+    values: dict[str, float | None] = {}
     for field in LAST_EVAL_METRIC_KEYS:
         value = raw.get(field)
         if value is None:
-            slim[field] = None
+            values[field] = None
         else:
             try:
-                slim[field] = float(value)
+                values[field] = float(value)
             except (TypeError, ValueError):
-                slim[field] = None
-    return slim
+                values[field] = None
+    return LastEvalMetricsDict(**values)  # type: ignore[misc]
 
 
-def _parse_entry(raw: dict[str, Any]) -> dict[str, Any] | None:
+def _parse_entry(raw: dict[str, object]) -> LastEvalEntryDict | None:
     """Normalize nested ``current``/``prior`` or legacy flat metrics → entry dict."""
     if "current" in raw or "prior" in raw:
         current = _slim_metrics(raw.get("current"))
@@ -75,7 +104,7 @@ def load_last_eval(path: Path) -> LastEvalStore:
     for scenario, by_level in raw.items():
         if not isinstance(by_level, dict):
             continue
-        levels: dict[str, dict[str, Any]] = {}
+        levels: dict[str, LastEvalEntryDict] = {}
         for level_key, metrics in by_level.items():
             if not isinstance(metrics, dict):
                 continue
@@ -112,13 +141,10 @@ def save_last_eval(path: Path, last_eval: LastEvalStore) -> None:
     atomic_write_json(path, payload)
 
 
-def extract_last_eval_metrics(stats: dict[str, Any]) -> dict[str, Any]:
+def extract_last_eval_metrics(stats: dict[str, object]) -> LastEvalMetricsDict:
     """Pull the slim prior-delta fields from a full eval ``stats`` dict."""
-    slim: dict[str, Any] = {}
+    values: dict[str, float | None] = {}
     for field in LAST_EVAL_METRIC_KEYS:
         value = stats.get(field)
-        if value is None:
-            slim[field] = None
-        else:
-            slim[field] = float(value)
-    return slim
+        values[field] = None if value is None else float(value)
+    return LastEvalMetricsDict(**values)  # type: ignore[misc]

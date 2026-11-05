@@ -6,7 +6,7 @@ import json
 from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TypeAlias, TypedDict
 
 from gridiron_ai.expert_stats import (
     BUCKET_SCENARIOS,
@@ -18,6 +18,18 @@ from gridiron_ai.expert_stats import (
     write_kind_stats,
 )
 from gridiron_ai.paths import KIND_TOTALS_JSON_NAME, KIND_TOTALS_TXT_NAME, RUNS_DIR
+
+# kind name → count within one bucket (``scenarios`` / ``games`` / ``total``).
+KindCountMap: TypeAlias = dict[str, int]
+
+
+class KindTotalsDict(TypedDict, total=False):
+    """On-disk ``kind_totals.json`` — bucket → kind→count (legacy flat ``counts`` also accepted)."""
+
+    scenarios: KindCountMap
+    games: KindCountMap
+    total: KindCountMap
+    counts: KindCountMap  # legacy flat → total only
 
 
 def kind_totals_paths(runs_key: str) -> tuple[Path, Path]:
@@ -54,7 +66,7 @@ def load_kind_totals(runs_key: str) -> Counter[str]:
 
 
 def _segment_as_breakdown(
-    segment: Mapping[str, Any],
+    segment: Mapping[str, object],
 ) -> dict[str, Counter[str]]:
     """Accept full breakdown or flat kind→count (legacy → total only)."""
     if any(bucket in segment for bucket in KIND_BUCKETS):
@@ -71,7 +83,7 @@ def _segment_as_breakdown(
 
 def accumulate_kind_totals(
     runs_key: str,
-    segment_totals: Mapping[str, Any],
+    segment_totals: Mapping[str, object],
 ) -> dict[str, Counter[str]]:
     """Add segment into ``runs/{runs_key}/kind_totals.{json,txt}``; return lifetime breakdown.
 

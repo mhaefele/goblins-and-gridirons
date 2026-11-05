@@ -11,11 +11,12 @@ metadata (Kotlin ``AiLegalPacker``) — see factor-slot comments below.
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple, TypeAlias
+from typing import NamedTuple, TypeAlias
 
 import numpy as np
 
 from gridiron_ai.constants import ACTION_FACTOR_WIDTHS, LEGAL_ROW_SCORE_WIDTH, MAX_LEGAL_MOVES
+from gridiron_ai.harness_wire import AiLegalChoiceDict, LegalActionDict
 
 # Canonical index in the factor tuple packed on each legal row.
 # Slots 0..8 = row identity (kind + free/sugar that distinguish the legal choice).
@@ -49,7 +50,7 @@ class ResolvedAction(NamedTuple):
 
     legal_action_id: str
     sampled_kind: str
-    legal_choice: dict[str, Any]
+    legal_choice: LegalActionDict
 
 
 def legal_row_action_n() -> int:
@@ -119,7 +120,7 @@ def resolve_legal_row_index(
     row_index: int | np.ndarray | list[int] | tuple[int, ...],
     *,
     legal_moves: np.ndarray | list[list[int]],
-    legal_rows: list[dict[str, Any]],
+    legal_rows: list[AiLegalChoiceDict],
 ) -> ResolvedAction:
     """Map a legal-row index → legalActionId using harness rows."""
     moves = np.asarray(legal_moves, dtype=np.int64).reshape(-1, len(ACTION_FACTOR_WIDTHS))

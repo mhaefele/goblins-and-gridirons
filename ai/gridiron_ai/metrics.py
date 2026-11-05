@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from gridiron_ai.harness_wire import HarnessRewardSnapshotDict, TeamSide
+
 from gridiron_ai.eval_opening_diag import format_opening_score_bits, fmt_metric_delta
 from gridiron_ai.expert_stats import (
     BUCKET_GAMES,
@@ -51,7 +53,7 @@ _BALL_RATE_KEYS = (
 )
 
 
-def total_score(observation_from_server: dict[str, Any]) -> int:
+def total_score(observation_from_server: HarnessRewardSnapshotDict) -> int:
     return int(observation_from_server["scoreUs"]) + int(observation_from_server["scoreThem"])
 
 
@@ -351,7 +353,9 @@ class EpisodeActionStats:
         self.submit_ms_total += ms
         self.submit_count += 1
 
-    def record_ball_gain(self, before: dict[str, Any], after: dict[str, Any]) -> None:
+    def record_ball_gain(
+        self, before: HarnessRewardSnapshotDict, after: HarnessRewardSnapshotDict
+    ) -> None:
         """Count !holds→holds for us and them (same-perspective snapshots)."""
         if (not us_holds_ball(before)) and us_holds_ball(after):
             self.ball_us_gained += 1
@@ -360,9 +364,9 @@ class EpisodeActionStats:
 
     def record_turn_start(
         self,
-        observation_from_server: dict[str, Any],
+        observation_from_server: HarnessRewardSnapshotDict,
         *,
-        perspective_seat: str,
+        perspective_seat: TeamSide,
     ) -> None:
         """One turn-start possession sample (caller dedupes by ``turnNumber``)."""
         self.turn_start_samples += 1

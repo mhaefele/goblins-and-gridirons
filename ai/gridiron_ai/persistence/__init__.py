@@ -3,6 +3,10 @@
 Curriculum *policy* (budgets, unlocks, multipliers) stays in ``scenario_curriculum``;
 pipeline FSM types stay in ``pipeline_state``. See ``ai/OWNERSHIP.md``.
 
+Each module exposes a named store alias / ``TypedDict`` for its on-disk schema
+(``ScenarioDifficultyLevels``, ``LastEvalStore``, ``KindTotalsDict``, …).
+``pipeline`` is dataclass-typed via ``PipelineState``.
+
 | Module | On disk | Contents |
 |---|---|---|
 | ``scenario_difficulty`` | ``{stem}.scenario_difficulty.json`` | Curriculum key → difficulty 0–5 |

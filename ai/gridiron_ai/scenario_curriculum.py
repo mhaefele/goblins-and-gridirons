@@ -43,6 +43,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from gridiron_ai.harness_wire import ScenarioName
 from gridiron_ai.persistence.scenario_difficulty import (  # noqa: F401 — re-export
     load_levels,
     path_for_stem,
@@ -60,6 +61,9 @@ from gridiron_ai.persistence.scenario_gate_failures import (  # noqa: F401 — r
 )
 from gridiron_ai.persistence.scenario_last_eval import (  # noqa: F401 — re-export
     LAST_EVAL_METRIC_KEYS,
+    LastEvalEntryDict,
+    LastEvalMetricsDict,
+    LastEvalStore,
     extract_last_eval_metrics,
     load_last_eval,
     path_for_last_eval,
@@ -124,20 +128,20 @@ DEFAULT_SCENARIO_TRAIN_MAINTENANCE = _SCENARIO_ROLLOUT_TIMESTEPS
 
 
 def last_eval_entry(
-    last_eval: dict[str, dict[str, dict[str, Any]]],
-    scenario: str,
+    last_eval: LastEvalStore,
+    scenario: ScenarioName,
     difficulty: int,
-) -> dict[str, Any] | None:
+) -> LastEvalEntryDict | None:
     """``{current, prior}`` for ``scenario`` at ``difficulty``, or ``None`` when missing."""
     by_level = last_eval.get(curriculum_key(scenario), {})
     return by_level.get(str(_clamp(difficulty)))
 
 
 def last_eval_metrics(
-    last_eval: dict[str, dict[str, dict[str, Any]]],
-    scenario: str,
+    last_eval: LastEvalStore,
+    scenario: ScenarioName,
     difficulty: int,
-) -> dict[str, Any] | None:
+) -> LastEvalMetricsDict | None:
     """Slim **current** metrics for ``scenario`` at ``difficulty``, or ``None`` when missing."""
     entry = last_eval_entry(last_eval, scenario, difficulty)
     if entry is None:
@@ -147,10 +151,10 @@ def last_eval_metrics(
 
 
 def last_eval_prior_metrics(
-    last_eval: dict[str, dict[str, dict[str, Any]]],
-    scenario: str,
+    last_eval: LastEvalStore,
+    scenario: ScenarioName,
     difficulty: int,
-) -> dict[str, Any] | None:
+) -> LastEvalMetricsDict | None:
     """Slim **prior** (one-before-last) metrics, or ``None`` when missing."""
     entry = last_eval_entry(last_eval, scenario, difficulty)
     if entry is None:
@@ -160,13 +164,13 @@ def last_eval_prior_metrics(
 
 
 def record_last_eval(
-    last_eval: dict[str, dict[str, dict[str, Any]]],
-    scenario: str,
+    last_eval: LastEvalStore,
+    scenario: ScenarioName,
     difficulty: int,
     stats: dict[str, Any],
-) -> dict[str, dict[str, dict[str, Any]]]:
+) -> LastEvalStore:
     """Copy of ``last_eval`` with new ``current``; previous ``current`` becomes ``prior``."""
-    updated = {
+    updated: LastEvalStore = {
         name: {
             level: {
                 "current": dict(entry.get("current") or {}),
@@ -237,7 +241,7 @@ def _bump_drill_stat(
     return updated
 
 
-def curriculum_key(scenario: str) -> str:
+def curriculum_key(scenario: ScenarioName) -> ScenarioName:
     """Scenario whose stored level is used for ``scenario`` (bounce → loose-ball run)."""
     return require_catalog().curriculum_key(scenario)
 

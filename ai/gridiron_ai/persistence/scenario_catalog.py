@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
+from gridiron_ai.harness_wire import ScenarioCatalogCacheDict, ScenarioCatalogEntryDict
 from gridiron_ai.paths import SCENARIO_CATALOG_PATH
 from gridiron_ai.persistence.json_io import atomic_write_json
 
@@ -16,7 +16,7 @@ def catalog_path():
     return SCENARIO_CATALOG_PATH
 
 
-def load_catalog_payload() -> dict[str, Any] | None:
+def load_catalog_payload() -> ScenarioCatalogCacheDict | None:
     """Raw cache dict, or ``None`` when missing / unusable."""
     path = SCENARIO_CATALOG_PATH
     if not path.is_file():
@@ -27,12 +27,10 @@ def load_catalog_payload() -> dict[str, Any] | None:
     scenarios = raw.get("scenarios")
     if not isinstance(scenarios, list):
         return None
-    return raw
+    return raw  # type: ignore[return-value]
 
 
-def save_catalog_payload(scenarios: list[dict[str, Any]]) -> None:
+def save_catalog_payload(scenarios: list[ScenarioCatalogEntryDict]) -> None:
     """Write wire-shaped scenario rows under ``schemaVersion``."""
-    atomic_write_json(
-        SCENARIO_CATALOG_PATH,
-        {"schemaVersion": _CACHE_SCHEMA, "scenarios": scenarios},
-    )
+    payload: ScenarioCatalogCacheDict = {"schemaVersion": _CACHE_SCHEMA, "scenarios": scenarios}
+    atomic_write_json(SCENARIO_CATALOG_PATH, payload)

@@ -20,6 +20,22 @@ from gridiron_ai.constants import (
     PLAY_WIDTH,
     SCHEMA_VERSION,
 )
+from gridiron_ai.harness_wire import (
+    AiLegalChoiceDict,
+    AiScoringDeltaDict,
+    ComputerOpponentKind,
+    ControlledBy,
+    CoordinateDict,
+    EpisodeMode,
+    HarnessPlayerDict,
+    HarnessRewardSnapshotDict,
+    PackedStepDict,
+    PackedSubmitDict,
+    ScenarioCatalogEntryDict,
+    ScenarioName,
+    SubmitTerminalMetaDict,
+    TeamRel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +74,7 @@ _HARNESS_LEGAL_ROW_KEYS = (
 )
 
 
-def _assert_packed_legal_row(row: Any, *, label: str) -> None:
+def _assert_packed_legal_row(row: object, *, label: str) -> None:
     if not isinstance(row, dict):
         raise GridironApiError(f"{label} must be an object")
     for key in _HARNESS_LEGAL_ROW_KEYS:
@@ -74,7 +90,7 @@ def _assert_packed_legal_row(row: Any, *, label: str) -> None:
     _require_key(action, "id", label=f"{label}.action")
 
 
-def _assert_packed_legal_rows(rows: Any, *, label: str, expected_rows: int) -> None:
+def _assert_packed_legal_rows(rows: object, *, label: str, expected_rows: int) -> None:
     if not isinstance(rows, list):
         raise GridironApiError(f"{label} must be a JSON array")
     if len(rows) != expected_rows:
@@ -163,9 +179,9 @@ class GridironClient:
         away_team_id: str,
         *,
         pitch_definition_id: str = "default",
-        home_controlled_by: str = "HUMAN",
-        away_controlled_by: str = "HUMAN",
-        computer_opponent: str = "LOOKAHEAD",
+        home_controlled_by: ControlledBy = ControlledBy.HUMAN,
+        away_controlled_by: ControlledBy = ControlledBy.HUMAN,
+        computer_opponent: ComputerOpponentKind = ComputerOpponentKind.LOOKAHEAD,
         onnx_profile: str | None = None,
     ) -> str:
         """POST /api/matches.
@@ -186,7 +202,7 @@ class GridironClient:
             body["onnxProfile"] = onnx_profile
         return self._post("/api/matches", json=body)["matchId"]
 
-    def list_training_scenario_catalog(self) -> list[dict[str, Any]]:
+    def list_training_scenario_catalog(self) -> list[ScenarioCatalogEntryDict]:
         """GET /api/ai/training/scenarios — catalog entries (name, family, difficultyProxy)."""
         return list(self._get("/api/ai/training/scenarios"))
 
@@ -205,20 +221,20 @@ class GridironClient:
 
     def create_scenario_match(
         self,
-        scenario: str,
+        scenario: ScenarioName,
         *,
         difficulty: int,
-        episode_mode: str,
-        away_controlled_by: str,
-        computer_opponent: str,
+        episode_mode: EpisodeMode,
+        away_controlled_by: ControlledBy,
+        computer_opponent: ComputerOpponentKind,
     ) -> str:
         """POST /api/ai/training/matches — create + open a scenario already mid-drill.
 
-        ``scenario`` is a ``TrainingScenarioEnum`` name. HOME is always HARNESS; teams and
-        pitch are chosen on the server. Callers must pass every field (no Kotlin defaults).
-        ``difficulty`` (0–5) scatters that many extra trainer reserves after scenario pieces.
-        ``episode_mode`` is reserved (TRAIN/EVAL); legals are always full engine today.
-        Returns the match id; no separate start call is needed.
+        ``scenario`` is a catalog name (``TrainingScenarioEnum`` on the server). HOME is always
+        HARNESS; teams and pitch are chosen on the server. Callers must pass every field (no
+        Kotlin defaults). ``difficulty`` (0–5) scatters that many extra trainer reserves after
+        scenario pieces. ``episode_mode`` is reserved (TRAIN/EVAL); legals are always full
+        engine today. Returns the match id; no separate start call is needed.
         """
         body: dict[str, Any] = {
             "scenario": scenario,
@@ -236,7 +252,7 @@ class GridironClient:
         perspective_seat: str | None = None,
         for_seat: str,
         timeout_s: float | None = None,
-    ) -> dict[str, Any]:
+    ) -> PackedStepDict:
         """GET /api/ai/matches/{id}/step/packed — [AiStepDto] with float[] policy.obs.
 
         ``for_seat`` blocks until that seat must act (or terminal).
@@ -256,7 +272,7 @@ class GridironClient:
         *,
         for_seat: str,
         timeout_s: float | None = None,
-    ) -> dict[str, Any]:
+    ) -> PackedSubmitDict:
         """POST /api/ai/matches/{id}/submit/packed — legalActionId body; [AiSubmitResultDto]."""
         path = f"/api/ai/matches/{match_id}/submit/packed" + _query(forSeat=for_seat)
         result = self._request("POST", path, json=legal_action_id, timeout_s=timeout_s)
@@ -293,22 +309,22 @@ def _query(**params: str | None) -> str:
     return "?" + "&".join(parts) if parts else ""
 
 
-def _require_key(payload: dict[str, Any], key: str, *, label: str) -> None:
+def _require_key(payload: dict[str, object], key: str, *, label: str) -> None:
     if key not in payload:
         raise GridironApiError(f"{label} missing {key}")
 
 
-def _require_bool(payload: dict[str, Any], key: str, *, label: str) -> None:
+def _require_bool(payload: dict[str, object], key: str, *, label: str) -> None:
     _require_key(payload, key, label=label)
     if not isinstance(payload[key], bool):
         raise GridironApiError(f"{label} {key} must be a bool")
 
 
-def _is_episode_ended_state(state: dict[str, Any]) -> bool:
+def _is_episode_ended_state(state: PackedStepDict) -> bool:
     return state["resultKind"] is not None or bool(state["trainingEpisodeEnded"])
 
 
-def submit_scoring(result: dict[str, Any]) -> dict[str, Any]:
+def submit_scoring(result: PackedSubmitDict) -> AiScoringDeltaDict:
     """Per-submit TD / challenge-card deltas."""
     scoring = result["scoring"]
     if not isinstance(scoring, dict):
@@ -318,7 +334,7 @@ def submit_scoring(result: dict[str, Any]) -> dict[str, Any]:
     return scoring
 
 
-def submit_rewards_after(result: dict[str, Any]) -> dict[str, Any]:
+def submit_rewards_after(result: PackedSubmitDict) -> HarnessRewardSnapshotDict:
     """Harness snapshot for scoring the action just submitted — pre-handoff when set."""
     after = result.get("afterSubmitRewards")
     if after is not None:
@@ -326,7 +342,7 @@ def submit_rewards_after(result: dict[str, Any]) -> dict[str, Any]:
     return result["next"]["rewards"]
 
 
-def submit_terminal_meta(result: dict[str, Any]) -> dict[str, Any]:
+def submit_terminal_meta(result: PackedSubmitDict) -> SubmitTerminalMetaDict:
     """Episode meta for step_reward.
 
     Same-frame submit: read from [next]. Handoff submit: usually none (trainer still
@@ -349,7 +365,7 @@ def submit_terminal_meta(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def flatten_packed_step(step: dict[str, Any]) -> dict[str, Any]:
+def flatten_packed_step(step: PackedStepDict) -> PackedStepDict:
     """Packed step JSON → flat dict for gym helpers (server wire is already flat)."""
     return {
         "schemaVersion": step["schemaVersion"],
@@ -361,12 +377,12 @@ def flatten_packed_step(step: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def flatten_packed_submit(result: dict[str, Any]) -> dict[str, Any]:
+def flatten_packed_submit(result: PackedSubmitDict) -> PackedStepDict:
     """Packed submit [next] → flat step dict for gym install."""
     return flatten_packed_step(result["next"])
 
 
-def _assert_packed_submit(result: dict[str, Any]) -> None:
+def _assert_packed_submit(result: PackedSubmitDict) -> None:
     _require_key(result, "schemaVersion", label="Packed submit")
     if result["schemaVersion"] != SCHEMA_VERSION:
         raise GridironApiError(
@@ -392,11 +408,13 @@ def _assert_packed_submit(result: dict[str, Any]) -> None:
         raise GridironApiError("Packed submit continuing requires non-empty legalMoves")
 
 
-def _assert_packed_harness_legal_rows(rows: Any, *, label: str, expected_rows: int) -> None:
+def _assert_packed_harness_legal_rows(
+    rows: list[AiLegalChoiceDict] | object, *, label: str, expected_rows: int
+) -> None:
     _assert_packed_legal_rows(rows, label=f"{label} legalRows", expected_rows=expected_rows)
 
 
-def _assert_coordinate(raw: Any, *, label: str) -> None:
+def _assert_coordinate(raw: CoordinateDict | object, *, label: str) -> None:
     if not isinstance(raw, dict):
         raise GridironApiError(f"{label} must be an object")
     _require_key(raw, "x", label=label)
@@ -409,7 +427,7 @@ def _assert_coordinate(raw: Any, *, label: str) -> None:
         raise GridironApiError(f"{label}.y={y!r} out of range")
 
 
-def _assert_harness_player(player: Any, *, label: str) -> None:
+def _assert_harness_player(player: HarnessPlayerDict | object, *, label: str) -> None:
     if not isinstance(player, dict):
         raise GridironApiError(f"{label} must be an object")
     _require_key(player, "playerId", label=label)
@@ -423,14 +441,14 @@ def _assert_harness_player(player: Any, *, label: str) -> None:
     if not isinstance(index, int) or isinstance(index, bool) or not (1 <= index <= BENCH_SLOTS):
         raise GridironApiError(f"{label}.playerIndex={index!r} out of range")
     team_rel = player["teamRel"]
-    if team_rel not in ("US", "THEM"):
+    if team_rel not in (TeamRel.US, TeamRel.THEM):
         raise GridironApiError(f"{label}.teamRel={team_rel!r} must be US or THEM")
     coord = player["coordinate"]
     if coord is not None:
         _assert_coordinate(coord, label=f"{label}.coordinate")
 
 
-def _assert_harness_rewards(rewards: Any, *, label: str) -> None:
+def _assert_harness_rewards(rewards: HarnessRewardSnapshotDict | object, *, label: str) -> None:
     if not isinstance(rewards, dict):
         raise GridironApiError(f"{label} rewards must be an object")
     for key in _REWARDS_KEYS:
@@ -455,7 +473,7 @@ def _assert_harness_rewards(rewards: Any, *, label: str) -> None:
         _assert_coordinate(ball, label=f"{label} rewards.ballCoordinate")
 
 
-def _assert_packed_step(step: dict[str, Any], *, label: str = "Packed step") -> None:
+def _assert_packed_step(step: PackedStepDict, *, label: str = "Packed step") -> None:
     _require_key(step, "schemaVersion", label=label)
     if step["schemaVersion"] != SCHEMA_VERSION:
         raise GridironApiError(

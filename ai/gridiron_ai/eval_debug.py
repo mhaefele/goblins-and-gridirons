@@ -7,11 +7,21 @@ See ``ai/OWNERSHIP.md``.
 from __future__ import annotations
 
 import fcntl
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from gridiron_ai.constants import PLAY_HEIGHT
+from gridiron_ai.harness_wire import (
+    AiLegalChoiceDict,
+    EpisodeMode,
+    HarnessRewardSnapshotDict,
+    LegalActionDict,
+    ScenarioName,
+    TeamRel,
+    TeamSide,
+)
 from gridiron_ai.paths import SCENARIO_DRAWS_LOG_PATH
 from gridiron_ai.reward import (
     action_actor_coordinate,
@@ -21,13 +31,11 @@ from gridiron_ai.reward import (
     player_by_id,
 )
 
-def _scoring_endzone_row_y(*, policy_seat: str) -> int:
+def _scoring_endzone_row_y(*, policy_seat: TeamSide) -> int:
     """Perspective-relative row y (`1..PLAY_HEIGHT`) of the end zone the policy seat scores in."""
-    from gridiron_ai.constants import PLAY_HEIGHT
-
-    if policy_seat == "HOME":
+    if policy_seat == TeamSide.HOME:
         return PLAY_HEIGHT
-    if policy_seat == "AWAY":
+    if policy_seat == TeamSide.AWAY:
         return 1
     raise ValueError(f"policy_seat must be HOME or AWAY, got {policy_seat!r}")
 
@@ -70,11 +78,11 @@ class ScenarioEvalDebug:
     def on_scenario_start(
         self,
         turn_number: int,
-        rewards: dict[str, Any],
+        rewards: HarnessRewardSnapshotDict,
         *,
-        policy_seat: str,
+        policy_seat: TeamSide,
         first_action_legal_count: int,
-        legal_row_meta: list[dict[str, Any]] | None = None,
+        legal_row_meta: list[AiLegalChoiceDict] | None = None,
         passing_legal: list[bool] | None = None,
     ) -> None:
         """``rewards`` is harness [HarnessRewardSnapshotDto] — board snapshot for log headers."""
@@ -101,8 +109,8 @@ class ScenarioEvalDebug:
         self,
         *,
         turn_number: int,
-        rewards: dict[str, Any],
-        legal_choice: dict[str, Any],
+        rewards: HarnessRewardSnapshotDict,
+        legal_choice: LegalActionDict,
         scored_touchdown: bool = False,
         expected_move: bool = False,
         acquired_card: bool = False,
@@ -111,7 +119,7 @@ class ScenarioEvalDebug:
         legal_moves: np.ndarray | None = None,
         passing_legal: list[bool] | None = None,
         soft_mask_legal: list[bool] | None = None,
-        legal_row_meta: list[dict[str, Any]] | None = None,
+        legal_row_meta: list[AiLegalChoiceDict] | None = None,
         chosen_row_index: int | None = None,
     ) -> None:
         if (
@@ -152,9 +160,9 @@ class ScenarioEvalDebug:
     def format_scenario_draw_log(
         self,
         *,
-        scenario: str,
+        scenario: ScenarioName,
         difficulty: int,
-        episode_mode: str,
+        episode_mode: EpisodeMode,
         summary: dict[str, Any],
     ) -> str:
         """Multi-line text block for ``scenario_draws.log`` (one draw per episode)."""
@@ -330,9 +338,9 @@ class ScenarioEvalDebug:
 
     @staticmethod
     def format_action(
-        legal_choice: dict[str, Any],
+        legal_choice: LegalActionDict,
         *,
-        rewards: dict[str, Any] | None = None,
+        rewards: HarnessRewardSnapshotDict | None = None,
         scored_touchdown: bool = False,
         expected_move: bool = False,
         acquired_card: bool = False,
@@ -387,14 +395,14 @@ class ScenarioEvalDebug:
         self,
         *,
         turn_number: int,
-        rewards: dict[str, Any],
+        rewards: HarnessRewardSnapshotDict,
         policy_obs: dict[str, np.ndarray],
         legal_moves: np.ndarray,
         passing_legal: list[bool],
         soft_mask_legal: list[bool],
-        legal_row_meta: list[dict[str, Any]],
+        legal_row_meta: list[AiLegalChoiceDict],
         chosen_row_index: int,
-        legal_choice: dict[str, Any],
+        legal_choice: LegalActionDict,
         was_expected: bool,
     ) -> None:
         """First player action on the opening coach turn (for rank/p on expected + turn1).
@@ -424,7 +432,7 @@ class ScenarioEvalDebug:
         self._opening_was_expected = bool(was_expected)
 
 
-def append_scenario_draw_log(block: str, *, path: Any | None = None) -> None:
+def append_scenario_draw_log(block: str, *, path: Path | None = None) -> None:
     """Append one draw block to the shared log (fcntl lock — safe under SubprocVecEnv)."""
     log_path = path or SCENARIO_DRAWS_LOG_PATH
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -436,19 +444,19 @@ def append_scenario_draw_log(block: str, *, path: Any | None = None) -> None:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def _has_actor(legal_choice: dict[str, Any]) -> bool:
+def _has_actor(legal_choice: LegalActionDict) -> bool:
     """Player actions carry ``playerId``. Coach-only rows (replace, decline, claim) do not."""
     player_id = legal_choice.get("playerId")
     return isinstance(player_id, str) and bool(player_id)
 
 
-def _challenge_slot(legal_choice: dict[str, Any]) -> int | None:
+def _challenge_slot(legal_choice: LegalActionDict) -> int | None:
     if "slotIndex" in legal_choice and legal_choice["slotIndex"] is not None:
         return int(legal_choice["slotIndex"])
     return None
 
 
-def _describe_satisfied_claim(legal_choice: dict[str, Any], *, action_label: str) -> str | None:
+def _describe_satisfied_claim(legal_choice: LegalActionDict, *, action_label: str) -> str | None:
     """Which challenge card this action actually claimed (best-effort from server hints)."""
     claims = legal_choice.get("potentialChallengeClaims") or []
     slot = _challenge_slot(legal_choice)
@@ -466,8 +474,8 @@ def _describe_satisfied_claim(legal_choice: dict[str, Any], *, action_label: str
 
 def _format_expected_moves(
     *,
-    rewards: dict[str, Any],
-    legal_row_meta: list[dict[str, Any]],
+    rewards: HarnessRewardSnapshotDict,
+    legal_row_meta: list[AiLegalChoiceDict],
     passing_legal: list[bool],
 ) -> tuple[int, list[str]] | None:
     """Total passing-scenario rows and all labels (display sorts by rank; shows best two if many)."""
@@ -490,7 +498,7 @@ def _abs_xy_label(x: int, y: int) -> str:
     return f"{x},{y}"
 
 
-def _pitch_player_position_labels(rewards: dict[str, Any]) -> tuple[list[str], list[str]]:
+def _pitch_player_position_labels(rewards: HarnessRewardSnapshotDict) -> tuple[list[str], list[str]]:
     """Absolute pitch ``x,y`` labels for US / THEM from harness ``rewards.players``."""
     us: list[str] = []
     them: list[str] = []
@@ -502,9 +510,9 @@ def _pitch_player_position_labels(rewards: dict[str, Any]) -> tuple[list[str], l
             continue
         label = _abs_xy_label(*xy)
         team_rel = player.get("teamRel")
-        if team_rel == "US":
+        if team_rel == TeamRel.US:
             us.append(label)
-        elif team_rel == "THEM":
+        elif team_rel == TeamRel.THEM:
             them.append(label)
     return us, them
 

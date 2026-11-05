@@ -12,21 +12,20 @@ Unknown drills in a difficulty JSON are ignored; new catalog names start at diff
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Sequence
+from typing import Any, Sequence
 
+from gridiron_ai.harness_wire import ScenarioCatalogEntryDict, ScenarioFamily, ScenarioName
 from gridiron_ai.paths import SCENARIO_CATALOG_PATH
 from gridiron_ai.persistence.scenario_catalog import load_catalog_payload, save_catalog_payload
-
-ScenarioFamily = Literal["BOARD", "CLAIM"]
 
 _process_catalog: ScenarioCatalog | None = None
 
 
 @dataclass(frozen=True)
 class ScenarioInfo:
-    name: str
+    name: ScenarioName
     family: ScenarioFamily
-    difficulty_proxy: str | None = None
+    difficulty_proxy: ScenarioName | None = None
     gates_progress: bool = True
 
 
@@ -36,50 +35,50 @@ class ScenarioCatalog:
 
     entries: tuple[ScenarioInfo, ...]
 
-    def names(self) -> list[str]:
+    def names(self) -> list[ScenarioName]:
         return [entry.name for entry in self.entries]
 
-    def board_names(self) -> list[str]:
-        return [entry.name for entry in self.entries if entry.family == "BOARD"]
+    def board_names(self) -> list[ScenarioName]:
+        return [entry.name for entry in self.entries if entry.family == ScenarioFamily.BOARD]
 
-    def claim_names(self) -> list[str]:
-        return [entry.name for entry in self.entries if entry.family == "CLAIM"]
+    def claim_names(self) -> list[ScenarioName]:
+        return [entry.name for entry in self.entries if entry.family == ScenarioFamily.CLAIM]
 
-    def get(self, name: str) -> ScenarioInfo | None:
+    def get(self, name: ScenarioName) -> ScenarioInfo | None:
         for entry in self.entries:
             if entry.name == name:
                 return entry
         return None
 
-    def is_claim(self, name: str | None) -> bool:
+    def is_claim(self, name: ScenarioName | None) -> bool:
         if not name:
             return False
         entry = self.get(name)
-        return entry is not None and entry.family == "CLAIM"
+        return entry is not None and entry.family == ScenarioFamily.CLAIM
 
-    def is_board(self, name: str | None) -> bool:
+    def is_board(self, name: ScenarioName | None) -> bool:
         if not name:
             return False
         entry = self.get(name)
-        return entry is not None and entry.family == "BOARD"
+        return entry is not None and entry.family == ScenarioFamily.BOARD
 
-    def gates_progress(self, name: str | None) -> bool:
+    def gates_progress(self, name: ScenarioName | None) -> bool:
         if not name:
             return True
         entry = self.get(name)
         return entry is None or entry.gates_progress
 
-    def curriculum_key(self, scenario: str) -> str:
+    def curriculum_key(self, scenario: ScenarioName) -> ScenarioName:
         entry = self.get(scenario)
         if entry is not None and entry.difficulty_proxy:
             return entry.difficulty_proxy
         return scenario
 
-    def proxy_sources(self) -> frozenset[str]:
+    def proxy_sources(self) -> frozenset[ScenarioName]:
         """Scenarios whose difficulty is stored under another name (omit from JSON)."""
         return frozenset(entry.name for entry in self.entries if entry.difficulty_proxy)
 
-    def short_name(self, scenario: str) -> str:
+    def short_name(self, scenario: ScenarioName) -> str:
         return scenario.lower()
 
     @classmethod
@@ -87,21 +86,22 @@ class ScenarioCatalog:
         return cls(entries=tuple(entries))
 
     @classmethod
-    def from_wire(cls, raw: Sequence[Any]) -> ScenarioCatalog:
+    def from_wire(cls, raw: Sequence[ScenarioCatalogEntryDict]) -> ScenarioCatalog:
         entries: list[ScenarioInfo] = []
         for item in raw:
             if not isinstance(item, dict):
                 raise ValueError(f"catalog entry must be an object, got {type(item).__name__}")
             name = str(item["name"])
-            family = str(item["family"])
-            if family not in ("BOARD", "CLAIM"):
-                raise ValueError(f"unknown scenario family {family!r} for {name}")
+            try:
+                family = ScenarioFamily(str(item["family"]))
+            except ValueError as exc:
+                raise ValueError(f"unknown scenario family {item['family']!r} for {name}") from exc
             proxy = item.get("difficultyProxy")
             gates = item.get("gatesProgress", True)
             entries.append(
                 ScenarioInfo(
                     name=name,
-                    family=family,  # type: ignore[arg-type]
+                    family=family,
                     difficulty_proxy=str(proxy) if proxy else None,
                     gates_progress=bool(gates),
                 )
@@ -148,25 +148,15 @@ def load_cached_catalog() -> ScenarioCatalog | None:
 
 
 def save_catalog(catalog: ScenarioCatalog) -> None:
-    save_catalog_payload(
-        [
-            {
-                "name": entry.name,
-                "family": entry.family,
-                **(
-                    {"difficultyProxy": entry.difficulty_proxy}
-                    if entry.difficulty_proxy
-                    else {}
-                ),
-                **(
-                    {"gatesProgress": entry.gates_progress}
-                    if not entry.gates_progress
-                    else {}
-                ),
-            }
-            for entry in catalog.entries
-        ],
-    )
+    rows: list[ScenarioCatalogEntryDict] = []
+    for entry in catalog.entries:
+        row: ScenarioCatalogEntryDict = {"name": entry.name, "family": entry.family}
+        if entry.difficulty_proxy:
+            row["difficultyProxy"] = entry.difficulty_proxy
+        if not entry.gates_progress:
+            row["gatesProgress"] = entry.gates_progress
+        rows.append(row)
+    save_catalog_payload(rows)
 
 
 def refresh_catalog(client: Any) -> ScenarioCatalog:
@@ -176,15 +166,17 @@ def refresh_catalog(client: Any) -> ScenarioCatalog:
     return set_catalog(catalog)
 
 
-def is_claim_scenario(scenario: str | None) -> bool:
+def is_claim_scenario(scenario: ScenarioName | None) -> bool:
     return require_catalog().is_claim(scenario)
 
 
-def scenario_short_name(scenario: str) -> str:
+def scenario_short_name(scenario: ScenarioName) -> str:
     return require_catalog().short_name(scenario)
 
 
-def scenario_phase_order(names: Sequence[str], catalog: ScenarioCatalog | None = None) -> list[str]:
+def scenario_phase_order(
+    names: Sequence[ScenarioName], catalog: ScenarioCatalog | None = None
+) -> list[ScenarioName]:
     """Gating drills first, optional (``gatesProgress=false``) last — within one family."""
     catalog = catalog or require_catalog()
     gating = [name for name in names if catalog.gates_progress(name)]
@@ -192,7 +184,7 @@ def scenario_phase_order(names: Sequence[str], catalog: ScenarioCatalog | None =
     return gating + optional
 
 
-def summary_scenario_order(catalog: ScenarioCatalog | None = None) -> list[str]:
+def summary_scenario_order(catalog: ScenarioCatalog | None = None) -> list[ScenarioName]:
     """Board then claim, same order as ``summarize_models`` drill list (for ``--scenario N``)."""
     catalog = catalog or require_catalog()
     return scenario_phase_order(catalog.board_names(), catalog) + scenario_phase_order(
@@ -208,7 +200,7 @@ def format_scenario_pin_options(catalog: ScenarioCatalog | None = None) -> str:
     )
 
 
-def resolve_scenario_pin(pin: str, catalog: ScenarioCatalog | None = None) -> str:
+def resolve_scenario_pin(pin: str, catalog: ScenarioCatalog | None = None) -> ScenarioName:
     """Map ``--scenario`` pin to canonical catalog name (number, any case, or exact name)."""
     catalog = catalog or require_catalog()
     raw = pin.strip()

@@ -31,10 +31,20 @@ GridironEnv after each legal-action submit.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
 from gridiron_ai.constants import PLAY_HEIGHT, PLAY_WIDTH
-from gridiron_ai.harness_wire import HarnessPlayerDict, HarnessRewardSnapshotDict
+from gridiron_ai.harness_wire import (
+    AiScoringDeltaDict,
+    HarnessPlayerDict,
+    HarnessRewardSnapshotDict,
+    LegalActionDict,
+    MatchResultKind,
+    PackedStepDict,
+    TeamRel,
+    TeamSide,
+    TrainingOutcome,
+)
 
 TERMINAL_WIN = 1.0
 TERMINAL_DRAW = 0.0
@@ -199,39 +209,39 @@ PROFILE_SHAPING: dict[RewardProfileName, RewardShaping] = {
 }
 
 
-def score_margin(rewards: dict[str, Any]) -> float:
+def score_margin(rewards: HarnessRewardSnapshotDict) -> float:
     """Our score minus their score in one harness rewards snapshot."""
     return float(rewards["scoreUs"]) - float(rewards["scoreThem"])
 
 
-def _is_us_team_rel(team_rel: Any) -> bool:
+def _is_us_team_rel(team_rel: TeamRel | None) -> bool:
     """Harness ``AiTeamRel`` / outcome name strings (not packed ordinals)."""
-    return team_rel == "US"
+    return team_rel == TeamRel.US
 
 
-def _is_them_team_rel(team_rel: Any) -> bool:
-    return team_rel == "THEM"
+def _is_them_team_rel(team_rel: TeamRel | None) -> bool:
+    return team_rel == TeamRel.THEM
 
 
-def _is_distracted_training_outcome(outcome: Any) -> bool:
-    return outcome == "DISTRACTED"
+def _is_distracted_training_outcome(outcome: TrainingOutcome | None) -> bool:
+    return outcome == TrainingOutcome.DISTRACTED
 
 
-def training_outcome_winner_rel(outcome: Any) -> str | None:
+def training_outcome_winner_rel(outcome: TrainingOutcome | None) -> TeamRel | None:
     """Map wire ``trainingOutcome`` to winrate W/L; ``None`` for DISTRACTED draw."""
     if _is_us_team_rel(outcome):
-        return "US"
+        return TeamRel.US
     if _is_them_team_rel(outcome):
-        return "THEM"
+        return TeamRel.THEM
     return None
 
 
-def _players(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> list[HarnessPlayerDict]:
+def _players(rewards: HarnessRewardSnapshotDict) -> list[HarnessPlayerDict]:
     raw = rewards.get("players") or []
     return [p for p in raw if isinstance(p, dict)]  # type: ignore[misc]
 
 
-def coordinate_xy(raw: Any) -> tuple[int, int] | None:
+def coordinate_xy(raw: object) -> tuple[int, int] | None:
     """Parse wire ``{x,y}`` (1-based absolute) → tuple, or None if absent/null."""
     if not isinstance(raw, dict):
         return None
@@ -239,7 +249,7 @@ def coordinate_xy(raw: Any) -> tuple[int, int] | None:
 
 
 def player_by_id(
-    rewards: HarnessRewardSnapshotDict | dict[str, Any],
+    rewards: HarnessRewardSnapshotDict,
     player_id: str,
 ) -> HarnessPlayerDict | None:
     """Join LegalAction ``playerId`` → harness player row."""
@@ -250,7 +260,7 @@ def player_by_id(
 
 
 def player_at(
-    rewards: HarnessRewardSnapshotDict | dict[str, Any],
+    rewards: HarnessRewardSnapshotDict,
     xy: tuple[int, int],
 ) -> HarnessPlayerDict | None:
     """Join absolute playable square → on-pitch harness player."""
@@ -260,12 +270,12 @@ def player_at(
     return None
 
 
-def ball_xy(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> tuple[int, int] | None:
+def ball_xy(rewards: HarnessRewardSnapshotDict) -> tuple[int, int] | None:
     """Absolute playable square of the ball from ``ballCoordinate``."""
     return coordinate_xy(rewards.get("ballCoordinate"))
 
 
-def us_ball_carrier(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> HarnessPlayerDict | None:
+def us_ball_carrier(rewards: HarnessRewardSnapshotDict) -> HarnessPlayerDict | None:
     """US player whose square matches ``ballCoordinate``, if any."""
     ball = ball_xy(rewards)
     if ball is None:
@@ -276,7 +286,7 @@ def us_ball_carrier(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> Harn
     return None
 
 
-def them_ball_carrier(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> HarnessPlayerDict | None:
+def them_ball_carrier(rewards: HarnessRewardSnapshotDict) -> HarnessPlayerDict | None:
     """Them player whose square matches ``ballCoordinate``, if any."""
     ball = ball_xy(rewards)
     if ball is None:
@@ -292,7 +302,7 @@ def manhattan_xy(a: tuple[int, int], b: tuple[int, int]) -> int:
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
-def us_pitch_coordinates(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> list[tuple[int, int]]:
+def us_pitch_coordinates(rewards: HarnessRewardSnapshotDict) -> list[tuple[int, int]]:
     """Absolute squares occupied by perspective-us players on pitch."""
     coords: list[tuple[int, int]] = []
     for player in _players(rewards):
@@ -304,7 +314,7 @@ def us_pitch_coordinates(rewards: HarnessRewardSnapshotDict | dict[str, Any]) ->
     return coords
 
 
-def covering_radius(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> int | None:
+def covering_radius(rewards: HarnessRewardSnapshotDict) -> int | None:
     """Max over pitch of min Manhattan dist to any US player — None if nobody is on pitch."""
     players = us_pitch_coordinates(rewards)
     if not players:
@@ -319,7 +329,7 @@ def covering_radius(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> int 
     return worst
 
 
-def min_us_distance_to_ball(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> int | None:
+def min_us_distance_to_ball(rewards: HarnessRewardSnapshotDict) -> int | None:
     """Shortest Manhattan distance from any US on-pitch player to the ball."""
     ball = ball_xy(rewards)
     if ball is None:
@@ -330,27 +340,27 @@ def min_us_distance_to_ball(rewards: HarnessRewardSnapshotDict | dict[str, Any])
     return min(manhattan_xy(player, ball) for player in players)
 
 
-def us_holds_ball(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> bool:
+def us_holds_ball(rewards: HarnessRewardSnapshotDict) -> bool:
     """True when a perspective-us player holds the ball."""
     return us_ball_carrier(rewards) is not None
 
 
-def them_holds_ball(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> bool:
+def them_holds_ball(rewards: HarnessRewardSnapshotDict) -> bool:
     """True when a perspective-them player holds the ball."""
     return them_ball_carrier(rewards) is not None
 
 
-def endzone_proximity(xy: tuple[int, int], *, acting_seat: str) -> float:
+def endzone_proximity(xy: tuple[int, int], *, acting_seat: TeamSide) -> float:
     """0 at our defensive end zone, 1 at our scoring end zone (absolute pitch)."""
     _, y = xy
-    if acting_seat == "HOME":
+    if acting_seat == TeamSide.HOME:
         return (y - 1) / _MAX_END_ZONE_ROW_DIST
-    if acting_seat == "AWAY":
+    if acting_seat == TeamSide.AWAY:
         return (PLAY_HEIGHT - y) / _MAX_END_ZONE_ROW_DIST
     raise ValueError(f"acting_seat must be HOME or AWAY, got {acting_seat!r}")
 
 
-def them_in_dugout(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> int:
+def them_in_dugout(rewards: HarnessRewardSnapshotDict) -> int:
     """Count perspective-them players with no pitch coordinate (dugout)."""
     return sum(
         1
@@ -360,8 +370,8 @@ def them_in_dugout(rewards: HarnessRewardSnapshotDict | dict[str, Any]) -> int:
 
 
 def is_block_on_them_ball_carrier(
-    rewards_before: HarnessRewardSnapshotDict | dict[str, Any],
-    legal_choice: dict[str, Any] | None,
+    rewards_before: HarnessRewardSnapshotDict,
+    legal_choice: LegalActionDict | None,
 ) -> bool:
     """True when ``legal_choice`` is a block whose dest is Them's ball square."""
     if not legal_choice or str(legal_choice.get("kind")) != "block":
@@ -374,7 +384,7 @@ def is_block_on_them_ball_carrier(
     return bool(player and _is_them_team_rel(player.get("teamRel")))
 
 
-def _claims_all_uncertain(action: dict[str, Any] | None) -> bool:
+def _claims_all_uncertain(action: LegalActionDict | None) -> bool:
     if not action:
         return False
     claims = action.get("potentialChallengeClaims") or []
@@ -383,7 +393,7 @@ def _claims_all_uncertain(action: dict[str, Any] | None) -> bool:
     return all(claim.get("certainty") == "POTENTIAL" for claim in claims)
 
 
-def action_target_coordinate(action: dict[str, Any] | None) -> tuple[int, int] | None:
+def action_target_coordinate(action: LegalActionDict | None) -> tuple[int, int] | None:
     """Absolute playable ``Coordinate`` from LegalAction ``targetCoordinate``."""
     if not action:
         return None
@@ -391,8 +401,8 @@ def action_target_coordinate(action: dict[str, Any] | None) -> tuple[int, int] |
 
 
 def action_actor_coordinate(
-    rewards: HarnessRewardSnapshotDict | dict[str, Any],
-    action: dict[str, Any] | None,
+    rewards: HarnessRewardSnapshotDict,
+    action: LegalActionDict | None,
 ) -> tuple[int, int] | None:
     """Actor pitch square via LegalAction ``playerId`` → ``rewards.players``."""
     if not action:
@@ -406,23 +416,23 @@ def action_actor_coordinate(
     return coordinate_xy(player.get("coordinate"))
 
 
-def is_absolute_scoring_endzone(x: int, y: int, *, acting_seat: str) -> bool:
-    if acting_seat == "HOME":
+def is_absolute_scoring_endzone(x: int, y: int, *, acting_seat: TeamSide) -> bool:
+    if acting_seat == TeamSide.HOME:
         return 1 <= x <= PLAY_WIDTH and y == PLAY_HEIGHT
-    if acting_seat == "AWAY":
+    if acting_seat == TeamSide.AWAY:
         return 1 <= x <= PLAY_WIDTH and y == 1
     raise ValueError(f"acting_seat must be HOME or AWAY, got {acting_seat!r}")
 
 
 def shaping_reward(
         *,
-        rewards_before: HarnessRewardSnapshotDict | dict[str, Any],
-        rewards_after: HarnessRewardSnapshotDict | dict[str, Any],
+        rewards_before: HarnessRewardSnapshotDict,
+        rewards_after: HarnessRewardSnapshotDict,
         turn_start_score_us: int,
         shaping: RewardShaping,
-        scoring: dict[str, Any] | None = None,
-        legal_choice: dict[str, Any] | None = None,
-        perspective_seat: str = "HOME",
+        scoring: AiScoringDeltaDict | None = None,
+        legal_choice: LegalActionDict | None = None,
+        perspective_seat: TeamSide = TeamSide.HOME,
 ) -> float:
     """Extra reward beyond score-margin delta. Zero when shaping disabled.
 
@@ -530,37 +540,37 @@ def shaping_reward(
     return float(extra)
 
 
-def is_game_ended(state: dict[str, Any]) -> bool:
+def is_game_ended(state: PackedStepDict) -> bool:
     """True when ``resultKind`` is set — real match finished ([AiHarnessStepDto.isGameEnded])."""
     return state.get("resultKind") is not None
 
 
-def is_episode_ended(state: dict[str, Any]) -> bool:
+def is_episode_ended(state: PackedStepDict) -> bool:
     """Gym terminal: match result or training coach-window end ([AiHarnessStepDto.isEpisodeEnded])."""
     return is_game_ended(state) or bool(state.get("trainingEpisodeEnded"))
 
 
-def _is_us_winner_rel(winner_rel: Any) -> bool:
-    return winner_rel == "US"
+def _is_us_winner_rel(winner_rel: TeamRel | None) -> bool:
+    return winner_rel == TeamRel.US
 
 
-def _is_them_winner_rel(winner_rel: Any) -> bool:
-    return winner_rel == "THEM"
+def _is_them_winner_rel(winner_rel: TeamRel | None) -> bool:
+    return winner_rel == TeamRel.THEM
 
 
 def step_reward(
         *,
-        rewards_before: dict[str, Any],
-        rewards_after: dict[str, Any],
-        result_kind: Any | None = None,
-        result_winner_rel: Any | None = None,
+        rewards_before: HarnessRewardSnapshotDict,
+        rewards_after: HarnessRewardSnapshotDict,
+        result_kind: MatchResultKind | None = None,
+        result_winner_rel: TeamRel | None = None,
         training_episode_ended: bool = False,
-        training_outcome: Any | None = None,
+        training_outcome: TrainingOutcome | None = None,
         turn_start_score_us: int = 0,
         shaping: RewardShaping | None = None,
-        scoring: dict[str, Any] | None = None,
-        legal_choice: dict[str, Any] | None = None,
-        perspective_seat: str = "HOME",
+        scoring: AiScoringDeltaDict | None = None,
+        legal_choice: LegalActionDict | None = None,
+        perspective_seat: TeamSide = TeamSide.HOME,
 ) -> float:
     """Reward for the seat that just moved.
 

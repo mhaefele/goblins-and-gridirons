@@ -14,6 +14,7 @@ import torch as th
 
 from gridiron_ai.actions import FACTOR_ACTOR, FACTOR_KIND
 from gridiron_ai.constants import OBS_KEY_LEGAL_MOVE_COUNT, OBS_KEY_SOFT_MASK_LEGAL, SOFT_MASK_LOGIT_BIAS
+from gridiron_ai.harness_wire import AiLegalChoiceDict, HarnessRewardSnapshotDict, LegalActionDict
 from gridiron_ai.reward import us_ball_carrier
 
 
@@ -33,7 +34,7 @@ def _snapshot_policy_obs(policy_obs: dict[str, np.ndarray]) -> dict[str, np.ndar
     return {key: np.asarray(value).copy() for key, value in policy_obs.items()}
 
 
-def ball_carrier_player_index(rewards: dict[str, Any]) -> int | None:
+def ball_carrier_player_index(rewards: HarnessRewardSnapshotDict) -> int | None:
     """US ball-carrier roster ``playerIndex`` from harness rewards, if any."""
     carrier = us_ball_carrier(rewards)
     if carrier is None:
@@ -68,12 +69,12 @@ def preferred_row_rank(*, logits: np.ndarray, legal_count: int, preferred: np.nd
 
 def snapshot_opening_mispick(
     *,
-    rewards: dict[str, Any],
+    rewards: HarnessRewardSnapshotDict,
     policy_obs: dict[str, np.ndarray],
     legal_moves: np.ndarray,
     passing_legal: list[bool],
     soft_mask_legal: list[bool],
-    legal_row_meta: list[dict[str, Any]],
+    legal_row_meta: list[AiLegalChoiceDict],
     chosen_row_index: int,
     chosen_label: str,
 ) -> dict[str, Any]:
@@ -132,13 +133,13 @@ def diagnose_opening_mispick(
     prob_biased = _masked_softmax(biased, mask)
     acting_biased = bool(obs_soft.any())
 
-    def _row_action(index: int) -> dict[str, Any]:
+    def _row_action(index: int) -> LegalActionDict:
         if 0 <= index < len(legal_row_meta):
             row = legal_row_meta[index]
             action = row["action"] if isinstance(row.get("action"), dict) else row
             if isinstance(action, dict):
-                return action
-        return {"kind": f"k{int(legal_moves[index, FACTOR_KIND])}"}
+                return action  # type: ignore[return-value]
+        return {"id": "", "kind": f"k{int(legal_moves[index, FACTOR_KIND])}"}
 
     def _row_kind(index: int) -> str:
         return str(_row_action(index).get("kind") or "?")

@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TypeAlias
 
+from gridiron_ai.harness_wire import ScenarioName
 from gridiron_ai.persistence.json_io import atomic_write_json
 from gridiron_ai.scenarios import require_catalog
 
 _SUFFIX = ".scenario_difficulty.json"
 # Keep in sync with ``scenario_curriculum.MAX_DIFFICULTY``.
 _MAX_DIFFICULTY = 5
+
+ScenarioDifficultyLevels: TypeAlias = dict[ScenarioName, int]
 
 
 def path_for_stem(save_stem: Path) -> Path:
@@ -22,13 +26,13 @@ def _clamp(level: int) -> int:
     return max(0, min(_MAX_DIFFICULTY, int(level)))
 
 
-def load_levels(path: Path) -> dict[str, int]:
+def load_levels(path: Path) -> ScenarioDifficultyLevels:
     if not path.is_file():
         return {}
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         return {}
-    levels: dict[str, int] = {}
+    levels: ScenarioDifficultyLevels = {}
     for key, value in raw.items():
         try:
             levels[str(key)] = _clamp(int(value))
@@ -37,7 +41,7 @@ def load_levels(path: Path) -> dict[str, int]:
     return levels
 
 
-def save_levels(path: Path, levels: dict[str, int]) -> None:
+def save_levels(path: Path, levels: ScenarioDifficultyLevels) -> None:
     # Drop proxy sources — difficulty is read from the proxy target.
     proxies = require_catalog().proxy_sources()
     payload = {

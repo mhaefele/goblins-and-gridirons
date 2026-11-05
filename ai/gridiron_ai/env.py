@@ -30,6 +30,16 @@ from gridiron_ai.actions import (
 from gridiron_ai.client import GridironApiError, GridironClient, flatten_packed_submit, submit_rewards_after, submit_scoring, submit_terminal_meta
 from gridiron_ai.constants import SCHEMA_VERSION
 from gridiron_ai.eval_debug import ScenarioEvalDebug, append_scenario_draw_log
+from gridiron_ai.harness_wire import (
+    AiLegalChoiceDict,
+    ComputerOpponentKind,
+    EpisodeMode,
+    HarnessRewardSnapshotDict,
+    PackedStepDict,
+    PackedSubmitDict,
+    ScenarioName,
+    TeamSide,
+)
 from gridiron_ai.metrics import EpisodeActionStats, total_score
 from gridiron_ai.obs import dict_observation_space, slice_packed_step
 from gridiron_ai.reward import (
@@ -49,16 +59,16 @@ OPPONENT_HUMAN = "human"
 _VALID_OPPONENT_MODES = (OPPONENT_COMPUTER, OPPONENT_HUMAN)
 
 # Wire ComputerOpponentKind names — ONNX seats a reward profile via onnx_profile.
-COMPUTER_KIND_LOOKAHEAD = "LOOKAHEAD"
-COMPUTER_KIND_HEURISTIC = "HEURISTIC"
-COMPUTER_KIND_ONNX = "ONNX"
+COMPUTER_KIND_LOOKAHEAD = ComputerOpponentKind.LOOKAHEAD
+COMPUTER_KIND_HEURISTIC = ComputerOpponentKind.HEURISTIC
+COMPUTER_KIND_ONNX = ComputerOpponentKind.ONNX
 _VALID_COMPUTER_KINDS = (COMPUTER_KIND_LOOKAHEAD, COMPUTER_KIND_HEURISTIC, COMPUTER_KIND_ONNX)
 
 # Metrics label when the server ended the episode via training coach-window (not MatchResultKind).
 _SCENARIO_RESULT_KIND = "scenario"
 
 
-def validate_computer_opponent(kind: str, onnx_profile: str | None) -> None:
+def validate_computer_opponent(kind: ComputerOpponentKind, onnx_profile: str | None) -> None:
     """LOOKAHEAD/HEURISTIC take no profile; ONNX requires a ``REWARD_PROFILES`` id."""
     if kind not in _VALID_COMPUTER_KINDS:
         raise ValueError(f"computer_opponent must be one of {_VALID_COMPUTER_KINDS}, got {kind!r}")
@@ -76,11 +86,11 @@ def validate_computer_opponent(kind: str, onnx_profile: str | None) -> None:
         )
 
 
-def opponent_metrics_label(kind: str, onnx_profile: str | None) -> str:
+def opponent_metrics_label(kind: ComputerOpponentKind, onnx_profile: str | None) -> str:
     """TB / eval-file label: ``lookahead``, ``heuristic``, or ``onnx-general``."""
     if kind == COMPUTER_KIND_ONNX:
         return f"onnx-{onnx_profile}"
-    return kind.lower()
+    return str(kind).lower()
 
 
 class GridironEnv(gym.Env):
@@ -96,16 +106,16 @@ class GridironEnv(gym.Env):
         max_episode_steps: int = 2_000,
         continue_on_submit_error: bool = False,
         opponent_mode: str = OPPONENT_COMPUTER,
-        computer_opponent: str = "LOOKAHEAD",
+        computer_opponent: ComputerOpponentKind = ComputerOpponentKind.LOOKAHEAD,
         onnx_profile: RewardProfileName | None = None,
-        policy_seat: str = "HOME",
+        policy_seat: TeamSide = TeamSide.HOME,
         turn_timeout_s: float = 180.0,
         on_match_created: Callable[[str], None] | None = None,
         client: GridironClient | None = None,
         reward_shaping: RewardShaping | None = None,
-        scenario: str | None = None,
+        scenario: ScenarioName | None = None,
         scenario_difficulty: int = 0,
-        episode_mode: str = "EVAL",
+        episode_mode: EpisodeMode = EpisodeMode.EVAL,
         soft_mask_bias: bool = False,
     ) -> None:
         super().__init__()
@@ -113,12 +123,12 @@ class GridironEnv(gym.Env):
             raise ValueError(
                 f"opponent_mode must be one of {_VALID_OPPONENT_MODES}, got {opponent_mode!r}"
             )
-        if policy_seat not in ("HOME", "AWAY"):
+        if policy_seat not in (TeamSide.HOME, TeamSide.AWAY):
             raise ValueError(f"policy_seat must be HOME or AWAY, got {policy_seat!r}")
         validate_computer_opponent(computer_opponent, onnx_profile)
         if not 0 <= scenario_difficulty <= 5:
             raise ValueError(f"scenario_difficulty must be 0–5, was {scenario_difficulty}")
-        if episode_mode not in ("TRAIN", "EVAL"):
+        if episode_mode not in (EpisodeMode.TRAIN, EpisodeMode.EVAL):
             raise ValueError(f"episode_mode must be TRAIN or EVAL, got {episode_mode!r}")
 
         self._owns_client = client is None
@@ -144,7 +154,7 @@ class GridironEnv(gym.Env):
 
         self.match_id: str | None = None
         self._match_released = False
-        self._current_step_dto: dict[str, Any] | None = None
+        self._current_step_dto: PackedStepDict | None = None
         self._episode_steps = 0
         self._action_stats = EpisodeActionStats()
         self._pending_episode_summary: dict[str, Any] | None = None
@@ -158,13 +168,13 @@ class GridironEnv(gym.Env):
         self,
         *,
         opponent_mode: str,
-        computer_opponent: str,
+        computer_opponent: ComputerOpponentKind,
         onnx_profile: RewardProfileName | None,
-        policy_seat: str,
+        policy_seat: TeamSide,
         reward_shaping: RewardShaping,
-        scenario: str | None,
+        scenario: ScenarioName | None,
         scenario_difficulty: int,
-        episode_mode: str,
+        episode_mode: EpisodeMode,
         soft_mask_bias: bool,
     ) -> None:
         """Reconfigure an idle worker between train/eval segments (pool reuse)."""
@@ -172,12 +182,12 @@ class GridironEnv(gym.Env):
             raise ValueError(
                 f"opponent_mode must be one of {_VALID_OPPONENT_MODES}, got {opponent_mode!r}"
             )
-        if policy_seat not in ("HOME", "AWAY"):
+        if policy_seat not in (TeamSide.HOME, TeamSide.AWAY):
             raise ValueError(f"policy_seat must be HOME or AWAY, got {policy_seat!r}")
         validate_computer_opponent(computer_opponent, onnx_profile)
         if not 0 <= scenario_difficulty <= 5:
             raise ValueError(f"scenario_difficulty must be 0–5, was {scenario_difficulty}")
-        if episode_mode not in ("TRAIN", "EVAL"):
+        if episode_mode not in (EpisodeMode.TRAIN, EpisodeMode.EVAL):
             raise ValueError(f"episode_mode must be TRAIN or EVAL, got {episode_mode!r}")
 
         self._release_match()
@@ -309,7 +319,7 @@ class GridironEnv(gym.Env):
         return list(self._current_step_dto["legalMoves"])
 
     @property
-    def _legal_rows(self) -> list[dict[str, Any]]:
+    def _legal_rows(self) -> list[AiLegalChoiceDict]:
         if self._current_step_dto is None:
             return []
         return list(self._current_step_dto["legalRows"])
@@ -336,25 +346,27 @@ class GridironEnv(gym.Env):
         return [bool(row["passingLegal"]) for row in self._legal_rows]
 
     @property
-    def _legal_row_meta(self) -> list[dict[str, Any]]:
+    def _legal_row_meta(self) -> list[AiLegalChoiceDict]:
         """Full harness legal rows (action + curriculum flags)."""
         return [dict(row) for row in self._legal_rows]
 
     @property
     def _perspective_seat(self) -> str:
         if self._current_step_dto is None:
-            return "HOME"
-        return str(self._current_step_dto.get("perspectiveSeat") or "HOME")
+            return TeamSide.HOME
+        return str(self._current_step_dto.get("perspectiveSeat") or TeamSide.HOME)
 
-    def _harness_rewards(self, source: dict[str, Any]) -> dict[str, Any]:
+    def _harness_rewards(
+        self, source: PackedStepDict | HarnessRewardSnapshotDict
+    ) -> HarnessRewardSnapshotDict:
         """Harness ``rewards`` JSON — scores + players + ballCoordinate. Accepts step or bare."""
         if "players" in source:
             rewards = source
         else:
-            rewards = source["rewards"]
+            rewards = source["rewards"]  # type: ignore[index]
         if not isinstance(rewards, dict) or "players" not in rewards:
             raise RuntimeError("Packed frame missing harness rewards (scores + players)")
-        return rewards
+        return rewards  # type: ignore[return-value]
 
     def _build_observation(self) -> dict[str, np.ndarray]:
         assert self._current_step_dto is not None
@@ -512,7 +524,7 @@ class GridironEnv(gym.Env):
         self._apply_submit_result(result)
         return reward, None
 
-    def _apply_submit_result(self, result: dict[str, Any]) -> None:
+    def _apply_submit_result(self, result: PackedSubmitDict) -> None:
         """Install the next gym observation from one packed submit response."""
         after_obs = submit_rewards_after(result)
         if result["next"]["obs"] is None:
@@ -529,7 +541,7 @@ class GridironEnv(gym.Env):
             self._maybe_record_turn_start(after_obs)
         self._maybe_record_turn_start(installed_obs)
 
-    def _maybe_record_turn_start(self, observation: dict[str, Any]) -> None:
+    def _maybe_record_turn_start(self, observation: HarnessRewardSnapshotDict) -> None:
         """Record possession once for each distinct turnNumber."""
         turn_number = int(observation["turnNumber"])
         if turn_number in self._sampled_turn_starts:
@@ -539,14 +551,14 @@ class GridironEnv(gym.Env):
             observation, perspective_seat=self._perspective_seat
         )
 
-    def _sync_turn_tracking(self, observation: dict[str, Any]) -> None:
+    def _sync_turn_tracking(self, observation: HarnessRewardSnapshotDict) -> None:
         """Remember scoreUs at the start of the current turnNumber (acting-seat perspective)."""
         turn_number = int(observation["turnNumber"])
         if turn_number != self._tracked_turn_number:
             self._turn_start_score_us = int(observation["scoreUs"])
             self._tracked_turn_number = turn_number
 
-    def _fetch_step_for_policy(self) -> dict[str, Any]:
+    def _fetch_step_for_policy(self) -> PackedStepDict:
         assert self.match_id is not None
         return self.client.ai_step(
             self.match_id,

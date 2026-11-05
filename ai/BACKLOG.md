@@ -6,7 +6,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 **Near-term (product):** [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) scenarios · [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) · [AI2.6](#ai26--onnx-export--kotlin-compute-opponent) regen · [AI2.5](#ai25--multi-team-curriculum).
 
-**Hygiene:** [AI2.22](#ai222--python-typeddicts-for-harness-wire) · [AI2.14](#ai214--split-train_self_play) · optional [AI2.23](#ai223--flat-cell-table-drop-pitch-chw)→[AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice).
+**Hygiene:** [AI2.14](#ai214--split-train_self_play) · optional [AI2.23](#ai223--flat-cell-table-drop-pitch-chw)→[AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice).
 
 **Design:** [`DESIGN.md`](DESIGN.md) · **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md) · **Architecture:** [Backend § Long-term product goals](../backend/ARCHITECTURE.md#long-term-product-goals).
 
@@ -54,7 +54,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 - [ ] [AI2.14](#ai214--split-train_self_play) — Split `train_self_play.py`
 - [ ] [AI2.20](#ai220--remove-local-sb3-pickle-aliases) — Drop pickle-alias shim *(after resume zips re-saved)*
-- [ ] [AI2.22](#ai222--python-typeddicts-for-harness-wire) — TypedDicts for harness wire
+- [x] [AI2.22](#ai222--python-typeddicts-for-harness-wire) — TypedDicts for harness wire
 - [ ] [AI2.23](#ai223--flat-cell-table-drop-pitch-chw) — Flat cell table; drop pitch `(C,H,W)`
 - [ ] [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) — Packed `Box` obs
 
@@ -474,11 +474,11 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 | Field | Detail |
 |-------|--------|
-| **Status** | Beachhead started (`harness_wire.py`); expand call sites. |
+| **Status** | **Done (2026-11).** Named `TypedDict`s + closed `StrEnum`s in `harness_wire.py`; harness call sites + persistence JSON stores annotated. `ScenarioName` is a catalog-backed alias (not a mirrored enum). |
 | **Problem** | Harness JSON is threaded as bare `dict[str, Any]` — readers cannot tell rewards snapshot vs LegalAction vs legal row vs step envelope. Scenario and similar closed values are also bare `str`. |
 | **Goal** | Named `TypedDict` (or equivalent) aliases matching Kotlin harness DTOs (`HarnessRewardSnapshotDto`, `HarnessPlayerDto`, `AiLegalChoiceDto` / `LegalAction`, packed step/submit). Prefer enums / catalog-backed types for scenario (etc.) without mirroring Kotlin catalog membership. Runtime can stay dict; the **name** is the point. Prefer one module (`harness_wire.py`) over scattering. |
 | **Depends on** | [AI2.21](#ai221--harness-legalrows-wrap-legalaction) (done). |
-| **Files** | `gridiron_ai/harness_wire.py`; call sites in `reward.py` / `env.py` / `client.py` / `eval_debug.py` / `actions.py`. |
+| **Files** | `gridiron_ai/harness_wire.py`; call sites in `reward.py` / `env.py` / `client.py` / `eval_debug.py` / `actions.py`; `persistence/*` store aliases. |
 | **Acceptance** | Public helpers annotate harness payloads with named types; `dict[str, Any]` not used as the primary name for those shapes; mypy/pyright optional but types importable. |
 | **Rulebook** | n/a |
 
@@ -537,7 +537,7 @@ Product / curriculum (current)
   → AI2.18 + AI2.19 with next layout/schema bump
 
 Hygiene (anytime, low priority)
-  → AI2.22 TypedDicts · AI2.14 split train_self_play · AI2.20 pickle aliases
+  → AI2.14 split train_self_play · AI2.20 pickle aliases
   → AI2.23 → AI2.24 stock-layout (optional; needs retrain)
 ```
 
