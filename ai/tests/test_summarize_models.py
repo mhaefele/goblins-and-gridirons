@@ -22,6 +22,8 @@ from scripts.summarize_models import (
     _approx_kl_level,
     _bottom_summary_rows,
     _clip_fraction_level,
+    _collect_scenario_warnings,
+    _collect_train_warnings,
     _compact_column_guide,
     _curriculum_note,
     _explained_variance_level,
@@ -30,6 +32,7 @@ from scripts.summarize_models import (
     _fmt_model_config_table,
     _fmt_profiles_bottom_summary,
     _fmt_train_health_table,
+    _fmt_warnings_section,
     _latest_scenario_eval,
     _policy_entropy_level,
     _scalar_from_summary_value,
@@ -553,14 +556,96 @@ def test_load_tb_scalars_scans_past_episode_only_files(monkeypatch, tmp_path: Pa
 def test_train_level_helpers() -> None:
     assert _policy_entropy_level(1.44) == "ok"
     assert _policy_entropy_level(0.3) == "bad"
+    assert _approx_kl_level(0.0001) == "STUCK!"
+    assert _approx_kl_level(0.0009) == "STUCK!"
+    assert _approx_kl_level(0.001) == "ok"
     assert _approx_kl_level(0.0029) == "ok"
     assert _approx_kl_level(0.04) == "watch"
+    assert _approx_kl_level(0.06) == "bad"
     assert _explained_variance_level(0.74) == "ok"
     assert _explained_variance_level(-0.1) == "bad"
     assert _clip_fraction_level(0.04) == "ok"
     assert _clip_fraction_level(0.25) == "bad"
     assert _value_loss_level([0.2, 0.2, 0.2, 0.4]) == "watch"
     assert _value_loss_level([0.2, 0.2, 0.2, 0.7]) == "bad"
+
+
+def test_fmt_warnings_section_shouts_stuck() -> None:
+    text = _fmt_warnings_section(
+        [
+            "STUCK! baseline approx_kl=0.0001 — PPO barely moving the policy; "
+            "burning timesteps with no progress"
+        ]
+    )
+    assert text.startswith("warnings\n")
+    assert "  ! STUCK! baseline approx_kl=0.0001" in text
+
+
+def test_collect_scenario_warnings_gate_fails(monkeypatch, tmp_path: Path) -> None:
+    from gridiron_ai.training_phases import PHASE_SCENARIO_B
+
+    ckpt = tmp_path / "checkpoints" / PHASE_SCENARIO_B
+    ckpt.mkdir(parents=True)
+    stem = ckpt / "maskable_ppo_selfplay_final"
+    levels = {name: 0 for name in BOARD_NAMES}
+    (tmp_path / "evals" / "baseline").mkdir(parents=True)
+    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", tmp_path / "checkpoints")
+    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
+
+    from gridiron_ai.scenario_curriculum import path_for_stem, save_gate_failures, save_levels
+    from gridiron_ai.persistence.scenario_drill_stats import save_drill_stats, path_for_drill_stats
+
+    save_levels(path_for_stem(stem), levels)
+    save_gate_failures(
+        path_for_gate_failures(stem),
+        {BOARD_NAMES[0]: {"0": 6}},
+    )
+    save_drill_stats(
+        path_for_drill_stats(stem),
+        {BOARD_NAMES[0]: {"cycles": 3, "d5_demotes": 0}},
+    )
+    target = TrainTarget(
+        phase=PHASE_SCENARIO_B,
+        checkpoint_key=PHASE_SCENARIO_B,
+        reward_profile="baseline",
+    )
+    warnings = _collect_scenario_warnings([target])
+    assert any("STUCK!" in w and "gate_fails=6" in w for w in warnings)
+
+
+def test_collect_train_warnings_from_stuck_cells(monkeypatch) -> None:
+    from gridiron_ai.training_phases import PHASE_PROFILES
+
+    def fake_cells(checkpoint_key: str, *, trend_steps: int) -> tuple[str, ...]:
+        return (
+            "≈4.24 nats watch",
+            "entropy_loss=-4.241 (stable randomness, watch)",
+            "0.0001 STUCK!",
+            "0.40 watch (flat)",
+            "0.50 ok (flat)",
+            "0.000 ok (flat)",
+        )
+
+    monkeypatch.setattr("scripts.summarize_models._train_health_cells", fake_cells)
+    monkeypatch.setattr(
+        "scripts.summarize_models._training_steps",
+        lambda _dir: 15_000_000,
+    )
+    monkeypatch.setattr("scripts.summarize_models._fmt_model_config_table", lambda: "config")
+    monkeypatch.setattr("scripts.summarize_models._fmt_profiles_bottom_summary", lambda _t: "summary\n  x")
+    monkeypatch.setattr("scripts.summarize_models._fmt_lookahead_trend", lambda _t: "")
+    monkeypatch.setattr("scripts.summarize_models._fmt_train_multiplier_blocks", lambda _t: "")
+    targets = [
+        TrainTarget(phase=PHASE_PROFILES, checkpoint_key="baseline", reward_profile="baseline"),
+    ]
+    warnings = _collect_train_warnings(targets, trend_steps=100_000)
+    assert len(warnings) == 1
+    assert warnings[0].startswith("STUCK! baseline approx_kl=0.0001")
+    board = _fmt_compact_board(targets, trend_steps=100_000)
+    assert "\nwarnings\n" in board
+    assert "  ! STUCK! baseline" in board
+    assert board.index("train (TensorBoard") < board.index("\nwarnings\n")
 
 
 def test_tb_trend_with_qualifier() -> None:
@@ -587,21 +672,21 @@ def test_compact_column_guide_mentions_critic() -> None:
 
 def test_model_config_table_default_and_overrides() -> None:
     text = _fmt_model_config_table()
-    assert text.startswith("config (PPO + reward shaping")
+    assert text.startswith("config (PPO shared")
     assert "default" in text
-    assert "3e-05" in text or "3e-5" in text
+    assert "0.0003" in text or "3e-4" in text
     assert "0.005" in text
+    assert " none " in f" {text} " or "none" in text
     assert "margin + terminal only" in text
     assert "general" in text
     assert "shared ball / challenge shaping" in text
     assert "td" in text
-    assert "0.8" in text
     assert "TD amp" in text
     assert "spread" in text
     assert "covering-radius" in text
     assert "defense" in text
-    assert "0.009" in text
     assert "strip / dugout" in text
+    assert "0.009" not in text
     data_lines = [
         line
         for line in text.splitlines()
@@ -609,6 +694,9 @@ def test_model_config_table_default_and_overrides() -> None:
     ]
     assert len(data_lines) == 5
     assert data_lines[0].split()[0] == "default"
+    # Shared PPO — shaped rows only override the shaping blurb column.
+    assert data_lines[0].split()[4] == "10"
+    assert data_lines[0].split()[5] == "0.2"
     profile_names = {line.split()[0] for line in data_lines[1:]}
     assert profile_names == {"general", "spread", "td", "defense"}
 
@@ -631,7 +719,7 @@ def test_compact_board_guide_before_tables(monkeypatch, tmp_path: Path) -> None:
     targets = [TrainTarget(phase=PHASE_SCENARIO_B, checkpoint_key=PHASE_SCENARIO_B, reward_profile="baseline")]
     text = _fmt_compact_board(targets, trend_steps=100_000, include_guide=True)
     assert text.startswith("Train column guide")
-    assert "config (PPO + reward shaping" in text
+    assert "config (PPO shared" in text
     assert "train (TensorBoard" in text
     assert text.index("Train column guide") < text.index("config (PPO")
     assert text.index("config (PPO") < text.index("train (TensorBoard")

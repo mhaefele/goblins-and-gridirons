@@ -27,11 +27,10 @@ Drill US/THEM still grades curriculum/winrate. Direction on flagged openings com
 **soft-mask** sampling ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference)),
 not per-move bonus/slap terms.
 
-Train also: **VecNormalize** reward normalization, tighter PPO KL
-(`n_epochs` / `clip_range` / `target_kl`).
+Train also: **VecNormalize** reward normalization (obs not normalized).
 
-Exploration: PPO `ent_coef` (default **0.005**; **defense** **0.009**).
-Value fit: PPO `vf_coef` (default **0.5**; **td** **0.8**).
+PPO knobs: see [PPO vs SB3 stock](#ppo-vs-sb3-stock) below — join-score era uses stock
+`lr` / `n_epochs` / `clip_range` / `target_kl`; only `ent_coef` is intentionally raised.
 
 ---
 
@@ -198,6 +197,31 @@ Ask before merging:
 
 ---
 
+## PPO vs SB3 stock
+
+Standing record of MaskablePPO hyperparameters vs Stable-Baselines3 defaults.
+**Update this section whenever a knob moves.** Profile rows share these PPO values
+(reward shaping differs; no per-profile `ent_coef` / `vf_coef` overrides).
+
+| Knob | SB3 stock | Ours | Why |
+|------|-----------|------|-----|
+| `learning_rate` | `3e-4` | `3e-4` | Stock. Factor-head era used `3e-5` (under-updated join-score; AI2.29). |
+| `n_epochs` | `10` | `10` | Stock. Was `4` to stop factor-head thrash. |
+| `clip_range` | `0.2` | `0.2` | Stock. Was `0.1`. |
+| `target_kl` | `None` | `None` | Stock (no KL early-stop). Was `0.02`. |
+| `ent_coef` | `0.0` | `0.005` | **Intentional** — large legal-row Discrete peaks fast at 0; keep exploration. |
+| `vf_coef` | `0.5` | `0.5` | Stock. Removed former `td=0.8` profile override. |
+| `n_steps` × `n_envs` | `2048` × 1 | `128` × `30` (=3840) | **Intentional** — parallel HTTP envs; same order of rollout size. |
+| `batch_size` | `64` | `256` | **Intentional** — matches multi-env rollout chunks. |
+| `gamma` / `gae_lambda` | `0.99` / `0.95` | stock | Unchanged. |
+| VecNormalize rewards | off | on (train) | **Intentional** — coach-window + shaping scale; obs not normalized. |
+| `device` | cuda if present | `cpu` | **Intentional** for this harness (see README). |
+
+Apply on create **and** resume via `_set_learning_rate` / `_set_ent_coef` / `_set_vf_coef` /
+`_set_ppo_stability` so old zips cannot silently keep factor-era schedules.
+
+---
+
 ## Current defaults (implementation pointers)
 
 | Knob | Where | Notes |
@@ -207,11 +231,9 @@ Ask before merging:
 | Scenario soft-d5 maintenance | `scenario_curriculum` — 3840 ts/drill/cycle | Imperfect after-eval at MAX (climbing + game phase); healthy d5 eval-only |
 | vs HEURISTIC / LOOKAHEAD / ONNX train | `train_self_play` — 20k ts each per cycle (ONNX × `FULL_GAME_ONNX_OPPONENT_PROFILES`: general, defense) | 0 until full-game unlock (all drills d5) |
 | vs HEURISTIC / LOOKAHEAD / ONNX eval | `train_self_play` — 200 games each seat, every 4 visits per profile (`FULL_GAME_EVAL_EVERY_CYCLES`; eval-only each pass) | Shaping off, `deterministic=True`; ONNX seats use reward-profile ids as `onnxProfile`; multi-wave up to `n_envs` |
-| `n_envs` / `n_steps` / `batch_size` | `train_self_play` — 30 / 128 / 256 | `device=cpu` |
-| `learning_rate` `3e-5` | `train_self_play` `_DEFAULT_LEARNING_RATE` | Create **and** resume |
-| `ent_coef` `0.005` (`defense` `0.009`) | `train_self_play` `DEFAULT_ENT_COEF` / `PROFILE_ENT_COEF` | Create **and** resume |
-| `vf_coef` `0.5` (`td` `0.8`) | `train_self_play` `DEFAULT_VF_COEF` / `PROFILE_VF_COEF` | Create **and** resume |
-| `n_epochs` `4` / `clip_range` `0.1` / `target_kl` `0.02` | `train_self_play` | Critic/KL stability — **factor-head era**; re-baseline for join-score → [AI2.29](BACKLOG.md#ai229--retune-ppo-after-factor-heads--join-score) |
+| `n_envs` / `n_steps` / `batch_size` | `train_self_play` — 30 / 128 / 256 | See [PPO vs SB3 stock](#ppo-vs-sb3-stock) |
+| `learning_rate` / `n_epochs` / `clip_range` / `target_kl` | stock SB3 | See table above |
+| `ent_coef` `0.005` / `vf_coef` `0.5` | shared all profiles | Create **and** resume; no profile overrides |
 | VecNormalize `norm_reward` | train segments; `{stem}_vecnormalize.pkl` | Obs not normalized |
 | Soft-mask bias `2.5` | `constants.SOFT_MASK_LOGIT_BIAS` | Train rollouts on; eval/gates off unless `--eval-episode-mode TRAIN` — [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference) |
 | Scenario coach-window ±0.5 | `reward.SCENARIO_TERMINAL_*` | Only when `trainingEpisodeEnded`; not stacked on match ±1 |

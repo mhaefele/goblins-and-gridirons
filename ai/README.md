@@ -31,6 +31,7 @@ Backend must be up for train/eval (`./dev.sh` from repo root — Spring `:18080`
 ./eval.sh                  # eval train rotation once (baseline + general + spread post-split)
 ./eval.sh --profile td
 ./train.sh --help          # full flag list
+./check.sh                 # compileall + import/CLI entry smokes (no backend)
 ```
 
 `train.sh` fills gaps on **dump → pack → seed** (presence only). Scenario/profile zips are forked in Python from the prior stage (never copy the expert seed onto shaped profiles). Gates only route training — later trees are never auto-deleted (use `start_over.sh` to roll back). See [TRAINING_ROADMAP.md](TRAINING_ROADMAP.md).

@@ -60,12 +60,13 @@ class PipelineState:
         return profile in self.profiles and self.profiles[profile].stage == "games"
 
 
-# After types: persistence.pipeline imports these classes (no cycle).
-from gridiron_ai.persistence.pipeline import (  # noqa: E402, F401
-    load_pipeline,
-    pipeline_path,
-    save_pipeline,
-)
+def __getattr__(name: str) -> object:
+    """Lazy re-export of I/O helpers — avoids import cycle with ``persistence.pipeline``."""
+    if name in ("load_pipeline", "save_pipeline", "pipeline_path"):
+        from gridiron_ai.persistence import pipeline as _pipeline
+
+        return getattr(_pipeline, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def rewind_pipeline(stage: StageName, *, profile: str = "all") -> PipelineState:
@@ -74,6 +75,8 @@ def rewind_pipeline(stage: StageName, *, profile: str = "all") -> PipelineState:
     ``profiles`` + one ``profile`` forgets only that stem (next train re-forks it);
     ``all`` also clears the split so the next fork re-records it.
     """
+    from gridiron_ai.persistence.pipeline import load_pipeline, save_pipeline
+
     state = load_pipeline()
     if stage == "scenario_a":
         rewound = PipelineState()
@@ -90,6 +93,8 @@ def rewind_pipeline(stage: StageName, *, profile: str = "all") -> PipelineState:
 
 
 def main() -> None:
+    from gridiron_ai.persistence.pipeline import pipeline_path
+
     parser = argparse.ArgumentParser(description="Rewind the saved training pipeline position.")
     sub = parser.add_subparsers(dest="command", required=True)
     rewind = sub.add_parser("rewind", help="forget saved progress from a stage onward")

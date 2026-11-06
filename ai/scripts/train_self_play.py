@@ -156,27 +156,19 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 
 _LONG_RUNNING_STEM = "maskable_ppo_selfplay_final"
 _SESSION_LONG = "train_sessions_long.tsv"
-_DEFAULT_LEARNING_RATE = 3e-5
+# PPO knobs: stock SB3 unless noted in TRAINING_ROADMAP.md § "PPO vs SB3 stock".
+_DEFAULT_LEARNING_RATE = 3e-4
 DEFAULT_MAX_EPISODE_STEPS = 500
 DEFAULT_POLICY_SEAT = "HOME"
 DEFAULT_DEVICE = "cpu"
 FINAL_SAVE_FREQ = 50_000
 STEP_CHECKPOINT_FREQ = 500_000
-# PPO entropy bonus — stock SB3 default is 0.0 (peaks fast). Prefer more random early;
-# raise/lower later from TensorBoard policy_entropy vs drill results (see TRAINING_ROADMAP.md).
+# Intentional vs stock 0.0 — keep menu exploratory on large legal-row Discrete.
 DEFAULT_ENT_COEF = 0.005
-PROFILE_ENT_COEF: dict[RewardProfileName, float] = {
-    "defense": 0.009,
-}
-# Value-loss weight — td shaping is spiky; nudge critic harder there (see TRAINING_ROADMAP.md).
 DEFAULT_VF_COEF = 0.5
-PROFILE_VF_COEF: dict[RewardProfileName, float] = {
-    "td": 0.8,
-}
-# Critic / KL stability (stock n_epochs=10 + clip=0.2 thrashed TD_RUN drills).
-N_EPOCHS = 4
-CLIP_RANGE = 0.1
-TARGET_KL = 0.02
+N_EPOCHS = 10
+CLIP_RANGE = 0.2
+TARGET_KL: float | None = None
 
 # --- Training cycle defaults (canonical — change here when the mix should change) ---
 # Per-scenario drill timesteps (learning / mastered) live in scenario_curriculum.py.
@@ -313,6 +305,21 @@ def _print_scenario_perfect_summaries() -> None:
     print("\nScenario eval summary (perfect batches):", flush=True)
     for line in _scenario_perfect_summaries:
         print(line, flush=True)
+
+
+def _print_interrupt_warnings(profile: str) -> None:
+    """Ctrl-C footer: STUCK!/bad train-health shouts (lazy import — avoid cycle with summarize)."""
+    try:
+        from scripts.summarize_models import format_train_warnings_section
+
+        text = format_train_warnings_section(profile)
+    except Exception as exc:  # noqa: BLE001 — interrupt path must not raise
+        print(f"\n(train warnings unavailable: {exc})", flush=True)
+        return
+    if not text:
+        return
+    print(flush=True)
+    print(text, flush=True)
 
 
 def _mask_fn(env: Any) -> Any:
@@ -549,7 +556,8 @@ def _env_thunk(
     scenario_difficulty: int,
     episode_mode: str,
     soft_mask_bias: bool,
-    verbose: bool,
+    *,
+    verbose: bool = False,
 ) -> Callable[[], _PoolWorkerRoot]:
     def _init() -> _PoolWorkerRoot:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", force=True)
@@ -570,6 +578,41 @@ def _env_thunk(
         )
 
     return _init
+
+
+def make_bootstrap_vec_env(
+    *,
+    base_url: str,
+    continue_on_submit_error: bool = False,
+    reward_shaping: RewardShaping | None = None,
+    n_envs: int = DEFAULT_N_ENVS,
+    verbose: bool = False,
+) -> DummyVecEnv:
+    """In-process vec-env for MaskablePPO load/create (spaces only; train swaps Subproc).
+
+    Kept as a named helper so tests can smoke the same path ``_load_or_create_model`` uses.
+    """
+    shaping = reward_shaping or RewardShaping()
+    return DummyVecEnv(
+        [
+            _env_thunk(
+                base_url,
+                DEFAULT_MAX_EPISODE_STEPS,
+                continue_on_submit_error,
+                OPPONENT_COMPUTER,
+                "LOOKAHEAD",
+                None,
+                DEFAULT_POLICY_SEAT,
+                shaping,
+                None,
+                0,
+                "TRAIN",
+                True,
+                verbose=verbose,
+            )
+            for _ in range(n_envs)
+        ]
+    )
 
 
 def make_vec_env(
@@ -606,7 +649,7 @@ def make_vec_env(
                 scenario_difficulty,
                 episode_mode,
                 soft_mask_bias,
-                verbose,
+                verbose=verbose,
             )
             for _ in range(n_envs)
         ],
@@ -720,26 +763,18 @@ def _set_learning_rate(model: MaskablePPO, learning_rate: float) -> None:
         group["lr"] = learning_rate
 
 
-def _ent_coef_for_profile(profile: RewardProfileName) -> float:
-    return PROFILE_ENT_COEF.get(profile, DEFAULT_ENT_COEF)
+def _set_ent_coef(model: MaskablePPO) -> None:
+    """Apply ent_coef on create and resume (zip may still carry an older 0.0)."""
+    model.ent_coef = DEFAULT_ENT_COEF
 
 
-def _vf_coef_for_profile(profile: RewardProfileName) -> float:
-    return PROFILE_VF_COEF.get(profile, DEFAULT_VF_COEF)
-
-
-def _set_ent_coef(model: MaskablePPO, profile: RewardProfileName) -> None:
-    """Apply profile ent_coef on create and resume (zip may still carry an older 0.0)."""
-    model.ent_coef = _ent_coef_for_profile(profile)
-
-
-def _set_vf_coef(model: MaskablePPO, profile: RewardProfileName) -> None:
-    """Apply profile vf_coef on create and resume (zip may still carry stock 0.5)."""
-    model.vf_coef = _vf_coef_for_profile(profile)
+def _set_vf_coef(model: MaskablePPO) -> None:
+    """Apply vf_coef on create and resume (zip may still carry a profile override)."""
+    model.vf_coef = DEFAULT_VF_COEF
 
 
 def _set_ppo_stability(model: MaskablePPO) -> None:
-    """Apply critic/KL knobs on create and resume (zip may still carry stock defaults)."""
+    """Apply PPO epoch/clip/KL knobs on create and resume (zip may carry factor-era values)."""
     model.n_epochs = N_EPOCHS
     model.clip_range = lambda _progress: CLIP_RANGE
     model.target_kl = TARGET_KL
@@ -750,7 +785,11 @@ def _sb3_kl_early_stop_explained() -> Iterator[None]:
     """Rewrite MaskablePPO's stock KL early-stop print into a one-line human gloss.
 
     SB3 trips when approx KL > 1.5×``target_kl`` and skips remaining PPO epochs for that update.
+    No-op when ``TARGET_KL`` is None (stock SB3 — no early stop).
     """
+    if TARGET_KL is None:
+        yield
+        return
     real_print = builtins.print
     trip = 1.5 * TARGET_KL
 
@@ -1805,24 +1844,12 @@ def _load_or_create_model(
 
     def _bootstrap_env() -> DummyVecEnv:
         # In-process only: PPO ctor needs matching n_envs/spaces; train segments swap in SubprocVecEnv.
-        return DummyVecEnv(
-            [
-                _env_thunk(
-                    args.base_url,
-                    DEFAULT_MAX_EPISODE_STEPS,
-                    args.continue_on_submit_error,
-                    OPPONENT_COMPUTER,
-                    "LOOKAHEAD",
-                    None,
-                    DEFAULT_POLICY_SEAT,
-                    reward_shaping,
-                    None,
-                    0,
-                    "TRAIN",
-                    True,
-                )
-                for _ in range(DEFAULT_N_ENVS)
-            ]
+        return make_bootstrap_vec_env(
+            base_url=args.base_url,
+            continue_on_submit_error=args.continue_on_submit_error,
+            reward_shaping=reward_shaping,
+            n_envs=DEFAULT_N_ENVS,
+            verbose=bool(args.verbose),
         )
 
     phase_zip = _eval_phase_zip(args)
@@ -1839,8 +1866,8 @@ def _load_or_create_model(
         model = MaskablePPO.load(str(phase_zip), device=DEFAULT_DEVICE)
         model.verbose = 1
         _set_learning_rate(model, _DEFAULT_LEARNING_RATE)
-        _set_ent_coef(model, reward_profile)
-        _set_vf_coef(model, reward_profile)
+        _set_ent_coef(model)
+        _set_vf_coef(model)
         _set_ppo_stability(model)
         return model, save_stem, save_dir, name_prefix, True, session_log
 
@@ -1866,15 +1893,15 @@ def _load_or_create_model(
             bootstrap.close()
             _require_batch_divides_rollout(int(model.n_steps), DEFAULT_N_ENVS, int(model.batch_size))
             _set_learning_rate(model, _DEFAULT_LEARNING_RATE)
-            _set_ent_coef(model, reward_profile)
-            _set_vf_coef(model, reward_profile)
+            _set_ent_coef(model)
+            _set_vf_coef(model)
             _set_ppo_stability(model)
         else:
             model = MaskablePPO.load(str(zip_path), device=DEFAULT_DEVICE)
             model.verbose = 1
             _set_learning_rate(model, _DEFAULT_LEARNING_RATE)
-            _set_ent_coef(model, reward_profile)
-            _set_vf_coef(model, reward_profile)
+            _set_ent_coef(model)
+            _set_vf_coef(model)
             _set_ppo_stability(model)
     else:
         raise SystemExit(f"No checkpoint at {zip_path} after ensure_checkpoint_from_prior")
@@ -2360,8 +2387,8 @@ def main() -> None:
             print(
                 f"\n=== Cycle {cycle_index} phase={target.phase} key={target.checkpoint_key} "
                 f"profile={target.reward_profile} {_fmt_utc(start)} "
-                f"ent_coef={_ent_coef_for_profile(target.reward_profile)} "
-                f"vf_coef={_vf_coef_for_profile(target.reward_profile)} "
+                f"ent_coef={DEFAULT_ENT_COEF} "
+                f"vf_coef={DEFAULT_VF_COEF} "
                 f"n_epochs={N_EPOCHS} clip_range={CLIP_RANGE} target_kl={TARGET_KL} "
                 f"shaping(idle={reward_shaping.idle_turn_penalty}, ball={reward_shaping.ball_possession_bonus}, "
                 f"approach={reward_shaping.approach_ball_bonus}, gained={reward_shaping.us_gained_ball_bonus}, "
@@ -2439,6 +2466,7 @@ def main() -> None:
             if model is not None and save_stem is not None and args.phase is None:
                 atomic_model_save(model, save_stem)
             _print_scenario_perfect_summaries()
+            _print_interrupt_warnings(args.profile)
         except KeyboardInterrupt:
             print("Interrupted again during save — exiting.", flush=True)
     finally:

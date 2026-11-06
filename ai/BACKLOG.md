@@ -57,7 +57,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [x] [AI2.22](#ai222--python-typeddicts-for-harness-wire) — TypedDicts for harness wire
 - [ ] [AI2.23](#ai223--flat-cell-table-drop-pitch-chw) — Flat cell table; drop pitch `(C,H,W)`
 - [ ] [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) — Packed `Box` obs
-- [ ] [AI2.29](#ai229--retune-ppo-after-factor-heads--join-score) — Re-tune PPO after factor heads → join-score
+- [x] [AI2.29](#ai229--retune-ppo-after-factor-heads--join-score) — Re-tune PPO after factor heads → join-score
 
 ---
 
@@ -220,7 +220,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 **Why superseded:** Independent factor heads (even with remask / conditioning) could not express “best complete move.” Scoring the legal menu jointly is the honest fix.
 
-**Follow-up:** PPO knobs were tightened while factor heads were thrashing drills — re-baseline for join-score → [AI2.29](#ai229--retune-ppo-after-factor-heads--join-score).
+**Follow-up:** PPO knobs were tightened while factor heads were thrashing drills — re-baselined to stock for join-score → [AI2.29](#ai229--retune-ppo-after-factor-heads--join-score) (done).
 
 ---
 
@@ -521,12 +521,10 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 | Field | Detail |
 |-------|--------|
-| **Status** | Open — hygiene / training stability. |
-| **Problem** | After schema 16 replaced MultiDiscrete factor heads with `LegalRowActorCriticPolicy` join-score, we kept PPO settings that were dialed down to stop the **old** head from thrashing drills (`n_epochs=4`, `clip_range=0.1`, `target_kl=0.02`, `lr=3e-5` — see `train_self_play.py` / [`TRAINING_ROADMAP.md`](TRAINING_ROADMAP.md)). Those may be under-updating a menu-scoring policy (e.g. `LOOSE_BALL_RUN` ~12% train PASS with flat eval ranks). |
-| **Goal** | Re-baseline on-policy knobs (and only if needed: latent / row-scorer width) **for the join-score policy**, with a short A/B on a pinned drill (`LOOSE_BALL_RUN` / `TD_RUN`). Prefer stock-er PPO first (`n_epochs` / `clip_range` / `target_kl` / `lr`); treat net size as a second lever. Document the new defaults in `TRAINING_ROADMAP.md`. |
-| **Depends on** | Join-score path stable ([AI2.9](#ai29--conditional-action-heads-follow-up) done). Evidence hooks: `PpoUpdateEvidenceCallback` (`approx_kl` / Δ‖θ‖ / PASS-step advantages). |
-| **Files** | [`train_self_play.py`](scripts/train_self_play.py) (`N_EPOCHS`, `CLIP_RANGE`, `TARGET_KL`, `_DEFAULT_LEARNING_RATE`); optionally [`legal_row_policy.py`](gridiron_ai/legal_row_policy.py) / [`features.py`](gridiron_ai/features.py); [`TRAINING_ROADMAP.md`](TRAINING_ROADMAP.md). |
-| **Acceptance** | Written before/after on one pinned scenario (train PASS rate + eval `opening_expected_rank` / winrate) and the knob table in `TRAINING_ROADMAP.md` matches what `train_self_play` ships. Fresh seed or explicit “resume with new lr schedule” called out so old factor-era muscle memory is not the silent baseline. |
+| **Status** | **Done (2026-11)** — restored stock SB3 `lr`/`n_epochs`/`clip_range`/`target_kl`; wiped profile `ent_coef`/`vf_coef` overrides; documented in [`TRAINING_ROADMAP.md` § PPO vs SB3 stock](TRAINING_ROADMAP.md#ppo-vs-sb3-stock). Optional follow-up: pinned-drill A/B if `approx_kl` still STUCK! after resume. |
+| **Problem** | ~~Factor-era dial-down under-updated join-score.~~ |
+| **Goal** | ~~Re-baseline…~~ Shipped stock-er knobs + standing deviation doc. |
+| **Files** | [`train_self_play.py`](scripts/train_self_play.py); [`TRAINING_ROADMAP.md`](TRAINING_ROADMAP.md). |
 | **Rulebook** | n/a |
 
 ---

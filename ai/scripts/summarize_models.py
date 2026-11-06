@@ -31,14 +31,14 @@ from scripts.train_self_play import (
     DEFAULT_N_STEPS,
     DEFAULT_VF_COEF,
     N_EPOCHS,
-    PROFILE_ENT_COEF,
-    PROFILE_VF_COEF,
     TARGET_KL,
     _DEFAULT_LEARNING_RATE,
 )
 from gridiron_ai.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
+    GATE_PROGRESS_WAIVE_FAILURES,
     MAX_DIFFICULTY,
+    SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD,
     all_scenarios_mastered,
     board_scenarios_in_catalog,
     claims_unlocked,
@@ -477,6 +477,10 @@ def _policy_entropy_level(nats: float) -> str:
 
 
 def _approx_kl_level(kl: float) -> str:
+    # Too-low = under-updating (looks like "stable" but the policy is not moving).
+    # Floor is well below a healthy ~1e-3..target_kl band; matches stalled join-score runs.
+    if kl < 0.001:
+        return "STUCK!"
     if kl <= 0.02:
         return "ok"
     if kl <= 0.05:
@@ -508,6 +512,8 @@ def _value_loss_level(values: list[float]) -> str:
 
 
 def _clip_fraction_level(value: float) -> str:
+    # Near-zero alone is fine (updates inside the trust region). High = thrashing the clip.
+    # Corroborate dead updates via approx_kl STUCK, not a second false alarm here.
     if value <= 0.05:
         return "ok"
     if value <= 0.2:
@@ -636,6 +642,161 @@ def _fmt_train_health_table(targets: list[TrainTarget], *, trend_steps: int) -> 
     )
 
 
+# STUCK! ends with punctuation — no trailing \b (\! is already non-word).
+# STUCK! ends with punctuation — no trailing \b (\! is already non-word).
+_SHOUT_LEVEL = re.compile(r"(STUCK!|\bbad\b)")
+
+_TRAIN_HEALTH_FIELDS = (
+    ("policy_entropy", 2),
+    ("entropy", 3),
+    ("approx_kl", 4),
+    ("explained_variance", 5),
+    ("value_loss", 6),
+    ("clip_fraction", 7),
+)
+
+# Scenario shout thresholds — loud when curriculum is spinning without progress.
+_SCENARIO_GATE_FAIL_SHOUT = 5  # current-level fails (waive at GATE_PROGRESS_WAIVE_FAILURES)
+_SCENARIO_CYCLES_BEFORE_DRILL_STUCK = 8
+_SCENARIO_CYCLES_BEFORE_OPENING_STUCK = 5
+_SCENARIO_OPENING_RANK_STUCK = 8.0
+
+
+def _collect_train_warnings(targets: list[TrainTarget], *, trend_steps: int) -> list[str]:
+    """Shout-worthy train-health lines (STUCK! / bad) for the warnings section."""
+    warnings: list[str] = []
+    for row in _train_health_rows(targets, trend_steps=trend_steps):
+        profile = row[1]
+        for field, index in _TRAIN_HEALTH_FIELDS:
+            if index >= len(row):
+                continue
+            cell = row[index]
+            match = _SHOUT_LEVEL.search(cell)
+            if match is None:
+                continue
+            level = match.group(1)
+            if level == "STUCK!" and field == "approx_kl":
+                warnings.append(
+                    f"STUCK! {profile} approx_kl={cell.split()[0]} — "
+                    "PPO barely moving the policy; burning timesteps with no progress"
+                )
+            else:
+                warnings.append(f"{level} {profile} {field}={cell}")
+    return warnings
+
+
+def _collect_scenario_warnings(targets: list[TrainTarget]) -> list[str]:
+    """Shout when drills are not clearing gates / openings stay unranked after many cycles."""
+    catalog = require_catalog()
+    warnings: list[str] = []
+    seen_keys: set[str] = set()
+    for target in targets:
+        if target.checkpoint_key in seen_keys:
+            continue
+        seen_keys.add(target.checkpoint_key)
+        levels = target.load_levels()
+        if not levels:
+            continue
+        gate_failures = load_gate_failures(path_for_gate_failures(target.save_stem()))
+        last_eval = load_last_eval(path_for_last_eval(target.save_stem()))
+        drill_stats = target.load_drill_stats_cumulative()
+        eval_dir = target.eval_dir()
+        claims_on = claims_unlocked(levels, catalog.names(), gate_failures)
+        for scenario in catalog.names():
+            if catalog.is_claim(scenario) and not claims_on:
+                continue
+            level = get_difficulty(levels, scenario)
+            short = catalog.short_name(scenario)
+            tag = f"{short} d{level} [{target.checkpoint_key}]"
+            cycles = drill_stat_count(drill_stats, scenario, "cycles")
+            demotes = drill_stat_count(drill_stats, scenario, "d5_demotes")
+            fails = gate_failure_count(gate_failures, scenario, difficulty=level)
+
+            if is_progress_waived(gate_failures, scenario, levels):
+                warnings.append(
+                    f"STUCK! {tag} progress waived "
+                    f"(≥{GATE_PROGRESS_WAIVE_FAILURES} gate fails at this level) — "
+                    "drill is no longer blocking gates but is not learning"
+                )
+            elif fails >= _SCENARIO_GATE_FAIL_SHOUT:
+                warnings.append(
+                    f"STUCK! {tag} gate_fails={fails} at current level "
+                    f"(shout ≥{_SCENARIO_GATE_FAIL_SHOUT}; waive at {GATE_PROGRESS_WAIVE_FAILURES}) — "
+                    "burning scenario train without clearing"
+                )
+
+            if demotes >= SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD:
+                warnings.append(
+                    f"STUCK! {tag} d5_demotes={demotes} "
+                    f"(≥{SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD}) — repeatedly falling off d5"
+                )
+
+            opening = last_eval_metrics(last_eval, scenario, level)
+            eval_path, stats = _latest_scenario_eval(eval_dir, scenario)
+            eval_d = _scenario_eval_difficulty(eval_path, stats)
+            if (
+                stats is not None
+                and eval_d == level
+                and cycles >= _SCENARIO_CYCLES_BEFORE_DRILL_STUCK
+                and level < MAX_DIFFICULTY
+            ):
+                wins = int(stats.get("wins") or 0)
+                games = int(stats.get("episodes") or 0)
+                if games > 0 and wins < eval_pass_min_wins(games):
+                    warnings.append(
+                        f"STUCK! {tag} drill_rate={_pct(float(stats['winrate']))} "
+                        f"W{wins}/{games} after {cycles} cycles — not reaching pass bar"
+                    )
+
+            rank = None
+            if opening is not None:
+                raw_rank = opening.get("opening_expected_rank_best_mean")
+                try:
+                    rank = float(raw_rank) if raw_rank is not None else None
+                except (TypeError, ValueError):
+                    rank = None
+            if (
+                rank is not None
+                and rank >= _SCENARIO_OPENING_RANK_STUCK
+                and cycles >= _SCENARIO_CYCLES_BEFORE_OPENING_STUCK
+                and level < MAX_DIFFICULTY
+            ):
+                warnings.append(
+                    f"STUCK! {tag} expected_best_rank={rank:.1f} after {cycles} cycles — "
+                    "opening policy still not ranking the expected row"
+                )
+    return warnings
+
+
+def _collect_all_warnings(targets: list[TrainTarget], *, trend_steps: int) -> list[str]:
+    return [
+        *_collect_train_warnings(targets, trend_steps=trend_steps),
+        *_collect_scenario_warnings(targets),
+    ]
+
+
+def _fmt_warnings_section(warnings: list[str]) -> str:
+    if not warnings:
+        return ""
+    lines = ["warnings"]
+    for warning in warnings:
+        lines.append(f"  ! {warning}")
+    return "\n".join(lines)
+
+
+def format_train_warnings_section(
+    profile: str = "all",
+    *,
+    trend_steps: int | None = None,
+) -> str:
+    """Public entry for interrupt / CLI — resolve summary targets and format shouts."""
+    steps = _DEFAULT_TREND_STEPS if trend_steps is None else trend_steps
+    targets = resolve_targets(profile, purpose="summary")
+    if not targets:
+        return ""
+    return _fmt_warnings_section(_collect_all_warnings(targets, trend_steps=steps))
+
+
 def _fmt_model_config_table() -> str:
     header = (
         "profile",
@@ -650,6 +811,7 @@ def _fmt_model_config_table() -> str:
         "shaping (train)",
     )
     rollout = f"{DEFAULT_N_ENVS}×{DEFAULT_N_STEPS}"
+    target_kl_bit = "none" if TARGET_KL is None else f"{TARGET_KL:g}"
     rows: list[tuple[str, ...]] = [
         (
             "default",
@@ -658,7 +820,7 @@ def _fmt_model_config_table() -> str:
             f"{DEFAULT_VF_COEF:g}",
             str(N_EPOCHS),
             str(CLIP_RANGE),
-            str(TARGET_KL),
+            target_kl_bit,
             rollout,
             str(DEFAULT_BATCH_SIZE),
             _PROFILE_BLURB["baseline"],
@@ -669,8 +831,8 @@ def _fmt_model_config_table() -> str:
             (
                 profile,
                 "—",
-                f"{PROFILE_ENT_COEF[profile]:g}" if profile in PROFILE_ENT_COEF else "—",
-                f"{PROFILE_VF_COEF[profile]:g}" if profile in PROFILE_VF_COEF else "—",
+                "—",
+                "—",
                 "—",
                 "—",
                 "—",
@@ -679,7 +841,7 @@ def _fmt_model_config_table() -> str:
                 _PROFILE_BLURB[profile],
             )
         )
-    return _fmt_padded_table("config (PPO + reward shaping — shared unless profile row overrides)", header, rows)
+    return _fmt_padded_table("config (PPO shared; profile rows = shaping only)", header, rows)
 
 
 def _compact_column_guide(*, trend_steps: int) -> str:
@@ -687,7 +849,7 @@ def _compact_column_guide(*, trend_steps: int) -> str:
     return "\n".join(
         [
             f"Train column guide — optimizer health from the last {window} PPO steps (parallel self-play batches, not eval games):",
-            "  Level tags (in the table beside each value): ok = healthy band, watch = borderline, bad = concerning.",
+            "  Level tags (in the table beside each value): ok = healthy band, watch = borderline, bad = concerning, STUCK! = no progress (shouts).",
             "  Trend tags (↑/↓/flat, better/worse) compare the last quarter of the window to the first.",
             "  steps",
             "    Total environment actions this checkpoint has been trained on (max over saved checkpoint zips).",
@@ -706,7 +868,7 @@ def _compact_column_guide(*, trend_steps: int) -> str:
             "    stable randomness (flat): usually fine.",
             "  approx_kl",
             "    Mean policy change per training update (Kullback–Leibler divergence).",
-            "    Levels: ok up to 0.02 (matches target_kl); watch 0.02–0.05; bad above 0.05.",
+            "    Levels: STUCK! below 0.001 (barely moving — burning steps); ok 0.001–0.02; watch 0.02–0.05; bad above 0.05.",
             "  explained_variance",
             "    Critic quality: a separate value head predicts future score from each board state.",
             "    This is how well those predictions match actual returns (1 = perfect, 0 = no better than guessing the average, negative = worse than that).",
@@ -719,7 +881,7 @@ def _compact_column_guide(*, trend_steps: int) -> str:
             "  clip_fraction",
             "    Fraction of policy updates PPO clipped because the step would have changed the policy too much (0–1).",
             "    Levels: ok up to 0.05; watch 0.05–0.2; bad above 0.2 (optimizer often hitting the clip cap).",
-            "    Near 0 = updates always inside the trust region.",
+            "    Near 0 = updates inside the trust region (fine alone; with approx_kl STUCK! it corroborates under-updating).",
             "    ↓ better; ↑ worse; flat OK at low values.",
             "",
         ]
@@ -761,7 +923,7 @@ def _legend() -> str:
             "  d5_demotes             times this drill was demoted from d5",
             "  policy_entropy         −train/entropy_loss — high = exploratory, low = peaked policy",
             "  entropy                entropy_loss plus trend over the train window",
-            "  approx_kl              PPO policy change per update (small = stable)",
+            "  approx_kl              PPO policy change per update (too small = STUCK!; too large = thrashing)"
             "  explained_variance     critic: value-head prediction fit (−1..1; higher = better)",
             "  value_loss             critic: raw return-prediction training loss (lower = better)",
             "  clip_fraction          fraction of PPO updates clipped (high = trust-region limited)",
@@ -1169,9 +1331,11 @@ def _fmt_compact_board(
         sections.append(_compact_column_guide(trend_steps=trend_steps))
     sections.append(_fmt_model_config_table())
     train = _fmt_train_health_table(targets, trend_steps=trend_steps)
+    warnings = _fmt_warnings_section(_collect_all_warnings(targets, trend_steps=trend_steps))
     summary = _fmt_profiles_bottom_summary(targets)
     la_trend = _fmt_lookahead_trend(targets)
-    tables = "\n\n".join(part for part in (train, summary, la_trend) if part)
+    # Warnings right under train health so STUCK!/bad are hard to miss.
+    tables = "\n\n".join(part for part in (train, warnings, summary, la_trend) if part)
     if tables:
         sections.append(tables)
     multipliers = _fmt_train_multiplier_blocks(targets)
