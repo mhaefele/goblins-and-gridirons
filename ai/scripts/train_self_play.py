@@ -162,6 +162,8 @@ _LONG_RUNNING_STEM = "maskable_ppo_selfplay_final"
 _SESSION_LONG = "train_sessions_long.tsv"
 # PPO knobs: stock SB3 unless noted in TRAINING_ROADMAP.md § "PPO vs SB3 stock".
 _DEFAULT_LEARNING_RATE = 3e-4
+# 2× stock — only while training 8× (bottleneck) scenario drills; restored after the segment.
+_BOTTLENECK_LEARNING_RATE = 6e-4
 DEFAULT_MAX_EPISODE_STEPS = 500
 DEFAULT_POLICY_SEAT = "HOME"
 DEFAULT_DEVICE = "cpu"
@@ -1369,35 +1371,43 @@ def _train_scenarios_segment(
             if prior is not None:
                 before = prior
 
+        bottleneck = units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
+        lr = _BOTTLENECK_LEARNING_RATE if bottleneck else _DEFAULT_LEARNING_RATE
         if do_eval:
-            train_detail = f"{timesteps} ts"
+            train_detail = f"{timesteps} ts lr={lr:g}"
         else:
             proxy = require_catalog().curriculum_key(scenario)
-            train_detail = f"{timesteps} ts; no eval — tracks {proxy}"
+            train_detail = f"{timesteps} ts lr={lr:g}; no eval — tracks {proxy}"
         _scenario_phase_banner(
             f"training starting — {tag} ({train_detail})",
             blank_before=fresh_before,
         )
 
         phase_t0 = time.perf_counter()
-        stats = _train_segment(
-            model,
-            args=args,
-            pool=pool,
-            timesteps=timesteps,
-            opponent_mode=OPPONENT_COMPUTER,
-            computer_opponent="LOOKAHEAD",
-            onnx_profile=None,
-            save_stem=save_stem,
-            save_dir=save_dir,
-            name_prefix=name_prefix,
-            reset_num_timesteps=reset_num_timesteps and not did_train,
-            reward_shaping=reward_shaping,
-            profile=profile,
-            runs_key=runs_key,
-            scenario=scenario,
-            scenario_difficulty=difficulty,
-        )
+        if bottleneck:
+            _set_learning_rate(model, _BOTTLENECK_LEARNING_RATE)
+        try:
+            stats = _train_segment(
+                model,
+                args=args,
+                pool=pool,
+                timesteps=timesteps,
+                opponent_mode=OPPONENT_COMPUTER,
+                computer_opponent="LOOKAHEAD",
+                onnx_profile=None,
+                save_stem=save_stem,
+                save_dir=save_dir,
+                name_prefix=name_prefix,
+                reset_num_timesteps=reset_num_timesteps and not did_train,
+                reward_shaping=reward_shaping,
+                profile=profile,
+                runs_key=runs_key,
+                scenario=scenario,
+                scenario_difficulty=difficulty,
+            )
+        finally:
+            if bottleneck:
+                _set_learning_rate(model, _DEFAULT_LEARNING_RATE)
         did_train = True
         row.update(_cycle_stats_fields(f"train_scenario_{slug}", stats))
         drill_stats = record_train_cycles(drill_stats, scenario, units=units)
