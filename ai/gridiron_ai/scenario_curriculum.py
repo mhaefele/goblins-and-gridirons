@@ -14,7 +14,7 @@ recover); ``.scenario_drill_stats.json`` (per-phase ``cycles`` / ``d5_demotes``;
 ``training_phases.load_drill_stats_cumulative``); ``.scenario_last_eval.json`` (up to 4 slim
 snapshots per drill@d — ``history`` plus ``current``/``prior`` mirrors — for deltas / rank trails).
 Phases (scenario_a board→d4 / scenario_b all→d5 / profiles games): ``training_phases``.
-8× train units use ``SCENARIO_EVAL_GAMES_HEAVY`` (50) after-evals with scaled pass/demote.
+8× train units use ``SCENARIO_EVAL_GAMES_HEAVY`` (100) after-evals with scaled pass/demote.
 Drills with fails at their **current** difficulty get ``SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER``×
 train budget below d5 (gating drills only — ``gatesProgress=false`` never multiplies; d5 gate
 fails do not double). Gating drills below the pack max (not waived) get the same 2× with no
@@ -85,7 +85,7 @@ GATE_PROGRESS_WAIVE_FAILURES = 40
 # Scenario after-eval batch size (train → after-eval).
 SCENARIO_EVAL_GAMES = 10
 # Bottleneck (8×) train drills get a longer after-eval (same pass/demote *rates* as the 10-game batch).
-SCENARIO_EVAL_GAMES_HEAVY = 50
+SCENARIO_EVAL_GAMES_HEAVY = 100
 # Wins needed to pass / bump (9 or 10 of SCENARIO_EVAL_GAMES); scaled for heavy batches.
 SCENARIO_EVAL_PASS_MIN_WINS = 9
 # At d5: demote when wins are at or below this (7 or fewer of SCENARIO_EVAL_GAMES).
@@ -99,7 +99,7 @@ SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD = 5
 
 
 def scenario_eval_games(train_units: int = 1) -> int:
-    """After-eval batch size: 50 games for bottleneck (8×) drills, else ``SCENARIO_EVAL_GAMES``."""
+    """After-eval batch size: 100 games for bottleneck (8×) drills, else ``SCENARIO_EVAL_GAMES``."""
     if train_units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER:
         return SCENARIO_EVAL_GAMES_HEAVY
     return SCENARIO_EVAL_GAMES
