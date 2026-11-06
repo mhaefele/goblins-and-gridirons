@@ -201,6 +201,20 @@ def last_eval_rank_history(
     return ranks
 
 
+def last_eval_winrate_history(
+    last_eval: LastEvalStore,
+    scenario: ScenarioName,
+    difficulty: int,
+) -> list[float]:
+    """Drill winrates from stored history (oldest→newest), skipping missing."""
+    rates: list[float] = []
+    for snap in last_eval_history(last_eval, scenario, difficulty):
+        rate = snap.get("winrate")
+        if rate is not None:
+            rates.append(float(rate))
+    return rates
+
+
 def record_last_eval(
     last_eval: LastEvalStore,
     scenario: ScenarioName,

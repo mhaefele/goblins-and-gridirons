@@ -110,8 +110,17 @@ def format_rate_bit(
     return rendered
 
 
-def _drill_rate_pct_bit(after: float, prior: float | None = None) -> str:
-    """Whole-percent drill_rate for scenario headlines (``84%`` / ``30%→0%``)."""
+def _drill_rate_pct_bit(
+    after: float,
+    prior: float | None = None,
+    *,
+    winrate_history: list[float] | None = None,
+) -> str:
+    """Whole-percent drill_rate (``84%`` / ``30%→0%`` / ``40%→30%→28%`` trail)."""
+    if winrate_history:
+        trail = [float(rate) for rate in winrate_history if rate is not None][-4:]
+        if trail:
+            return "→".join(f"{100 * rate:.0f}%" for rate in trail)
     after_pct = f"{100 * after:.0f}%"
     if prior is None:
         return after_pct
@@ -125,6 +134,7 @@ def format_scenario_eval_headline(
     stats: dict[str, Any],
     prior: dict[str, Any] | None = None,
     rank_history: list[float] | None = None,
+    winrate_history: list[float] | None = None,
     eval_difficulty: int | None = None,
 ) -> str:
     """Readable drill line: ``loose_ball_run  d1  @d1 drill_rate=0% W0/L10/D0 (10 ep) expected: …``.
@@ -142,7 +152,11 @@ def format_scenario_eval_headline(
         if prior is not None and prior.get("winrate") is not None
         else None
     )
-    rate_bit = _drill_rate_pct_bit(float(stats.get("winrate") or 0.0), prior_rate)
+    rate_bit = _drill_rate_pct_bit(
+        float(stats.get("winrate") or 0.0),
+        prior_rate,
+        winrate_history=winrate_history,
+    )
     return (
         f"{short_name}  d{difficulty}  {eval_tag}drill_rate={rate_bit} "
         f"W{wins}/L{losses}/D{draws} ({games} ep)"
@@ -260,6 +274,7 @@ def print_scenario_eval_metrics(
     stats: dict[str, Any],
     prior: dict[str, Any] | None = None,
     rank_history: list[float] | None = None,
+    winrate_history: list[float] | None = None,
     indent: int = 0,
 ) -> None:
     """Scenario eval: drill headline first, then score/kinds/submit extras."""
@@ -270,6 +285,7 @@ def print_scenario_eval_metrics(
             stats=stats,
             prior=prior,
             rank_history=rank_history,
+            winrate_history=winrate_history,
         ),
         indent=indent,
     )

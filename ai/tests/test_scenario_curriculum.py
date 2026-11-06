@@ -31,6 +31,7 @@ from gridiron_ai.scenario_curriculum import (
     last_eval_metrics,
     last_eval_prior_metrics,
     last_eval_rank_history,
+    last_eval_winrate_history,
     load_last_eval,
     maybe_bump_after_perfect_eval,
     merge_drill_stats,
@@ -255,6 +256,7 @@ def test_last_eval_round_trip(tmp_path) -> None:
             {"winrate": 0.0, "opening_expected_rank_best_mean": rank},
         )
     assert last_eval_rank_history(loaded, "TD_RUN", 1) == [20.5, 19.5, 20.1, 18.8]
+    assert last_eval_winrate_history(loaded, "TD_RUN", 1) == [0.0, 0.0, 0.0, 0.0]
     assert len(last_eval_history(loaded, "TD_RUN", 1)) == 4
 
 

@@ -182,6 +182,13 @@ def test_format_metrics_line_winrate_delta_vs_prior() -> None:
     assert headline.startswith("loose_ball_run  d1  @d1 drill_rate=20%→0%")
     assert "W0/L10/D0 (10 ep)" in headline
     assert expected_bit in headline
+    trail = format_scenario_eval_headline(
+        short_name="marked_run",
+        difficulty=0,
+        stats={**stats, "scenario_difficulty": 0, "episodes": 50, "wins": 14, "losses": 36, "draws": 0, "winrate": 0.28},
+        winrate_history=[0.40, 0.34, 0.30, 0.28],
+    )
+    assert "drill_rate=40%→34%→30%→28%" in trail
     extras = format_metrics_extras_line(stats)
     assert "score=" in extras
     assert "kinds[" in extras

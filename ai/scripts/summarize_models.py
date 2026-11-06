@@ -51,6 +51,7 @@ from gridiron_ai.scenario_curriculum import (
     last_eval_metrics,
     last_eval_prior_metrics,
     last_eval_rank_history,
+    last_eval_winrate_history,
     load_gate_failures,
     load_last_eval,
     load_levels,
@@ -935,7 +936,7 @@ def _legend() -> str:
             "  truncation_rate        games hitting 500-action cap",
             "  submit_error_rate      failed HTTP submits",
             "  turns / total_actions  match length + policy submits",
-            "  drill_rate             scenario winrate (PASS / decided games)",
+            "  drill_rate             scenario winrate trail (last ≤4 train-time evals, oldest→newest)",
             "  W/L/D on drill rows      decided scenario episodes (DISTRACTED → D)",
             "  expected: rank→…→rank (n=pref/legal) p= logit_gap=   last ≤4 train-time eval "
             "best PASS ranks (oldest→newest; before+after); n= preferred/legal (latest only); "
@@ -1420,6 +1421,7 @@ def _fmt_scenario_drills(target: TrainTarget) -> str:
                 opening_stats = last_eval_metrics(last_eval, scenario, level) or stats
                 opening_prior = last_eval_prior_metrics(last_eval, scenario, level)
                 rank_history = last_eval_rank_history(last_eval, scenario, level)
+                winrate_history = last_eval_winrate_history(last_eval, scenario, level)
                 headline_stats = {
                     **opening_stats,
                     "winrate": stats["winrate"],
@@ -1435,6 +1437,7 @@ def _fmt_scenario_drills(target: TrainTarget) -> str:
                     stats=headline_stats,
                     prior=opening_prior,
                     rank_history=rank_history or None,
+                    winrate_history=winrate_history or None,
                     eval_difficulty=eval_d,
                 )
                 # prefix already has ``NN  ``; headline starts with padded short name + dN.
