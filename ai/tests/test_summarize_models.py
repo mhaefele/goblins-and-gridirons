@@ -32,6 +32,7 @@ from scripts.summarize_models import (
     _fmt_lookahead_trend,
     _fmt_model_config_table,
     _fmt_profiles_bottom_summary,
+    _fmt_scenario_drills,
     _fmt_train_health_table,
     _fmt_warnings_section,
     _latest_scenario_eval,
@@ -92,19 +93,21 @@ def test_baseline_summary_reads_scenario_a_curriculum(monkeypatch, tmp_path: Pat
     assert len(targets) == 1
     assert targets[0].checkpoint_key == PHASE_SCENARIO_A
 
-    text = _summarize_target(targets[0], trend_steps=100_000)
-    assert "[scenario_a]" in text
+    detail = _summarize_target(targets[0], trend_steps=100_000)
+    assert "[scenario_a]" in detail
+    assert "steps=50k" in detail
+    assert "steps=2.1M" not in detail
+    assert "scenario_difficulty=" not in detail
+    # Drills always list on the compact board during scenario_a (not only --verbose).
+    text = _fmt_scenario_drills(targets[0])
     assert "throw_open_receiver  d3  " in text
     assert "throw_closer_range   d4  " in text
-    assert "steps=50k" in text
-    assert "steps=2.1M" not in text
     assert "claim_grab_it" in text and "— (deferred)" in text
     board_block, claim_block = text.split("scenario drills (curriculum d · latest eval @d; --scenario N or name):\n", 1)[1].split(
         "\n\n", 1
     )
     assert "throw_open_receiver" in board_block
     assert "claim_grab_it" in claim_block
-    assert "scenario_difficulty=" not in text
 
 
 def test_summary_marks_optional_and_waived_gate_exclusions(monkeypatch, tmp_path: Path) -> None:
@@ -149,7 +152,7 @@ def test_summary_marks_optional_and_waived_gate_exclusions(monkeypatch, tmp_path
         reward_profile="baseline",
     )
     try:
-        text = _summarize_target(target, trend_steps=100_000)
+        text = _fmt_scenario_drills(target)
     finally:
         install_fixture_catalog()
 
@@ -159,8 +162,58 @@ def test_summary_marks_optional_and_waived_gate_exclusions(monkeypatch, tmp_path
     assert "gate_fails=" in text
     drill_section = text.split("scenario drills (curriculum d · latest eval @d; --scenario N or name):\n", 1)[1]
     board_lines = drill_section.split("\n\n", 1)[0].splitlines()
-    board_names = [line.split()[1] for line in board_lines if line.startswith("    ")]
+    board_names = [
+        line.split()[1]
+        for line in board_lines
+        if line.split() and line.split()[0].isdigit()
+    ]
     assert board_names.index("td_run") < board_names.index("held_ss_reroll")
+
+
+def test_summary_proxy_drill_skips_eval_and_gate_fails(monkeypatch, tmp_path: Path) -> None:
+    catalog = ScenarioCatalog.from_entries(
+        [
+            ScenarioInfo("LOOSE_BALL_RUN", "BOARD"),
+            ScenarioInfo(
+                "LOOSE_BALL_BOUNCE",
+                "BOARD",
+                difficulty_proxy="LOOSE_BALL_RUN",
+                gates_progress=False,
+            ),
+        ]
+    )
+    set_catalog(catalog)
+    ckpt_root = tmp_path / "checkpoints"
+    eval_root = tmp_path / "evals"
+    runs_root = tmp_path / "runs"
+    ckpt_root.mkdir()
+    eval_root.mkdir()
+    runs_root.mkdir()
+    levels = {"LOOSE_BALL_RUN": 0, "LOOSE_BALL_BOUNCE": 0}
+    _plant(ckpt_root, PHASE_SCENARIO_A, levels, steps=10_000)
+    failures_path = path_for_gate_failures(ckpt_root / PHASE_SCENARIO_A / _STEM)
+    failures_path.write_text(
+        json.dumps({"LOOSE_BALL_BOUNCE": {"0": 7}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
+    monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", eval_root)
+    target = TrainTarget(
+        phase=PHASE_SCENARIO_A,
+        checkpoint_key=PHASE_SCENARIO_A,
+        reward_profile="baseline",
+    )
+    try:
+        text = _fmt_scenario_drills(target)
+        warnings = _collect_scenario_warnings([target])
+    finally:
+        install_fixture_catalog()
+    bounce_line = next(line for line in text.splitlines() if "loose_ball_bounce" in line)
+    assert "no scenario eval; tracks loose_ball_run" in bounce_line
+    assert "gate_fails=" not in bounce_line
+    assert "(optional)" in bounce_line
+    assert not any("loose_ball_bounce" in w for w in warnings)
 
 
 def test_curriculum_note_combined_excludes_optional_from_counts() -> None:
@@ -268,13 +321,14 @@ def test_scenario_drill_line_shows_wld(monkeypatch, tmp_path: Path) -> None:
         checkpoint_key=PHASE_SCENARIO_A,
         reward_profile="baseline",
     )
-    text = _summarize_target(target, trend_steps=100_000)
+    text = _fmt_scenario_drills(target)
     assert "td_run" in text
     assert "W5/L3/D2 (10 ep)" in text
-    assert "expected_p=0.012" in text
-    assert "expected_best_p=0.018" in text
+    assert "expected: [22.5" in text
+    assert "p: 0.018" in text
     assert "first_p=0.140" in text
-    assert "expected_best_rank=22.5" in text
+    assert "expected_p=" not in text
+    assert "expected_best_p=" not in text
 
 
 def test_profiles_bottom_summary_aligns_columns(monkeypatch, tmp_path: Path) -> None:
@@ -620,7 +674,9 @@ def test_collect_scenario_warnings_gate_fails(monkeypatch, tmp_path: Path) -> No
         reward_profile="baseline",
     )
     warnings = _collect_scenario_warnings([target])
-    assert any("STUCK!" in w and "gate_fails=6" in w for w in warnings)
+    stuck = next(w for w in warnings if "STUCK!" in w and "gate_fails=6" in w)
+    assert "boards never auto-waive" in stuck
+    assert "claims auto-waive" not in stuck
 
 
 def test_collect_train_warnings_from_stuck_cells(monkeypatch) -> None:
@@ -694,7 +750,7 @@ def test_model_config_table_default_and_overrides() -> None:
     assert "spread" in text
     assert "covering-radius" in text
     assert "defense" in text
-    assert "strip / dugout" in text
+    assert "KD / dugout" in text
     assert "0.009" not in text
     data_lines = [
         line

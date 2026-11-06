@@ -52,6 +52,12 @@ def test_aggregate_opening_move_scores_means() -> None:
                         {"rank": 10, "p": 0.02},
                         {"rank": 4, "p": 0.08},
                     ],
+                    "expected_pref": {
+                        "best_rank": 4,
+                        "legal_count": 100,
+                        "n_preferred": 2,
+                        "logit_gap": 0.5,
+                    },
                 }
             },
             {
@@ -61,6 +67,12 @@ def test_aggregate_opening_move_scores_means() -> None:
                         {"rank": 6, "p": 0.04},
                         {"rank": 8, "p": 0.06},
                     ],
+                    "expected_pref": {
+                        "best_rank": 6,
+                        "legal_count": 200,
+                        "n_preferred": 2,
+                        "logit_gap": 1.5,
+                    },
                 }
             },
             {"opening_move_scores": None},
@@ -70,6 +82,9 @@ def test_aggregate_opening_move_scores_means() -> None:
     assert stats["opening_expected_p_mean"] == pytest.approx(0.05)  # mean of (0.05, 0.05)
     assert stats["opening_expected_p_best_mean"] == pytest.approx(0.07)  # mean of (0.08, 0.06)
     assert stats["opening_expected_rank_best_mean"] == pytest.approx(5.0)  # mean of (4, 6)
+    assert stats["opening_expected_legal_count_mean"] == pytest.approx(150.0)
+    assert stats["opening_expected_n_preferred_mean"] == pytest.approx(2.0)
+    assert stats["opening_expected_logit_gap_mean"] == pytest.approx(1.0)
 
 
 def test_aggregate_opening_move_scores_empty() -> None:
@@ -83,6 +98,8 @@ def test_aggregate_opening_move_scores_empty() -> None:
 def test_format_opening_score_bits_and_episodes_raw_fallback() -> None:
     assert format_opening_score_bits({}) == ""
     assert format_opening_score_bits({"opening_chosen_p_mean": 0.631}) == ""
+    # Mean expected p alone is ignored — only best p / rank drive the strip.
+    assert format_opening_score_bits({"opening_expected_p_mean": 0.01}) == ""
     assert (
         format_opening_score_bits(
             {
@@ -90,9 +107,12 @@ def test_format_opening_score_bits_and_episodes_raw_fallback() -> None:
                 "opening_expected_p_best_mean": 0.02,
                 "opening_chosen_p_mean": 0.1,
                 "opening_expected_rank_best_mean": 12,
+                "opening_expected_legal_count_mean": 168,
+                "opening_expected_n_preferred_mean": 1,
+                "opening_expected_logit_gap_mean": 0.07,
             }
         )
-        == " expected_p=0.010 expected_best_p=0.020 first_p=0.100 expected_best_rank=12.0"
+        == " expected: [12.0/168(n=1, gap=+0.07), p: 0.020] first_p=0.100"
     )
     assert (
         format_opening_score_bits(
@@ -101,15 +121,21 @@ def test_format_opening_score_bits_and_episodes_raw_fallback() -> None:
                 "opening_expected_p_best_mean": 0.006,
                 "opening_chosen_p_mean": 0.157,
                 "opening_expected_rank_best_mean": 17.5,
+                "opening_expected_legal_count_mean": 200,
+                "opening_expected_n_preferred_mean": 1,
+                "opening_expected_logit_gap_mean": 0.20,
             },
             prior={
                 "opening_expected_p_mean": 0.05,
                 "opening_expected_p_best_mean": 0.08,
                 "opening_chosen_p_mean": 0.2,
                 "opening_expected_rank_best_mean": 10.0,
+                "opening_expected_legal_count_mean": 180,
+                "opening_expected_n_preferred_mean": 1,
+                "opening_expected_logit_gap_mean": 0.05,
             },
         )
-        == " expected_p=0.050→0.006 expected_best_p=0.080→0.006 first_p=0.200→0.157 expected_best_rank=10.0→17.5"
+        == " expected: [10.0→17.5/180→200(n=1→1, gap=0.05→0.20), p: 0.080→0.006] first_p=0.200→0.157"
     )
     fields = opening_score_fields(
         {
@@ -169,16 +195,59 @@ def test_format_opening_mispick_diag_includes_ranks() -> None:
                 "throw": {"p_plain": 0.4, "p_biased": 0.35},
             },
             "top_rows": [{"kind": "throw", "p_plain": 0.4}],
+            "acting_biased": True,
             "soft_mask_row_count": 10,
             "legal_count": 311,
         }
     )
     assert "policy_diag=" in line
     assert "expected_best=47/311" in line
+    assert "soft_best=47/311" in line
+    assert "sm=10/311" in line
+    assert "p=0.400(0.350sm)" in line
     assert "gap=+2.15" in line
     assert "carrier_p4:" in line
     assert "rank=1/311" in line
     assert "policy_menu=" not in line
+
+
+def test_format_opening_mispick_diag_omits_soft_bits_when_eval_unbiased() -> None:
+    # Eval still packs softMaskLegal flags (sm rows > 0) but acting logits are unbiased.
+    line = format_opening_mispick_diag(
+        {
+            "chosen": "run(2,11->5,15)",
+            "chosen_row": {
+                "index": 0,
+                "kind": "run",
+                "rank": 1,
+                "p_plain": 0.018,
+                "p_biased": 0.015,
+                "soft_mask": False,
+                "passing": False,
+            },
+            "expected_rank": {
+                "best_rank": 13,
+                "legal_count": 138,
+                "n_preferred": 1,
+                "logit_gap": 0.10,
+            },
+            "soft_rank": {
+                "best_rank": 13,
+                "legal_count": 138,
+                "n_preferred": 1,
+                "logit_gap": 0.10,
+            },
+            "top_rows": [{"kind": "run", "p_plain": 0.02}],
+            "acting_biased": False,
+            "soft_mask_row_count": 1,
+            "legal_count": 138,
+        }
+    )
+    assert "expected_best=13/138" in line
+    assert "soft_best=" not in line
+    assert "sm=" not in line
+    assert "p=0.018" in line
+    assert "(0.015sm)" not in line
 
 
 def test_format_opening_mispick_diag_super_verbose_menu() -> None:

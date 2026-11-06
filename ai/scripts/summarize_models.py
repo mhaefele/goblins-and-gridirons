@@ -1,10 +1,11 @@
 """Print a short status board from latest eval JSON + checkpoints (no backend).
 
 Default: compact train + eval summary tables only. ``--verbose``: full per-profile
-detail (eval blocks, scenario drills, legend). Curriculum / steps come from the active
-``checkpoint_key`` via ``resolve_targets(..., purpose=\"summary\")``. Scenario eval JSON:
-``evals/baseline/``; shaped full-game eval JSON: ``evals/{general,spread,td,defense}/``
-(see ``paths.py`` / ``common.sh``).
+detail (eval blocks, legend). During ``scenario_a`` / ``scenario_b``, the compact board
+always lists every curriculum drill (not only with ``--verbose``). Curriculum / steps
+come from the active ``checkpoint_key`` via ``resolve_targets(..., purpose=\"summary\")``.
+Scenario eval JSON: ``evals/baseline/``; shaped full-game eval JSON:
+``evals/{general,spread,td,defense}/`` (see ``paths.py`` / ``common.sh``).
 ``--profile all`` → ``profiles_for_all(\"summary\")`` (baseline + all shaped, including
 ``td``). Train/eval ``all`` omits that specialist — see
 ``reward.profiles_for_all``.
@@ -20,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from gridiron_ai.eval_opening_diag import format_opening_score_bits
+from gridiron_ai.metrics import format_scenario_eval_headline
 from gridiron_ai.paths import EVAL_DIR
 from gridiron_ai.reward import FULL_GAME_ONNX_OPPONENT_PROFILES, REWARD_PROFILES, SHAPED_PROFILES
 from scripts.train_self_play import (
@@ -66,6 +67,7 @@ from gridiron_ai.api.scenarios import (
 )
 from gridiron_ai.pipeline_state import load_pipeline
 from gridiron_ai.training_phases import (
+    PHASE_SCENARIO_A,
     PHASE_SCENARIO_B,
     TrainTarget,
     game_phase_unlocked,
@@ -671,7 +673,7 @@ _TRAIN_HEALTH_FIELDS = (
 )
 
 # Scenario shout thresholds — loud when curriculum is spinning without progress.
-_SCENARIO_GATE_FAIL_SHOUT = 5  # current-level fails (waive at GATE_PROGRESS_WAIVE_FAILURES)
+_SCENARIO_GATE_FAIL_SHOUT = 5  # current-level fails (claims auto-waive at GATE_PROGRESS_WAIVE_FAILURES)
 _SCENARIO_CYCLES_BEFORE_DRILL_STUCK = 8
 _SCENARIO_CYCLES_BEFORE_OPENING_STUCK = 5
 _SCENARIO_OPENING_RANK_STUCK = 8.0
@@ -727,16 +729,24 @@ def _collect_scenario_warnings(targets: list[TrainTarget]) -> list[str]:
             demotes = drill_stat_count(drill_stats, scenario, "d5_demotes")
             fails = gate_failure_count(gate_failures, scenario, difficulty=level)
 
+            # Proxy drills skip after-eval — their gate_fails (if any) are noise.
+            if scenario in catalog.proxy_sources():
+                continue
+
             if is_progress_waived(gate_failures, scenario, levels):
                 warnings.append(
                     f"STUCK! {tag} progress waived "
-                    f"(≥{GATE_PROGRESS_WAIVE_FAILURES} gate fails at this level) — "
+                    f"(claim; ≥{GATE_PROGRESS_WAIVE_FAILURES} gate fails at this level) — "
                     "drill is no longer blocking gates but is not learning"
                 )
             elif fails >= _SCENARIO_GATE_FAIL_SHOUT:
+                if catalog.is_claim(scenario):
+                    waive_bit = f"; claims auto-waive at {GATE_PROGRESS_WAIVE_FAILURES}"
+                else:
+                    waive_bit = "; boards never auto-waive"
                 warnings.append(
                     f"STUCK! {tag} gate_fails={fails} at current level "
-                    f"(shout ≥{_SCENARIO_GATE_FAIL_SHOUT}; waive at {GATE_PROGRESS_WAIVE_FAILURES}) — "
+                    f"(shout ≥{_SCENARIO_GATE_FAIL_SHOUT}{waive_bit}) — "
                     "burning scenario train without clearing"
                 )
 
@@ -926,14 +936,15 @@ def _legend() -> str:
             "  turns / total_actions  match length + policy submits",
             "  drill_rate             scenario winrate (PASS / decided games)",
             "  W/L/D on drill rows      decided scenario episodes (DISTRACTED → D)",
-            "  expected_p             mean over games of mean expected-row opening p (prior→current when sidecar has both)",
-            "  expected_best_p        mean over games of best expected-row opening p",
-            "  first_p                mean opening argmax / first-move p",
-            "  expected_best_rank     mean over games of best (lowest) expected-row opening rank",
+            "  expected: [rank/N(n= gap=) p:]  mean best PASS-row rank over legal count, preferred count, "
+            "logit gap to argmax, best expected p (prior→current when sidecar has both)",
+            "  first_p                mean opening chosen-move p (can exceed expected p when argmax ≠ lesson)",
             "  d0–d5                 curriculum level (active phase checkpoint)",
             "  (optional)             gatesProgress=false — trained/eval'd, not a curriculum gate (oracle or placement not trusted yet)",
-            "  (waived)               claim gate_fails threshold — temporarily excluded from gates (boards never waive)",
-            "  gate_fails             current-difficulty / all-time imperfect after-evals",
+            "  (no scenario eval; tracks X)  difficultyProxy drill — train only; after-eval/gates ride on X",
+            "  (waived)               claim hit fail threshold — temporarily excluded from gates "
+            f"(claims only; threshold {GATE_PROGRESS_WAIVE_FAILURES}; boards never waive)",
+            "  gate_fails             current-difficulty / all-time imperfect after-evals (omitted for proxy drills)",
             f"  train 1×/2×/8×         next-cycle PPO budget multiplier (gating drills; see criteria under drill lists)",
             "  cycles                 train sandwich units cumulative (scenario_a→current; 2× gate fails / behind pack; 8× fail at pack min / below-d4 opening / ≥5 demotes after board d4+)",
             "  d5_demotes             times this drill was demoted from d5",
@@ -1336,6 +1347,111 @@ def _fmt_train_multiplier_blocks(targets: list[TrainTarget]) -> str:
     return "\n\n".join(blocks)
 
 
+def _fmt_scenario_drills(target: TrainTarget) -> str:
+    """All curriculum drills for one checkpoint (always shown in scenario_a / scenario_b)."""
+    catalog = require_catalog()
+    scenarios = catalog.names()
+    if not scenarios:
+        return ""
+    levels = target.load_levels()
+    save_stem = target.save_stem()
+    gate_failures = load_gate_failures(path_for_gate_failures(save_stem))
+    last_eval = load_last_eval(path_for_last_eval(save_stem))
+    drill_stats = target.load_drill_stats_cumulative()
+    eval_dir = target.eval_dir()
+    claims_on = claims_unlocked(levels, scenarios, gate_failures)
+    name_width = max((len(catalog.short_name(name)) for name in scenarios), default=0)
+    scenario_numbers = {name: num for num, name in enumerate(summary_scenario_order(catalog), start=1)}
+    proxy_sources = catalog.proxy_sources()
+    lines = [
+        "scenario drills (curriculum d · latest eval @d; --scenario N or name):",
+    ]
+    phases = (
+        scenario_phase_order(catalog.board_names(), catalog),
+        scenario_phase_order(catalog.claim_names(), catalog),
+    )
+    first_phase = True
+    for phase in phases:
+        if not phase:
+            continue
+        if not first_phase:
+            lines.append("")
+        first_phase = False
+        for scenario in phase:
+            level = get_difficulty(levels, scenario)
+            short = f"{catalog.short_name(scenario):<{name_width}}"
+            gate_bit = _gate_exclusion_bit(scenario, levels, gate_failures)
+            cycles = drill_stat_count(drill_stats, scenario, "cycles")
+            demotes = drill_stat_count(drill_stats, scenario, "d5_demotes")
+            cycle_bit = f" cycles={cycles}" if cycles else ""
+            demote_bit = f" d5_demotes={demotes}" if demotes else ""
+            prefix = f"  {scenario_numbers[scenario]:2d}  {short}  d{level}  "
+            if catalog.is_claim(scenario) and not claims_on:
+                lines.append(f"{prefix}— (deferred){cycle_bit}{demote_bit}{gate_bit}")
+                continue
+            # Proxy drills train only — after-eval + gate_fails ride on the difficulty target.
+            if scenario in proxy_sources:
+                proxy = catalog.short_name(catalog.curriculum_key(scenario))
+                lines.append(
+                    f"{prefix}— (no scenario eval; tracks {proxy})"
+                    f"{cycle_bit}{demote_bit}{gate_bit}"
+                )
+                continue
+            eval_path, stats = _latest_scenario_eval(eval_dir, scenario)
+            if stats:
+                wins = int(stats["wins"])
+                losses = int(stats.get("losses", 0))
+                draws = int(stats.get("draws", 0))
+                games = int(stats["episodes"])
+                eval_d = _scenario_eval_difficulty(eval_path, stats)
+                stale = eval_d is not None and eval_d != level
+                passed = (
+                    games > 0
+                    and wins >= eval_pass_min_wins(games)
+                    and games >= wins
+                )
+                bump = " ↑" if passed and not stale and level < MAX_DIFFICULTY else ""
+                stale_bit = " (stale)" if stale else ""
+                fails = gate_failure_count(gate_failures, scenario, difficulty=level)
+                fails_total = gate_failure_count(gate_failures, scenario)
+                fail_bit = f" gate_fails={fails}/{fails_total}" if fails_total else ""
+                opening_stats = last_eval_metrics(last_eval, scenario, level) or stats
+                opening_prior = last_eval_prior_metrics(last_eval, scenario, level)
+                headline_stats = {
+                    **opening_stats,
+                    "winrate": stats["winrate"],
+                    "wins": wins,
+                    "losses": losses,
+                    "draws": draws,
+                    "episodes": games,
+                    "scenario_difficulty": eval_d,
+                }
+                headline = format_scenario_eval_headline(
+                    short_name=short,
+                    difficulty=level,
+                    stats=headline_stats,
+                    prior=opening_prior,
+                    eval_difficulty=eval_d,
+                )
+                # prefix already has ``NN  ``; headline starts with padded short name + dN.
+                lines.append(
+                    f"  {scenario_numbers[scenario]:2d}  {headline}"
+                    f"{bump}{stale_bit}"
+                    f"{fail_bit}{cycle_bit}{demote_bit}{gate_bit}"
+                )
+            else:
+                fails = gate_failure_count(gate_failures, scenario, difficulty=level)
+                fails_total = gate_failure_count(gate_failures, scenario)
+                fail_bit = f" gate_fails={fails}/{fails_total}" if fails_total else ""
+                lines.append(
+                    f"{prefix}— (no eval yet){fail_bit}{cycle_bit}{demote_bit}{gate_bit}"
+                )
+
+    game_phase = game_phase_unlocked(target.checkpoint_key)
+    lines.append(f"  {_curriculum_note(levels, gate_failures, game_phase=game_phase)}")
+    return "\n".join(lines)
+
+
 def _fmt_compact_board(
     targets: list[TrainTarget],
     *,
@@ -1354,6 +1470,12 @@ def _fmt_compact_board(
     tables = "\n\n".join(part for part in (train, warnings, summary, la_trend) if part)
     if tables:
         sections.append(tables)
+    # scenario_a / scenario_b: always list every drill (not only --verbose).
+    for target in targets:
+        if target.phase in (PHASE_SCENARIO_A, PHASE_SCENARIO_B):
+            drills = _fmt_scenario_drills(target)
+            if drills:
+                sections.append(drills)
     multipliers = _fmt_train_multiplier_blocks(targets)
     if multipliers:
         sections.append(multipliers)
@@ -1368,7 +1490,6 @@ def _summarize_target(target: TrainTarget, *, trend_steps: int) -> str:
     levels = target.load_levels()
     save_stem = target.save_stem()
     gate_failures = load_gate_failures(path_for_gate_failures(save_stem))
-    last_eval = load_last_eval(path_for_last_eval(save_stem))
     drill_stats = target.load_drill_stats_cumulative()
     steps = _training_steps(checkpoint_dir)
     key_bit = f" [{checkpoint_key}]" if checkpoint_key != profile else ""
@@ -1413,79 +1534,20 @@ def _summarize_target(target: TrainTarget, *, trend_steps: int) -> str:
     if trend:
         lines.append(trend)
 
-    lines.append("  scenario drills (curriculum d · latest eval @d; --scenario N or name):")
-    catalog = require_catalog()
-    scenarios = catalog.names()
-    claims_on = claims_unlocked(levels, scenarios, gate_failures)
-    name_width = max((len(catalog.short_name(name)) for name in scenarios), default=0)
-    scenario_numbers = {name: num for num, name in enumerate(summary_scenario_order(catalog), start=1)}
-    phases = (
-        scenario_phase_order(catalog.board_names(), catalog),
-        scenario_phase_order(catalog.claim_names(), catalog),
-    )
-    first_phase = True
-    for phase in phases:
-        if not phase:
-            continue
-        if not first_phase:
-            lines.append("")
-        first_phase = False
-        for scenario in phase:
-            level = get_difficulty(levels, scenario)
-            short = f"{catalog.short_name(scenario):<{name_width}}"
-            gate_bit = _gate_exclusion_bit(scenario, levels, gate_failures)
-            cycles = drill_stat_count(drill_stats, scenario, "cycles")
-            demotes = drill_stat_count(drill_stats, scenario, "d5_demotes")
-            cycle_bit = f" cycles={cycles}" if cycles else ""
-            demote_bit = f" d5_demotes={demotes}" if demotes else ""
-            prefix = f"    {scenario_numbers[scenario]:2d}  {short}  d{level}  "
-            if catalog.is_claim(scenario) and not claims_on:
-                lines.append(f"{prefix}— (deferred){cycle_bit}{demote_bit}{gate_bit}")
-                continue
-            eval_path, stats = _latest_scenario_eval(eval_dir, scenario)
-            if stats:
-                wins = int(stats["wins"])
-                losses = int(stats.get("losses", 0))
-                draws = int(stats.get("draws", 0))
-                games = int(stats["episodes"])
-                eval_d = _scenario_eval_difficulty(eval_path, stats)
-                eval_tag = f"@d{eval_d} " if eval_d is not None else ""
-                stale = eval_d is not None and eval_d != level
-                passed = (
-                    games > 0
-                    and wins >= eval_pass_min_wins(games)
-                    and games >= wins
-                )
-                bump = " ↑" if passed and not stale and level < MAX_DIFFICULTY else ""
-                stale_bit = " (stale)" if stale else ""
-                fails = gate_failure_count(gate_failures, scenario, difficulty=level)
-                fails_total = gate_failure_count(gate_failures, scenario)
-                fail_bit = f" gate_fails={fails}/{fails_total}" if fails_total else ""
-                # Opening trend: sidecar current+prior when present; else eval JSON alone.
-                opening_stats = last_eval_metrics(last_eval, scenario, level) or stats
-                opening_prior = last_eval_prior_metrics(last_eval, scenario, level)
-                lines.append(
-                    f"{prefix}{eval_tag}drill_rate={_pct(stats['winrate'])} "
-                    f"W{wins}/L{losses}/D{draws} ({games} ep)"
-                    f"{format_opening_score_bits(opening_stats, prior=opening_prior)}"
-                    f"{bump}{stale_bit}"
-                    f"{fail_bit}{cycle_bit}{demote_bit}{gate_bit}"
-                )
-            else:
-                fails = gate_failure_count(gate_failures, scenario, difficulty=level)
-                fails_total = gate_failure_count(gate_failures, scenario)
-                fail_bit = f" gate_fails={fails}/{fails_total}" if fails_total else ""
-                lines.append(
-                    f"{prefix}— (no eval yet){fail_bit}{cycle_bit}{demote_bit}{gate_bit}"
-                )
-
-    game_phase = game_phase_unlocked(checkpoint_key)
-    lines.append(f"  {_curriculum_note(levels, gate_failures, game_phase=game_phase)}")
-    lines.extend(
-        train_multiplier_summary_lines(
-            levels, scenarios, gate_failures, drill_stats, game_phase=game_phase
+    # scenario_a / scenario_b drills live on the compact board (always). Verbose profiles
+    # still list drills here so shaped-checkpoint detail stays self-contained.
+    if target.phase not in (PHASE_SCENARIO_A, PHASE_SCENARIO_B):
+        drills = _fmt_scenario_drills(target)
+        if drills:
+            lines.append(drills)
+        catalog = require_catalog()
+        scenarios = catalog.names()
+        game_phase = game_phase_unlocked(checkpoint_key)
+        lines.extend(
+            train_multiplier_summary_lines(
+                levels, scenarios, gate_failures, drill_stats, game_phase=game_phase
+            )
         )
-    )
     return "\n".join(lines)
 
 

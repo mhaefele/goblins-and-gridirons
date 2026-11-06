@@ -243,6 +243,8 @@ def diagnose_opening_mispick(
                 else None
             ),
             "expected": expected_rows,
+            # Preferred-set summary (PASS rows) for drill aggregates — same shape as policy_diag.
+            "expected_pref": expected_rank,
             "p_key": p_key,
         },
     }
@@ -282,13 +284,19 @@ def aggregate_opening_move_scores(episodes: list[dict[str, Any]]) -> dict[str, f
 
     - ``opening_expected_p_mean`` — mean over games of that game's mean expected-row ``p``
     - ``opening_expected_p_best_mean`` — mean over games of max expected-row ``p``
-    - ``opening_chosen_p_mean`` — mean first-move (argmax) ``p``
+    - ``opening_chosen_p_mean`` — mean first-move (chosen) ``p``
     - ``opening_expected_rank_best_mean`` — mean over games of best (lowest) expected rank
+    - ``opening_expected_legal_count_mean`` — mean opening legal-row count (denominator for rank/N)
+    - ``opening_expected_n_preferred_mean`` — mean PASS-preferred row count (``n=`` in diag)
+    - ``opening_expected_logit_gap_mean`` — mean logit(argmax) − logit(best expected)
     """
     expected_means: list[float] = []
     expected_bests: list[float] = []
     chosen_ps: list[float] = []
     expected_best_ranks: list[float] = []
+    legal_counts: list[float] = []
+    n_preferreds: list[float] = []
+    logit_gaps: list[float] = []
     for episode in episodes:
         scores = episode.get("opening_move_scores")
         if not isinstance(scores, dict):
@@ -306,6 +314,18 @@ def aggregate_opening_move_scores(episodes: list[dict[str, Any]]) -> dict[str, f
                 expected_bests.append(max(ps))
             if ranks:
                 expected_best_ranks.append(min(ranks))
+        pref = scores.get("expected_pref")
+        if isinstance(pref, dict):
+            if pref.get("legal_count") is not None:
+                legal_counts.append(float(pref["legal_count"]))
+            if pref.get("n_preferred") is not None:
+                n_preferreds.append(float(pref["n_preferred"]))
+            if pref.get("logit_gap") is not None:
+                logit_gaps.append(float(pref["logit_gap"]))
+            if pref.get("best_rank") is not None and not (
+                isinstance(expected, list) and expected
+            ):
+                expected_best_ranks.append(float(pref["best_rank"]))
         chosen = scores.get("chosen")
         if isinstance(chosen, dict) and chosen.get("p") is not None:
             chosen_ps.append(float(chosen["p"]))
@@ -314,6 +334,9 @@ def aggregate_opening_move_scores(episodes: list[dict[str, Any]]) -> dict[str, f
         "opening_expected_p_best_mean": _mean(expected_bests),
         "opening_chosen_p_mean": _mean(chosen_ps),
         "opening_expected_rank_best_mean": _mean(expected_best_ranks),
+        "opening_expected_legal_count_mean": _mean(legal_counts),
+        "opening_expected_n_preferred_mean": _mean(n_preferreds),
+        "opening_expected_logit_gap_mean": _mean(logit_gaps),
     }
 
 
@@ -322,6 +345,9 @@ _OPENING_SCORE_KEYS = (
     "opening_expected_p_best_mean",
     "opening_chosen_p_mean",
     "opening_expected_rank_best_mean",
+    "opening_expected_legal_count_mean",
+    "opening_expected_n_preferred_mean",
+    "opening_expected_logit_gap_mean",
 )
 
 
@@ -344,55 +370,117 @@ def fmt_metric_delta(before: float | None, after: float | None, *, digits: int =
     return f"{before:.{digits}f}→{after:.{digits}f}"
 
 
+def _fmt_rank_over_n(
+    rank: float | None,
+    legal: float | None,
+    *,
+    rank_before: float | None = None,
+    legal_before: float | None = None,
+) -> str | None:
+    """``1.2/168`` or ``2.0→1.2/150→168`` when priors exist."""
+    if rank is None:
+        return None
+    rank_bit = fmt_metric_delta(rank_before, rank, digits=1)
+    if rank_bit is None:
+        return None
+    if legal is None and legal_before is None:
+        return rank_bit
+    legal_bit = fmt_metric_delta(legal_before, legal, digits=0)
+    if legal_bit is None:
+        return rank_bit
+    return f"{rank_bit}/{legal_bit}"
+
+
 def format_opening_score_bits(
     stats: dict[str, Any],
     *,
     prior: dict[str, Any] | None = None,
 ) -> str:
-    """Compact `` expected_p=… expected_best_p=… first_p=… expected_best_rank=…`` or empty.
+    """Compact `` expected: [1.2/168(n=1 gap=+0.07) p: 0.300] first_p=…`` or empty.
 
-    When ``prior`` has the same aggregates, values render as ``before→after`` drift.
-    Omits the whole strip when neither side has expected-row scores — chosen-only
-    ``first_p`` alone is noise (e.g. openings with no ``expected=`` rows).
-    ``expected_best_rank`` is mean-over-games of each game's best (lowest) expected rank —
-    not the mean of all expected-row ranks within a game.
+    Mirrors policy_diag ``expected_best=rank/N(n= gap=)`` with batch means, plus best
+    expected-row ``p`` and prior→current deltas when the sidecar has both. Omits the strip
+    when neither side has expected-row scores — chosen-only ``first_p`` alone is noise.
     """
     fields = opening_score_fields(stats)
     prior_fields = opening_score_fields(prior) if prior is not None else None
-    expected_keys = (
-        "opening_expected_p_mean",
-        "opening_expected_p_best_mean",
-        "opening_expected_rank_best_mean",
-    )
-    has_expected = any(fields[key] is not None for key in expected_keys) or (
-        prior_fields is not None and any(prior_fields[key] is not None for key in expected_keys)
+
+    def _f(key: str) -> float | None:
+        return fields.get(key)
+
+    def _p(key: str) -> float | None:
+        return None if prior_fields is None else prior_fields.get(key)
+
+    p_after = _f("opening_expected_p_best_mean")
+    rank_after = _f("opening_expected_rank_best_mean")
+    legal_after = _f("opening_expected_legal_count_mean")
+    n_after = _f("opening_expected_n_preferred_mean")
+    gap_after = _f("opening_expected_logit_gap_mean")
+    p_before = _p("opening_expected_p_best_mean")
+    rank_before = _p("opening_expected_rank_best_mean")
+    legal_before = _p("opening_expected_legal_count_mean")
+    n_before = _p("opening_expected_n_preferred_mean")
+    gap_before = _p("opening_expected_logit_gap_mean")
+    has_expected = any(
+        v is not None
+        for v in (p_after, rank_after, legal_after, n_after, gap_after, p_before, rank_before)
     )
     if not has_expected:
         return ""
+    head = _fmt_rank_over_n(
+        rank_after, legal_after, rank_before=rank_before, legal_before=legal_before
+    )
+    paren: list[str] = []
+    n_rendered = fmt_metric_delta(n_before, n_after, digits=0)
+    if n_rendered is not None:
+        paren.append(f"n={n_rendered}")
+    gap_rendered = fmt_metric_delta(gap_before, gap_after, digits=2)
+    if gap_rendered is not None:
+        # Keep a leading sign on the single-value form (matches policy_diag).
+        if gap_before is None and gap_after is not None:
+            gap_rendered = f"{gap_after:+.2f}"
+        paren.append(f"gap={gap_rendered}")
+    expected_core = head or ""
+    if paren:
+        expected_core = f"{expected_core}({', '.join(paren)})" if expected_core else f"({', '.join(paren)})"
+    p_rendered = fmt_metric_delta(p_before, p_after, digits=3)
+    expected_bits: list[str] = []
+    if expected_core:
+        expected_bits.append(expected_core)
+    if p_rendered is not None:
+        expected_bits.append(f"p: {p_rendered}")
     bits: list[str] = []
-    for key, label, digits in (
-        ("opening_expected_p_mean", "expected_p", 3),
-        ("opening_expected_p_best_mean", "expected_best_p", 3),
-        ("opening_chosen_p_mean", "first_p", 3),
-        ("opening_expected_rank_best_mean", "expected_best_rank", 1),
-    ):
-        before = None if prior_fields is None else prior_fields[key]
-        rendered = fmt_metric_delta(before, fields[key], digits=digits)
-        if rendered is not None:
-            bits.append(f"{label}={rendered}")
+    if expected_bits:
+        bits.append(f"expected: [{', '.join(expected_bits)}]")
+    first_rendered = fmt_metric_delta(_p("opening_chosen_p_mean"), _f("opening_chosen_p_mean"), digits=3)
+    if first_rendered is not None:
+        bits.append(f"first_p={first_rendered}")
     return (" " + " ".join(bits)) if bits else ""
 
 
 def format_opening_mispick_diag(diag: dict[str, Any]) -> str:
-    """Summary line after ``turn1=``; optional full ranked menu when ``ranked_rows`` present."""
+    """Summary line after ``turn1=``; optional full ranked menu when ``ranked_rows`` present.
+
+    Soft-mask bits (``soft_best``, ``sm=N/M``, ``p=(…sm)``) only when acting logits were
+    soft-mask-biased (``acting_biased`` / episode_mode=TRAIN). Eval still has soft-mask
+    *flags* on rows — that alone must not print soft bits.
+    """
     if diag.get("error"):
         return f"\n            policy_diag=error:{diag['error']}"
     chosen = diag.get("chosen_row") or {}
+    soft_masking = bool(diag.get("acting_biased"))
+    sm_rows = int(diag.get("soft_mask_row_count") or 0)
+    p_plain = float(chosen.get("p_plain", 0))
+    p_bit = (
+        f"p={p_plain:.3f}({float(chosen.get('p_biased', 0)):.3f}sm)"
+        if soft_masking
+        else f"p={p_plain:.3f}"
+    )
     parts = [
         f"picked={diag.get('chosen')}",
         f"kind={chosen.get('kind')}",
         f"rank={chosen.get('rank')}/{diag.get('legal_count')}",
-        f"p={chosen.get('p_plain', 0):.3f}({chosen.get('p_biased', 0):.3f}sm)",
+        p_bit,
     ]
     expected = diag.get("expected_rank")
     if expected is not None:
@@ -401,16 +489,15 @@ def format_opening_mispick_diag(diag: dict[str, Any]) -> str:
             f"(n={expected['n_preferred']} gap={expected['logit_gap']:+.2f})"
         )
     soft = diag.get("soft_rank")
-    if soft is not None:
+    legal_rows = diag.get("legal_count")
+    if soft_masking and soft is not None:
         parts.append(
             f"soft_best={soft['best_rank']}/{soft['legal_count']}"
             f"(n={soft['n_preferred']} gap={soft['logit_gap']:+.2f})"
         )
-    sm_rows = diag.get("soft_mask_row_count")
-    legal_rows = diag.get("legal_count")
-    if sm_rows is not None and legal_rows is not None:
+    if soft_masking and legal_rows is not None:
         parts.append(f"sm={sm_rows}/{legal_rows}")
-    if chosen.get("soft_mask"):
+    if soft_masking and chosen.get("soft_mask"):
         parts.append("picked_sm")
     if chosen.get("passing"):
         parts.append("picked_pass")

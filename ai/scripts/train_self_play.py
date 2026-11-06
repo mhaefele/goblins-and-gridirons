@@ -84,7 +84,6 @@ from gridiron_ai.eval_debug import ScenarioEvalDebug
 from gridiron_ai.eval_opening_diag import (
     aggregate_opening_move_scores,
     diagnose_opening_mispick,
-    format_opening_score_bits,
 )
 from gridiron_ai.metrics import (
     accumulate_kind_totals,
@@ -93,6 +92,8 @@ from gridiron_ai.metrics import (
     load_kind_breakdown,
     print_kind_mix,
     print_metrics,
+    print_scenario_eval_metrics,
+    format_scenario_eval_headline,
 )
 from gridiron_ai.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
@@ -286,15 +287,11 @@ def _record_scenario_perfect_summary(
     scenario: str,
     scenario_difficulty: int,
 ) -> None:
-    wins = int(stats.get("wins") or 0)
-    losses = int(stats.get("losses") or 0)
-    draws = int(stats.get("draws") or 0)
-    games = int(stats.get("episodes") or 0)
-    winrate = float(stats.get("winrate") or 0.0)
     short = require_catalog().short_name(scenario)
-    line = (
-        f"  {short} d{scenario_difficulty}  drill_rate={winrate:.3f} "
-        f"W{wins}/L{losses}/D{draws} ({games} ep){format_opening_score_bits(stats)}"
+    line = "  " + format_scenario_eval_headline(
+        short_name=short,
+        difficulty=scenario_difficulty,
+        stats=stats,
     )
     _scenario_perfect_summaries.append(line)
 
@@ -1710,7 +1707,16 @@ def _eval_segment(
             for line in game_lines:
                 # Built-in ``  game`` + detail indents; +1 nests under the Eval header.
                 _section_print(line, indent=body_indent)
-        print_metrics(f"Eval {tagged}", stats, prior=metrics_prior, indent=body_indent)
+        if scenario is not None:
+            print_scenario_eval_metrics(
+                short_name=require_catalog().short_name(scenario),
+                difficulty=int(scenario_difficulty),
+                stats=stats,
+                prior=metrics_prior,
+                indent=body_indent,
+            )
+        else:
+            print_metrics(f"Eval {tagged}", stats, prior=metrics_prior, indent=body_indent)
         _note_kind_mix(
             runs_key,
             f"Eval {tagged}",
@@ -1719,7 +1725,6 @@ def _eval_segment(
             accumulate=False,
             indent=body_indent,
         )
-        # No ``scenario success:`` — same drill_rate / opening bits as the Eval metrics line.
 
     if not args.eval_only:
         eval_dir = EVAL_DIR / profile

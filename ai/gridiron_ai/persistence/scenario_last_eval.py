@@ -19,6 +19,9 @@ LAST_EVAL_METRIC_KEYS = (
     "opening_expected_p_best_mean",
     "opening_chosen_p_mean",
     "opening_expected_rank_best_mean",
+    "opening_expected_legal_count_mean",
+    "opening_expected_n_preferred_mean",
+    "opening_expected_logit_gap_mean",
 )
 
 
@@ -30,6 +33,9 @@ class LastEvalMetricsDict(TypedDict):
     opening_expected_p_best_mean: float | None
     opening_chosen_p_mean: float | None
     opening_expected_rank_best_mean: float | None
+    opening_expected_legal_count_mean: float | None
+    opening_expected_n_preferred_mean: float | None
+    opening_expected_logit_gap_mean: float | None
 
 
 class LastEvalEntryDict(TypedDict):
@@ -59,6 +65,9 @@ def _empty_slim() -> LastEvalMetricsDict:
         "opening_expected_p_best_mean": None,
         "opening_chosen_p_mean": None,
         "opening_expected_rank_best_mean": None,
+        "opening_expected_legal_count_mean": None,
+        "opening_expected_n_preferred_mean": None,
+        "opening_expected_logit_gap_mean": None,
     }
 
 

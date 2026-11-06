@@ -10,7 +10,9 @@ from gridiron_ai.expert_clone.expert_stats import BUCKET_GAMES, BUCKET_SCENARIOS
 from gridiron_ai.metrics import (
     accumulate_kind_totals,
     aggregate_episodes,
+    format_metrics_extras_line,
     format_metrics_line,
+    format_scenario_eval_headline,
     format_scenario_learn_line,
     format_scenario_success_line,
     load_kind_breakdown,
@@ -153,15 +155,41 @@ def test_format_metrics_line_winrate_delta_vs_prior() -> None:
     stats = aggregate_episodes(
         [{"kind_count": {"run": 1}, "result_kind": "FULL", "result_winner_rel": "THEM"}]
     )
-    stats["opening_expected_p_mean"] = 0.006
+    stats["opening_expected_p_best_mean"] = 0.006
+    stats["opening_expected_rank_best_mean"] = 17.5
+    stats["opening_expected_legal_count_mean"] = 200
+    stats["opening_expected_n_preferred_mean"] = 1
+    stats["opening_expected_logit_gap_mean"] = 0.20
     stats["win_by_4_rate"] = 0.0
-    prior = {"winrate": 0.2, "opening_expected_p_mean": 0.05}
+    prior = {
+        "winrate": 0.2,
+        "opening_expected_p_best_mean": 0.05,
+        "opening_expected_rank_best_mean": 10.0,
+        "opening_expected_legal_count_mean": 180,
+        "opening_expected_n_preferred_mean": 1,
+        "opening_expected_logit_gap_mean": 0.05,
+    }
+    expected_bit = "expected: [10.0→17.5/180→200(n=1→1, gap=0.05→0.20), p: 0.050→0.006]"
     line = format_metrics_line("Eval [baseline] vs-x", stats, prior=prior)
     assert "winrate=0.200→0.000" in line
-    assert "expected_p=0.050→0.006" in line
+    assert expected_bit in line
+    headline = format_scenario_eval_headline(
+        short_name="loose_ball_run",
+        difficulty=1,
+        stats={**stats, "scenario_difficulty": 1, "episodes": 10, "wins": 0, "losses": 10, "draws": 0},
+        prior=prior,
+    )
+    assert headline.startswith("loose_ball_run  d1  @d1 drill_rate=20%→0%")
+    assert "W0/L10/D0 (10 ep)" in headline
+    assert expected_bit in headline
+    extras = format_metrics_extras_line(stats)
+    assert "score=" in extras
+    assert "kinds[" in extras
+    assert "winrate=" not in extras
+    assert "expected:" not in extras
     success = format_scenario_success_line(stats, prior=prior)
     assert success.startswith("  scenario success: drill_rate=0.200→0.000")
-    assert "expected_p=0.050→0.006" in success
+    assert expected_bit in success
     learn = format_scenario_learn_line(
         scenario="TD_RUN",
         difficulty=1,
@@ -170,5 +198,5 @@ def test_format_metrics_line_winrate_delta_vs_prior() -> None:
     )
     assert "scenario learn: TD_RUN d1" in learn
     assert "drill_rate 0.200→0.000 (Δ=-0.200)" in learn
-    assert "expected_p=0.050→0.006" in learn
+    assert expected_bit in learn
     assert "before=" not in learn

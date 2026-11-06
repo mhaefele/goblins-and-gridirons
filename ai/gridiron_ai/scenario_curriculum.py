@@ -80,7 +80,7 @@ CLAIM_UNLOCK_BOARD_DIFFICULTY = 4
 # Alias kept so callers/docs can say "full-game unlock == all mastered".
 FULL_GAME_UNLOCK_DIFFICULTY = MAX_DIFFICULTY
 # Imperfect after-evals at the current level before a gating claim stops blocking progress.
-GATE_PROGRESS_WAIVE_FAILURES = 20
+GATE_PROGRESS_WAIVE_FAILURES = 40
 # Scenario after-eval batch size (train → after-eval).
 SCENARIO_EVAL_GAMES = 10
 # Bottleneck (8×) train drills get a longer after-eval (same pass/demote *rates* as the 10-game batch).

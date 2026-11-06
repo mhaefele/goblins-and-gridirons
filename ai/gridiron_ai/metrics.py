@@ -110,42 +110,92 @@ def format_rate_bit(
     return rendered
 
 
+def _drill_rate_pct_bit(after: float, prior: float | None = None) -> str:
+    """Whole-percent drill_rate for scenario headlines (``84%`` / ``30%→0%``)."""
+    after_pct = f"{100 * after:.0f}%"
+    if prior is None:
+        return after_pct
+    return f"{100 * prior:.0f}%→{after_pct}"
+
+
+def format_scenario_eval_headline(
+    *,
+    short_name: str,
+    difficulty: int,
+    stats: dict[str, Any],
+    prior: dict[str, Any] | None = None,
+    eval_difficulty: int | None = None,
+) -> str:
+    """Readable drill line: ``loose_ball_run  d1  @d1 drill_rate=0% W0/L10/D0 (10 ep) expected: …``.
+
+    Shared by live scenario eval stdout and summarize drill boards.
+    """
+    games = int(stats.get("episodes") or 0)
+    wins = int(stats.get("wins") or 0)
+    losses = int(stats.get("losses") or 0)
+    draws = int(stats.get("draws") or 0)
+    eval_d = eval_difficulty if eval_difficulty is not None else stats.get("scenario_difficulty")
+    eval_tag = f"@d{eval_d} " if eval_d is not None else ""
+    prior_rate = (
+        float(prior["winrate"])
+        if prior is not None and prior.get("winrate") is not None
+        else None
+    )
+    rate_bit = _drill_rate_pct_bit(float(stats.get("winrate") or 0.0), prior_rate)
+    return (
+        f"{short_name}  d{difficulty}  {eval_tag}drill_rate={rate_bit} "
+        f"W{wins}/L{losses}/D{draws} ({games} ep)"
+        f"{format_opening_score_bits(stats, prior=prior)}"
+    )
+
+
+def format_metrics_extras_line(stats: dict[str, Any]) -> str:
+    """Eval detail bits not already on the scenario headline (score / kinds / submit…)."""
+    kinds = " ".join(
+        f"{k}={v:.2f}" for k, v in sorted((stats.get("kind_count") or {}).items()) if v
+    )
+    first_legals = stats.get("first_action_legal_count")
+    first_legals_bit = (
+        f" first_legals={first_legals:.1f}" if first_legals is not None else ""
+    )
+    return (
+        f"score={float(stats.get('score_us') or 0):.1f}-{float(stats.get('score_them') or 0):.1f} "
+        f"(diff={float(stats.get('score_diff') or 0):.2f}) "
+        f"td={float(stats.get('touchdowns') or 0):.2f}/{float(stats.get('touchdowns_them') or 0):.2f} "
+        f"cards={float(stats.get('challenge_cards') or 0):.2f}/{float(stats.get('challenge_cards_them') or 0):.2f} "
+        f"ball={float(stats.get('ball_rate_us') or 0):.2f}/{float(stats.get('ball_rate_them') or 0):.2f} "
+        f"opp_half={float(stats.get('ball_opp_half_rate_us') or 0):.2f}/"
+        f"{float(stats.get('ball_opp_half_rate_them') or 0):.2f} "
+        f"prox={float(stats.get('ball_proximity_us') or 0):.2f} "
+        f"gained={float(stats.get('ball_gained_us') or 0):.2f}/{float(stats.get('ball_gained_them') or 0):.2f} "
+        f"kinds[{kinds}] "
+        f"trunc={float(stats.get('truncation_rate') or 0):.3f} "
+        f"submit_err={float(stats.get('submit_error_rate') or 0):.3f} "
+        f"submit_ms={float(stats.get('submit_avg_ms') or 0):.1f}"
+        f"{first_legals_bit}"
+    )
+
+
 def format_metrics_line(
     label: str,
     stats: dict[str, Any],
     *,
     prior: dict[str, Any] | None = None,
 ) -> str:
-    """One-line train/eval summary for stdout (TensorBoard callback + CLI).
+    """One-line train/eval summary for stdout (TensorBoard callback + full-game CLI).
 
-    When ``prior`` is set (vs last same-drill eval), winrate and opening score bits
-    render as ``before→after`` drift.
+    Scenario after-evals use ``format_scenario_eval_headline`` + ``format_metrics_extras_line``
+    instead. When ``prior`` is set, winrate and opening score bits render as ``before→after``.
     """
-    kinds = " ".join(
-        f"{k}={v:.2f}" for k, v in sorted(stats["kind_count"].items()) if v
-    )
     difficulty = stats.get("scenario_difficulty")
     difficulty_bit = f" difficulty={difficulty}" if difficulty is not None else ""
-    first_legals = stats.get("first_action_legal_count")
-    first_legals_bit = (
-        f" first_legals={first_legals:.1f}" if first_legals is not None else ""
-    )
     prior_rate = float(prior["winrate"]) if prior is not None and prior.get("winrate") is not None else None
     winrate_bit = format_rate_bit(float(stats["winrate"]), prior_rate)
     return (
         f"{label}: episodes={stats['episodes']} "
         f"winrate={winrate_bit} (W{stats['wins']}/L{stats['losses']}/D{stats['draws']}) "
-        f"score={stats['score_us']:.1f}-{stats['score_them']:.1f} (diff={stats['score_diff']:.2f}) "
-        f"td={stats['touchdowns']:.2f}/{stats['touchdowns_them']:.2f} "
-        f"cards={stats['challenge_cards']:.2f}/{stats['challenge_cards_them']:.2f} "
-        f"ball={stats['ball_rate_us']:.2f}/{stats['ball_rate_them']:.2f} "
-        f"opp_half={stats['ball_opp_half_rate_us']:.2f}/{stats['ball_opp_half_rate_them']:.2f} "
-        f"prox={stats['ball_proximity_us']:.2f} "
-        f"gained={stats['ball_gained_us']:.2f}/{stats['ball_gained_them']:.2f} "
-        f"kinds[{kinds}] "
-        f"trunc={stats['truncation_rate']:.3f} submit_err={stats['submit_error_rate']:.3f} "
-        f"submit_ms={stats['submit_avg_ms']:.1f}"
-        f"{difficulty_bit}{first_legals_bit}{format_opening_score_bits(stats, prior=prior)}"
+        f"{format_metrics_extras_line(stats)}"
+        f"{difficulty_bit}{format_opening_score_bits(stats, prior=prior)}"
     )
 
 
@@ -198,6 +248,29 @@ def print_metrics(
     indent: int = 0,
 ) -> None:
     _print_indented(format_metrics_line(label, stats, prior=prior), indent=indent)
+
+
+def print_scenario_eval_metrics(
+    *,
+    short_name: str,
+    difficulty: int,
+    stats: dict[str, Any],
+    prior: dict[str, Any] | None = None,
+    indent: int = 0,
+) -> None:
+    """Scenario eval: drill headline first, then score/kinds/submit extras."""
+    _print_indented(
+        format_scenario_eval_headline(
+            short_name=short_name,
+            difficulty=difficulty,
+            stats=stats,
+            prior=prior,
+        ),
+        indent=indent,
+    )
+    extras = format_metrics_extras_line(stats)
+    if extras:
+        _print_indented(extras, indent=indent)
 
 
 def print_kind_mix(label: str, stats: dict[str, Any], *, indent: int = 0) -> None:

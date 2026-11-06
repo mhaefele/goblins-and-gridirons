@@ -503,6 +503,7 @@ def test_apply_after_eval_bump_without_failure() -> None:
 
 def test_progress_waived_after_threshold() -> None:
     # Claims only — board drills never waive even past the fail threshold.
+    assert GATE_PROGRESS_WAIVE_FAILURES == 40
     catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN", "CLAIM_GRAB_IT"]
     levels = {
         "TD_RUN": MAX_DIFFICULTY,
