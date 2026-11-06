@@ -324,8 +324,8 @@ def test_scenario_drill_line_shows_wld(monkeypatch, tmp_path: Path) -> None:
     text = _fmt_scenario_drills(target)
     assert "td_run" in text
     assert "W5/L3/D2 (10 ep)" in text
-    assert "expected: [22.5" in text
-    assert "p: 0.018" in text
+    assert "expected: 22.5" in text
+    assert "p=0.018" in text
     assert "first_p=0.140" in text
     assert "expected_p=" not in text
     assert "expected_best_p=" not in text

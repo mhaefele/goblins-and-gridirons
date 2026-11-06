@@ -112,7 +112,7 @@ def test_format_opening_score_bits_and_episodes_raw_fallback() -> None:
                 "opening_expected_logit_gap_mean": 0.07,
             }
         )
-        == " expected: [12.0/168(n=1, gap=+0.07), p: 0.020] first_p=0.100"
+        == " expected: 12.0/168 (n=1) p=0.020 logit_gap=+0.07 first_p=0.100"
     )
     assert (
         format_opening_score_bits(
@@ -135,7 +135,7 @@ def test_format_opening_score_bits_and_episodes_raw_fallback() -> None:
                 "opening_expected_logit_gap_mean": 0.05,
             },
         )
-        == " expected: [10.0→17.5/180→200(n=1→1, gap=0.05→0.20), p: 0.080→0.006] first_p=0.200→0.157"
+        == " expected: 10.0/180→17.5/200 (n=1) p=0.080→0.006 logit_gap=0.05→0.20 first_p=0.200→0.157"
     )
     fields = opening_score_fields(
         {
@@ -205,7 +205,7 @@ def test_format_opening_mispick_diag_includes_ranks() -> None:
     assert "soft_best=47/311" in line
     assert "sm=10/311" in line
     assert "p=0.400(0.350sm)" in line
-    assert "gap=+2.15" in line
+    assert "logit_gap=+2.15" in line
     assert "carrier_p4:" in line
     assert "rank=1/311" in line
     assert "policy_menu=" not in line

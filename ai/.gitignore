@@ -9,6 +9,7 @@ __pycache__/
 .mypy_cache/
 
 # Generated under output/ (profile subdirs: general/spread/td/defense, …)
+output/.start_over_last/
 output/checkpoints/*
 !output/checkpoints/.gitkeep
 output/evals/*

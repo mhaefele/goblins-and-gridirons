@@ -44,7 +44,7 @@ Advanced (other scripts):
 
 ### Start over from a phase
 
-`start_over.sh` wipes from a phase through checkpoint (full artifact trees per phase — see `common.sh` header), then runs `train.sh`. No args → help. `--profile` scopes the **checkpoint** wipe and train hand-off; earlier phases always clear shared dump/pack/seed (and scenario dirs when wiped).
+`start_over.sh` wipes from a phase through checkpoint (full artifact trees per phase — see `common.sh` header), then runs `train.sh`. No args → help. Prompts `y/N` before wiping. `--profile` scopes the **checkpoint** wipe and train hand-off; earlier phases always clear shared dump/pack/seed (and scenario dirs when wiped). Each wipe parks the previous trees in `output/.start_over_last` (one slot); restore with `--undo` (replaces whatever train wrote after the wipe).
 
 ```bash
 ./start_over.sh --phase dump                      # wipe dump…checkpoint, then train all
@@ -53,6 +53,7 @@ Advanced (other scripts):
 ./start_over.sh --phase scenario_b                # wipe scenario_b + profiles
 ./start_over.sh --phase checkpoint --profile td   # wipe td only, then train td
 ./start_over.sh --phase pack --cycles 3           # wipe pack onward, then train with same flags as train.sh
+./start_over.sh --undo                            # restore the last parked wipe
 DUMP_GAMES=4 ./start_over.sh --phase dump --profile general --cycles 1
 ```
 

@@ -12,6 +12,7 @@
 #   checkpoint checkpoints/{baseline,general,spread,td,defense}/, runs/{…}/,
 #              evals/{general,spread,td,defense}/ (+ evals/baseline stays shared),
 #              legacy root checkpoints/maskable_ppo_selfplay_final.zip
+# Wipes park into output/.start_over_last (one slot); ./start_over.sh --undo restores.
 #
 # After profiles split, scenario_a/scenario_b trees freeze; baseline is a real profile
 # forked from scenario_b (same as general/…). Do not treat checkpoints/baseline as a
@@ -28,6 +29,8 @@ SEED_ZIP="$EXPERT_DIR/maskable_ppo_seed.zip"
 CHECKPOINT_DIR="$OUTPUT_DIR/checkpoints"
 RUNS_DIR="$OUTPUT_DIR/runs"
 EVAL_DIR="$OUTPUT_DIR/evals"
+# Single-slot trash for the last ``start_over`` wipe (``./start_over.sh --undo``).
+START_OVER_TRASH="$OUTPUT_DIR/.start_over_last"
 SCENARIO_CATALOG="$OUTPUT_DIR/scenario_catalog.json"
 CYCLE_LOG="$RUNS_DIR/train_eval_cycles.tsv"
 LEGACY_ROOT_CHECKPOINT_ZIP="maskable_ppo_selfplay_final.zip"
@@ -248,47 +251,120 @@ ensure_train_prereqs() {
   fi
 }
 
+# When true, wipe helpers park under ``START_OVER_TRASH`` instead of deleting.
+_START_OVER_TRASH_ACTIVE=false
+
+_begin_start_over_trash() {
+  local phase="$1"
+  local profile="$2"
+  # Keep only the latest wipe.
+  rm -rf "$START_OVER_TRASH"
+  mkdir -p "$START_OVER_TRASH/tree"
+  : >"$START_OVER_TRASH/manifest"
+  printf '%s\n' "$phase" >"$START_OVER_TRASH/phase"
+  printf '%s\n' "$profile" >"$START_OVER_TRASH/profile"
+  date -u +%Y-%m-%dT%H:%M:%SZ >"$START_OVER_TRASH/wiped_at"
+  if [[ -f "$CHECKPOINT_DIR/pipeline.json" ]]; then
+    cp "$CHECKPOINT_DIR/pipeline.json" "$START_OVER_TRASH/pipeline.json"
+  fi
+  _START_OVER_TRASH_ACTIVE=true
+}
+
+_end_start_over_trash() {
+  _START_OVER_TRASH_ACTIVE=false
+  if [[ -s "$START_OVER_TRASH/manifest" ]]; then
+    log "Last wipe parked at $START_OVER_TRASH — restore with: ./start_over.sh --undo"
+  else
+    # Nothing existed to park (already clean).
+    rm -rf "$START_OVER_TRASH"
+  fi
+}
+
+_park_path() {
+  local path="$1"
+  local rel dest
+  [[ -e "$path" ]] || return 0
+  if [[ "$_START_OVER_TRASH_ACTIVE" != true ]]; then
+    if [[ -d "$path" && ! -L "$path" ]]; then
+      rm -rf "$path"
+    else
+      rm -f "$path"
+    fi
+    echo "  removed $path"
+    return 0
+  fi
+  case "$path" in
+    "$OUTPUT_DIR"/*) rel="${path#"$OUTPUT_DIR"/}" ;;
+    *)
+      die "start_over trash: path not under output/: $path"
+      ;;
+  esac
+  dest="$START_OVER_TRASH/tree/$rel"
+  mkdir -p "$(dirname "$dest")"
+  if [[ -e "$dest" ]]; then
+    rm -rf "$dest"
+  fi
+  mv "$path" "$dest"
+  printf '%s\n' "$rel" >>"$START_OVER_TRASH/manifest"
+  echo "  parked $path"
+}
+
+undo_start_over() {
+  local rel parked dest phase profile wiped_at
+  [[ -f "$START_OVER_TRASH/manifest" ]] || die "no start_over trash to undo ($START_OVER_TRASH)"
+  phase="$(cat "$START_OVER_TRASH/phase" 2>/dev/null || echo "?")"
+  profile="$(cat "$START_OVER_TRASH/profile" 2>/dev/null || echo "?")"
+  wiped_at="$(cat "$START_OVER_TRASH/wiped_at" 2>/dev/null || echo "?")"
+  log "Undo start_over (phase=$phase profile=$profile wiped_at=$wiped_at)"
+  while IFS= read -r rel || [[ -n "$rel" ]]; do
+    [[ -n "$rel" ]] || continue
+    parked="$START_OVER_TRASH/tree/$rel"
+    dest="$OUTPUT_DIR/$rel"
+    [[ -e "$parked" ]] || die "trash missing parked path: $parked"
+    mkdir -p "$(dirname "$dest")"
+    if [[ -e "$dest" ]]; then
+      rm -rf "$dest"
+      echo "  replaced $dest"
+    fi
+    mv "$parked" "$dest"
+    echo "  restored $dest"
+  done <"$START_OVER_TRASH/manifest"
+  if [[ -f "$START_OVER_TRASH/pipeline.json" ]]; then
+    mkdir -p "$CHECKPOINT_DIR"
+    cp "$START_OVER_TRASH/pipeline.json" "$CHECKPOINT_DIR/pipeline.json"
+    echo "  restored $CHECKPOINT_DIR/pipeline.json"
+  fi
+  rm -rf "$START_OVER_TRASH"
+  log "Undo complete (trash cleared)"
+}
+
 wipe_dump() {
   local log
-  if [[ -f "$JSONL" ]]; then
-    rm -f "$JSONL"
-    echo "  removed $JSONL"
-  fi
+  _park_path "$JSONL"
   shopt -s nullglob
   for log in "$EXPERT_DIR"/export-*.log; do
-    rm -f "$log"
-    echo "  removed $log"
+    _park_path "$log"
   done
   shopt -u nullglob
 }
 
 wipe_pack() {
-  if [[ -f "$NPZ" ]]; then
-    rm -f "$NPZ"
-    echo "  removed $NPZ"
-  fi
+  _park_path "$NPZ"
 }
 
 wipe_seed() {
-  if [[ -f "$SEED_ZIP" ]]; then
-    rm -f "$SEED_ZIP"
-    echo "  removed $SEED_ZIP"
-  fi
+  _park_path "$SEED_ZIP"
 }
 
 _rm_tree() {
-  local path="$1"
-  if [[ -e "$path" ]]; then
-    rm -rf "$path"
-    echo "  removed $path"
-  fi
+  _park_path "$1"
 }
 
 _rm_file() {
   local path="$1"
-  if [[ -f "$path" ]]; then
-    rm -f "$path"
-    echo "  removed $path"
+  # Only park real files (match prior wipe behavior).
+  if [[ -f "$path" ]] || [[ "$_START_OVER_TRASH_ACTIVE" == true && -e "$path" ]]; then
+    _park_path "$path"
   fi
 }
 
@@ -335,6 +411,7 @@ wipe_checkpoint() {
 }
 
 # Wipe starting at $1 through checkpoint. Profile only scopes the checkpoint phase.
+# Artifacts are parked in ``START_OVER_TRASH`` (replacing any prior slot) for ``--undo``.
 wipe_from_phase() {
   local phase="$1"
   local profile="${2:-all}"
@@ -344,6 +421,7 @@ wipe_from_phase() {
   validate_phase "$phase"
   start="$(phase_index "$phase")"
   log "Wipe from phase=$phase through checkpoint (profile scope for checkpoint=$profile)"
+  _begin_start_over_trash "$phase" "$profile"
   for idx in "${!PHASES[@]}"; do
     if (( idx < start )); then
       continue
@@ -375,6 +453,7 @@ wipe_from_phase() {
     _rm_file "$CYCLE_LOG"
   fi
   rewind_pipeline "$phase" "$profile"
+  _end_start_over_trash
 }
 
 # Saved pipeline position (checkpoints/pipeline.json) must forget the stages just wiped.

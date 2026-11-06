@@ -936,8 +936,9 @@ def _legend() -> str:
             "  turns / total_actions  match length + policy submits",
             "  drill_rate             scenario winrate (PASS / decided games)",
             "  W/L/D on drill rows      decided scenario episodes (DISTRACTED → D)",
-            "  expected: [rank/N(n= gap=) p:]  mean best PASS-row rank over legal count, preferred count, "
-            "logit gap to argmax, best expected p (prior→current when sidecar has both)",
+            "  expected: rank/N→… (n=) p= logit_gap=   best PASS-row rank over legal count "
+            "(prior→current as whole fractions); n= preferred-row count (shape, no arrow); "
+            "p= best expected-row softmax; logit_gap= logit(argmax)−logit(best PASS) — not p−first_p",
             "  first_p                mean opening chosen-move p (can exceed expected p when argmax ≠ lesson)",
             "  d0–d5                 curriculum level (active phase checkpoint)",
             "  (optional)             gatesProgress=false — trained/eval'd, not a curriculum gate (oracle or placement not trusted yet)",
