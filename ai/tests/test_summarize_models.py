@@ -611,8 +611,9 @@ def test_load_tb_scalars_scans_past_episode_only_files(monkeypatch, tmp_path: Pa
 def test_train_level_helpers() -> None:
     assert _policy_entropy_level(1.44) == "ok"
     assert _policy_entropy_level(0.3) == "bad"
-    assert _approx_kl_level(0.0001) == "STUCK!"
-    assert _approx_kl_level(0.0009) == "STUCK!"
+    assert _approx_kl_level(0.00005) == "STUCK!"
+    assert _approx_kl_level(0.0001) == "watch"
+    assert _approx_kl_level(0.0009) == "watch"
     assert _approx_kl_level(0.001) == "ok"
     assert _approx_kl_level(0.0029) == "ok"
     assert _approx_kl_level(0.04) == "watch"
@@ -621,8 +622,13 @@ def test_train_level_helpers() -> None:
     assert (
         _approx_kl_level_from_series([0.004, 0.003, 0.003, 0.010, 0.0001]) == "ok"
     )
+    # Anemic but above STUCK floor → watch (median 0.0001).
     assert (
         _approx_kl_level_from_series([0.0003, 0.0001, 0.0001, 0.0003, 0.00006])
+        == "watch"
+    )
+    assert (
+        _approx_kl_level_from_series([0.00008, 0.00005, 0.00006, 0.00004, 0.00003])
         == "STUCK!"
     )
     assert _explained_variance_level(0.74) == "ok"
@@ -636,12 +642,12 @@ def test_train_level_helpers() -> None:
 def test_fmt_warnings_section_shouts_stuck() -> None:
     text = _fmt_warnings_section(
         [
-            "STUCK! baseline approx_kl=0.0001 — PPO barely moving the policy; "
-            "burning timesteps with no progress"
+            "STUCK! baseline approx_kl=0.00005 — PPO barely moving the policy; "
+            "burning timesteps with no progress. Do: bump learning_rate"
         ]
     )
     assert text.startswith("warnings\n")
-    assert "  ! STUCK! baseline approx_kl=0.0001" in text
+    assert "  ! STUCK! baseline approx_kl=0.00005" in text
 
 
 def test_collect_scenario_warnings_gate_fails(monkeypatch, tmp_path: Path) -> None:
@@ -686,7 +692,7 @@ def test_collect_train_warnings_from_stuck_cells(monkeypatch) -> None:
         return (
             "≈4.24 nats watch",
             "entropy_loss=-4.241 (stable randomness, watch)",
-            "0.0001 STUCK!",
+            "0.00005 STUCK!",
             "0.40 watch (flat)",
             "0.50 ok (flat)",
             "0.000 ok (flat)",
@@ -706,7 +712,9 @@ def test_collect_train_warnings_from_stuck_cells(monkeypatch) -> None:
     ]
     warnings = _collect_train_warnings(targets, trend_steps=100_000)
     assert len(warnings) == 1
-    assert warnings[0].startswith("STUCK! baseline approx_kl=0.0001")
+    assert warnings[0].startswith("STUCK! baseline approx_kl=0.00005")
+    assert "bump learning_rate" in warnings[0]
+    assert "stuck drills" in warnings[0]
     board = _fmt_compact_board(targets, trend_steps=100_000)
     assert "\nwarnings\n" in board
     assert "  ! STUCK! baseline" in board
@@ -784,9 +792,11 @@ def test_compact_board_guide_before_tables(monkeypatch, tmp_path: Path) -> None:
     targets = [TrainTarget(phase=PHASE_SCENARIO_B, checkpoint_key=PHASE_SCENARIO_B, reward_profile="baseline")]
     text = _fmt_compact_board(targets, trend_steps=100_000, include_guide=True)
     assert text.startswith("Train column guide")
+    assert "scenario drills" in text
     assert "config (PPO shared" in text
     assert "train (TensorBoard" in text
-    assert text.index("Train column guide") < text.index("config (PPO")
+    assert text.index("Train column guide") < text.index("scenario drills")
+    assert text.index("scenario drills") < text.index("config (PPO")
     assert text.index("config (PPO") < text.index("train (TensorBoard")
     assert text.index("train (TensorBoard") < text.index("\nsummary\n")
 

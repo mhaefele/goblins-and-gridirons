@@ -486,9 +486,11 @@ _APPROX_KL_LEVEL_WINDOW = 5
 
 def _approx_kl_level(kl: float) -> str:
     # Too-low = under-updating (looks like "stable" but the policy is not moving).
-    # Floor is well below a healthy ~1e-3 band; matches stalled join-score runs.
-    if kl < 0.001:
+    # STUCK! only for near-zero steps; the 1e-4…1e-3 band is watch (early/flat mesa noise).
+    if kl < 0.0001:
         return "STUCK!"
+    if kl < 0.001:
+        return "watch"
     if kl <= 0.02:
         return "ok"
     if kl <= 0.05:
@@ -697,7 +699,11 @@ def _collect_train_warnings(targets: list[TrainTarget], *, trend_steps: int) -> 
             if level == "STUCK!" and field == "approx_kl":
                 warnings.append(
                     f"STUCK! {profile} approx_kl={cell.split()[0]} — "
-                    "PPO barely moving the policy; burning timesteps with no progress"
+                    "PPO barely moving the policy; burning timesteps with no progress. "
+                    "Do: bump learning_rate in train_self_play (stock 3e-4); confirm clip_fraction "
+                    "is also ~0 (corroborates under-updating); if scenario openings are flat, "
+                    "spend budget on stuck drills (2×/8×) rather than more raw steps — "
+                    "raising entropy alone explores without larger updates"
                 )
             else:
                 warnings.append(f"{level} {profile} {field}={cell}")
@@ -895,8 +901,9 @@ def _compact_column_guide(*, trend_steps: int) -> str:
             "    stable randomness (flat): usually fine.",
             "  approx_kl",
             "    Mean policy change per training update (Kullback–Leibler divergence).",
-            "    Levels (recent median of last 5 updates): STUCK! below 0.001 (barely moving); "
-            "ok 0.001–0.02; watch 0.02–0.05; bad above 0.05. Cell shows the latest value.",
+            "    Levels (recent median of last 5 updates): STUCK! below 0.0001 (near-zero steps); "
+            "watch 0.0001–0.001 (anemic) or 0.02–0.05; ok 0.001–0.02; bad above 0.05. "
+            "Cell shows the latest value. STUCK! → bump LR / focus stuck drills; see warnings text.",
             "  explained_variance",
             "    Critic quality: a separate value head predicts future score from each board state.",
             "    This is how well those predictions match actual returns (1 = perfect, 0 = no better than guessing the average, negative = worse than that).",
@@ -953,7 +960,8 @@ def _legend() -> str:
             "  d5_demotes             times this drill was demoted from d5",
             "  policy_entropy         −train/entropy_loss — high = exploratory, low = peaked policy",
             "  entropy                entropy_loss plus trend over the train window",
-            "  approx_kl              PPO policy change per update (too small = STUCK!; too large = thrashing)"
+            "  approx_kl              PPO policy change per update "
+            "(<1e-4 STUCK!; 1e-4…1e-3 watch; too large = thrashing)"
             "  explained_variance     critic: value-head prediction fit (−1..1; higher = better)",
             "  value_loss             critic: raw return-prediction training loss (lower = better)",
             "  clip_fraction          fraction of PPO updates clipped (high = trust-region limited)",
@@ -1468,6 +1476,12 @@ def _fmt_compact_board(
     sections: list[str] = []
     if include_guide:
         sections.append(_compact_column_guide(trend_steps=trend_steps))
+    # scenario_a / scenario_b: drill board right above config (always, not only --verbose).
+    for target in targets:
+        if target.phase in (PHASE_SCENARIO_A, PHASE_SCENARIO_B):
+            drills = _fmt_scenario_drills(target)
+            if drills:
+                sections.append(drills)
     sections.append(_fmt_model_config_table())
     train = _fmt_train_health_table(targets, trend_steps=trend_steps)
     warnings = _fmt_warnings_section(_collect_all_warnings(targets, trend_steps=trend_steps))
@@ -1477,12 +1491,6 @@ def _fmt_compact_board(
     tables = "\n\n".join(part for part in (train, warnings, summary, la_trend) if part)
     if tables:
         sections.append(tables)
-    # scenario_a / scenario_b: always list every drill (not only --verbose).
-    for target in targets:
-        if target.phase in (PHASE_SCENARIO_A, PHASE_SCENARIO_B):
-            drills = _fmt_scenario_drills(target)
-            if drills:
-                sections.append(drills)
     multipliers = _fmt_train_multiplier_blocks(targets)
     if multipliers:
         sections.append(multipliers)
