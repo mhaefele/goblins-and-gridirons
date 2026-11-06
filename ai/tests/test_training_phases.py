@@ -83,11 +83,11 @@ def _plant_phase(ckpt_root: Path, runs_root: Path, key: str, levels: dict[str, i
     (runs / "dummy.tfevents").write_text("tb", encoding="utf-8")
 
 
-def test_profiles_for_all_train_omits_specialists() -> None:
+def test_profiles_for_all_train_omits_td() -> None:
     from gridiron_ai.reward import profiles_for_all
 
-    assert profiles_for_all("train") == ("baseline", "general", "spread")
-    assert profiles_for_all("eval") == ("baseline", "general", "spread")
+    assert profiles_for_all("train") == ("baseline", "general", "spread", "defense")
+    assert profiles_for_all("eval") == ("baseline", "general", "spread", "defense")
     assert profiles_for_all("summary") == ("baseline", "general", "spread", "td", "defense")
 
 

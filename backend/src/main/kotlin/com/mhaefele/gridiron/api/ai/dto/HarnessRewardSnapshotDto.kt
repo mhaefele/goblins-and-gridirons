@@ -1,11 +1,12 @@
 package com.mhaefele.gridiron.api.ai.dto
 
+import com.mhaefele.gridiron.model.board.PlayerStatus
 import com.mhaefele.gridiron.shared.Coordinate
 
 /**
  * Harness-only reward / metrics snapshot — JSON on the wire, never concatenated into policy [obs].
  *
- * Board facts: [players] (who / where) + [ballCoordinate] (where the ball is). Legal rows stay
+ * Board facts: [players] (who / where / status) + [ballCoordinate] (where the ball is). Legal rows stay
  * [LegalAction] + curriculum flags — join by `playerId` / absolute coords.
  */
 data class HarnessRewardSnapshotDto(
@@ -33,18 +34,24 @@ data class HarnessRewardSnapshotDto(
 }
 
 /**
- * One harness player — absolute geometry + perspective [teamRel].
+ * One harness player — absolute geometry + perspective [teamRel] + [status].
  *
- * [coordinate] null = dugout. Ball possession is [HarnessRewardSnapshotDto.ballCoordinate], not here.
+ * [coordinate] null = dugout ([status] [PlayerStatus.RESERVES]). Ball possession is
+ * [HarnessRewardSnapshotDto.ballCoordinate], not here. [status] lets reward shaping credit
+ * knock-downs (STANDING→PRONE) separately from send-offs (→RESERVES).
  */
 data class HarnessPlayerDto(
     val playerId: String,
     val playerIndex: Int,
     val teamRel: AiTeamRel,
     val coordinate: Coordinate?,
+    val status: PlayerStatus,
 ) {
     init {
         require(playerId.isNotBlank()) { "playerId blank" }
         require(playerIndex in 1..AiObsLayout.MAX_PLAYERS_PER_TEAM) { "playerIndex=$playerIndex out of range 1..${AiObsLayout.MAX_PLAYERS_PER_TEAM}" }
+        require((coordinate == null) == (status == PlayerStatus.RESERVES)) {
+            "coordinate null iff RESERVES (playerId=$playerId status=$status)"
+        }
     }
 }

@@ -73,7 +73,7 @@ require_dev_backend() {
 
 profile_names() {
   # Checkpoint wipe / CLI validate. Train/eval ``--profile all`` membership lives in
-  # Python ``gridiron_ai.reward.profiles_for_all`` (baseline + general + spread today).
+  # Python ``gridiron_ai.reward.profiles_for_all`` (baseline + general + spread + defense today).
   local profile="${1:-all}"
   case "$profile" in
     all) printf '%s\n' baseline general spread td defense ;;

@@ -264,6 +264,7 @@ class AiGameStateMapper {
                 playerIndex = aiPlayerIndex(player.id),
                 teamRel = teamRel(player.team, perspective),
                 coordinate = coordinate,
+                status = player.status,
             )
         }
 

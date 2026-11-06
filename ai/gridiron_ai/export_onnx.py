@@ -66,7 +66,7 @@ PROFILE_DESCRIPTIONS: dict[str, str] = {
     "general": "Balanced trained policy — all-round play.",
     "spread": "Trained for field coverage and ball progress together.",
     "td": "Trained to push scoring and ball progress.",
-    "defense": "Trained to contest the ball and punish carriers.",
+    "defense": "Trained to knock opponents prone, send them off, and free the ball.",
 }
 
 

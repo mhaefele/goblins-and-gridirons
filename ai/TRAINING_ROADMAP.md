@@ -157,7 +157,7 @@ Full games stay **off**.
   after-eval at MAX) get maintenance budget; healthy d5 stay eval-only (same while climbing)
 - Judge transfer with shaping-off eval (winrate / score_diff / TD rates)
 - Rotate `baseline` + `profiles_for_all("train")` shaped names with `--profile all`
-  (today: `general`, `spread`; pin `td` / `defense` explicitly). Summary `--profile all` still
+  (today: `general`, `spread`, `defense`; pin `td` explicitly). Summary `--profile all` still
   lists every reward profile via `profiles_for_all("summary")`.
 
 **Why baseline stays in the rotation post-split:** shaped profiles add training-time

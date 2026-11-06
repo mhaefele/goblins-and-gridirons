@@ -83,6 +83,14 @@ class CoordinateDict(TypedDict):
     y: int
 
 
+class PlayerStatus(StrEnum):
+    """Kotlin ``PlayerStatus`` on harness players (reward wire only)."""
+
+    STANDING = "STANDING"
+    PRONE = "PRONE"
+    RESERVES = "RESERVES"
+
+
 class HarnessPlayerDict(TypedDict):
     """Kotlin ``HarnessPlayerDto`` — no ball flag; see snapshot ``ballCoordinate``."""
 
@@ -90,6 +98,7 @@ class HarnessPlayerDict(TypedDict):
     playerIndex: int
     teamRel: TeamRel
     coordinate: CoordinateDict | None
+    status: PlayerStatus
 
 
 class HarnessRewardSnapshotDict(TypedDict):

@@ -20,6 +20,7 @@ from gridiron_ai.api.scenarios import ScenarioCatalog, ScenarioInfo, set_catalog
 from gridiron_ai.training_phases import PHASE_SCENARIO_A, PHASE_SCENARIO_B, TrainTarget, resolve_targets
 from scripts.summarize_models import (
     _approx_kl_level,
+    _approx_kl_level_from_series,
     _bottom_summary_rows,
     _clip_fraction_level,
     _collect_scenario_warnings,
@@ -562,6 +563,14 @@ def test_train_level_helpers() -> None:
     assert _approx_kl_level(0.0029) == "ok"
     assert _approx_kl_level(0.04) == "watch"
     assert _approx_kl_level(0.06) == "bad"
+    # Latest can be sub-floor while the recent median is healthy — do not shout.
+    assert (
+        _approx_kl_level_from_series([0.004, 0.003, 0.003, 0.010, 0.0001]) == "ok"
+    )
+    assert (
+        _approx_kl_level_from_series([0.0003, 0.0001, 0.0001, 0.0003, 0.00006])
+        == "STUCK!"
+    )
     assert _explained_variance_level(0.74) == "ok"
     assert _explained_variance_level(-0.1) == "bad"
     assert _clip_fraction_level(0.04) == "ok"

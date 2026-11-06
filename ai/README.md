@@ -28,7 +28,7 @@ Backend must be up for train/eval (`./dev.sh` from repo root — Spring `:18080`
 ./train.sh                 # ensure seed if missing; train forever (scenario_a → scenario_b → profiles)
 ./train.sh --profile td    # pin one specialist (still catches up scenario phases first)
 ./train.sh --scenario MARKED_RUN --cycles 1
-./eval.sh                  # eval train rotation once (baseline + general + spread post-split)
+./eval.sh                  # eval train rotation once (baseline + general + spread + defense post-split)
 ./eval.sh --profile td
 ./train.sh --help          # full flag list
 ./check.sh                 # compileall + import/CLI entry smokes (no backend)

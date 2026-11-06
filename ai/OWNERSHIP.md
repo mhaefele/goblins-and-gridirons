@@ -26,7 +26,7 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 | Gym Dict slice + spaces | `gridiron_ai/obs.py`, `constants.py` | Invent new obs facts client-side |
 | Feature extract (embed / pitch coords) | `gridiron_ai/features.py` | Put legality into features |
 | Legal row pack / join-score action / soft-mask | Kotlin `AiLegalPacker` + `actions.py` / `legal_row_policy.py` | Hard-mask distractors; duplicate `expectedScenarioMove` in Python; factor MultiDiscrete remask; use packed ints for reward/business logic |
-| Harness reward snapshot (`players` + `ballCoordinate`) | Kotlin `HarnessRewardSnapshotDto` / `AiGameStateMapper` | HxW cells; `hasBall` on every player; jam board facts onto legal rows |
+| Harness reward snapshot (`players` + status + `ballCoordinate`) | Kotlin `HarnessRewardSnapshotDto` / `AiGameStateMapper` | HxW cells; `hasBall` on every player; jam board facts onto legal rows |
 | Harness legal rows | Kotlin `AiLegalChoiceDto` (LegalAction + curriculum flags) | Actor / ball-carrier sidecars; scrape packed ints for reward |
 | HTTP create / step / submit / scenarios list | Kotlin `/api/ai/...` + `gridiron_ai/api/client.py` | Open `/events` from the harness |
 | Gym env (reset/step/reward call) | `gridiron_ai/api/env.py` | Own drill grading |
@@ -88,7 +88,7 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `reward.py` | Step reward + profile presets |
 | `persistence/` | JSON load/save — one module per on-disk file (see package docstring) |
 | `scenario_curriculum.py` | Per-stem difficulty + cycle filters (I/O via `persistence/`) |
-| `training_phases.py` | scenario_a / b / profiles routing; `active_targets` / `resolve_targets` (post-split train/eval `all` via `reward.profiles_for_all` — baseline + general + spread; summary `all` includes td/defense) |
+| `training_phases.py` | scenario_a / b / profiles routing; `active_targets` / `resolve_targets` (post-split train/eval `all` via `reward.profiles_for_all` — baseline + general + spread + defense; summary `all` includes td) |
 | `pipeline_state.py` | Pipeline types + rewind; load/save via `persistence/pipeline` |
 | `scenario_training.py` | Pointer: grading is Kotlin |
 | `metrics.py` / `tb_callback.py` | Episode aggregates / TensorBoard / metrics·success·learn lines; kind totals I/O via `persistence/kind_totals` |

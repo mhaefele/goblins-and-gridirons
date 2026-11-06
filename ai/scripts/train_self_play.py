@@ -12,7 +12,7 @@ Per cycle: game phase → full-game train/eval first, scenario eval + straggler/
 climbing → scenario sandwich then full-game (usually 0 until unlock).
 climbing → scenario train → after-eval → full-game. ``--profile all`` rotates baseline
 (unshaped control on scenario_b) plus ``profiles_for_all(\"train\")`` shaped names
-(today: ``general``, ``spread``; pin ``td`` / ``defense`` explicitly).
+(today: ``general``, ``spread``, ``defense``; pin ``td`` explicitly).
 
 Contents
 --------
@@ -665,7 +665,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--base-url", default=DEFAULT_BASE_URL, help=argparse.SUPPRESS)
     p.add_argument("--cycles", type=int, default=0, help="How many times to run the train/eval block (0 = forever until Ctrl-C)")
-    p.add_argument("--profile", default="all", choices=("all", *REWARD_PROFILES), help="Reward profile or all (default: all — baseline + general + spread; pin td/defense; summary still lists them)")
+    p.add_argument("--profile", default="all", choices=("all", *REWARD_PROFILES), help="Reward profile or all (default: all — baseline + general + spread + defense; pin td; summary still lists it)")
     p.add_argument(
         "--skip-scenarios",
         action="store_true",

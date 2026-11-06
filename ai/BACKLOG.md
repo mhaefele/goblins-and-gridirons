@@ -184,7 +184,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 | **Acceptance** | Shaping is flaggable/off-by-default on eval; train uses named profiles; ablations compare vs pure v1 on the same eval suite. |
 | **Rulebook** | n/a |
 
-**Presets:** shared idle / light ball / uncertain-challenge tease; **td** adds +3/TD + Δproximity possession; **defense** uses opponent-ball deltas + dugout gains + softer block bonuses. Terminal ±1 unchanged (specialists may optimize the proxy).
+**Presets:** shared idle / light ball / uncertain-challenge tease; **td** adds +3/TD + Δproximity possession; **defense** pays outcome deltas only (prone / dugout / free-ball) — no initiate-block bonuses. Terminal ±1 unchanged (specialists may optimize the proxy).
 
 ---
 

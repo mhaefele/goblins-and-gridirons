@@ -31,7 +31,7 @@ profiles never start from the expert seed.
     profiles fork from **frozen** ``scenario_b`` via ``ensure_checkpoint_from_prior`` — never from
     live baseline. After split, scenario_a / scenario_b trees are not trained further.
   - Post-split summary: ``profiles_for_all("summary")`` — full ``REWARD_PROFILES`` so
-    ``td`` / ``defense`` checkpoints stay visible without training them on ``all``.
+    ``td`` checkpoints stay visible without training them on ``all``.
 
 **Why baseline stays in post-split ``--profile all``:** same as general/td/defense — own zip,
 own runs, own evals — with empty shaping (margin + terminal only). It is the unshaped control

@@ -6,7 +6,7 @@ detail (eval blocks, scenario drills, legend). Curriculum / steps come from the 
 ``evals/baseline/``; shaped full-game eval JSON: ``evals/{general,spread,td,defense}/``
 (see ``paths.py`` / ``common.sh``).
 ``--profile all`` → ``profiles_for_all(\"summary\")`` (baseline + all shaped, including
-``td`` / ``defense``). Train/eval ``all`` omits those specialists — see
+``td``). Train/eval ``all`` omits that specialist — see
 ``reward.profiles_for_all``.
 """
 
@@ -81,7 +81,7 @@ _PROFILE_BLURB = {
     "general": "shared ball / challenge shaping",
     "spread": "covering-radius Δ (field coverage)",
     "td": "TD amp + stronger ball hold",
-    "defense": "strip / dugout / carrier blocks",
+    "defense": "KD / dugout / free the ball",
 }
 _STEPS_RE = re.compile(r"maskable_ppo_selfplay_(\d+)_steps\.zip$")
 _DEFAULT_TREND_STEPS = 100_000
@@ -476,9 +476,13 @@ def _policy_entropy_level(nats: float) -> str:
     return "watch"
 
 
+# PPO approx_kl oscillates hard across updates; a single low tick is not "no progress."
+_APPROX_KL_LEVEL_WINDOW = 5
+
+
 def _approx_kl_level(kl: float) -> str:
     # Too-low = under-updating (looks like "stable" but the policy is not moving).
-    # Floor is well below a healthy ~1e-3..target_kl band; matches stalled join-score runs.
+    # Floor is well below a healthy ~1e-3 band; matches stalled join-score runs.
     if kl < 0.001:
         return "STUCK!"
     if kl <= 0.02:
@@ -486,6 +490,16 @@ def _approx_kl_level(kl: float) -> str:
     if kl <= 0.05:
         return "watch"
     return "bad"
+
+
+def _approx_kl_level_from_series(values: list[float]) -> str:
+    """Grade from recent median so one sub-floor update does not shout STUCK!."""
+    if not values:
+        return "ok"
+    window = values[-_APPROX_KL_LEVEL_WINDOW:]
+    ordered = sorted(window)
+    median = ordered[len(ordered) // 2]
+    return _approx_kl_level(median)
 
 
 def _explained_variance_level(value: float) -> str:
@@ -559,8 +573,9 @@ def _train_health_cells(checkpoint_key: str, *, trend_steps: int) -> tuple[str, 
     entropy_level = _policy_entropy_level(policy_entropy)
     kl_bit = "—"
     if kl:
-        kl_value = kl[-1][1]
-        kl_bit = f"{kl_value:.4f} {_approx_kl_level(kl_value)}"
+        kl_values = [value for _step, value in kl]
+        # Show latest; grade from recent median (see _approx_kl_level_from_series).
+        kl_bit = f"{kl_values[-1]:.4f} {_approx_kl_level_from_series(kl_values)}"
     return (
         f"≈{policy_entropy:.2f} nats {entropy_level}",
         f"entropy_loss={latest_entropy_loss:.3f} ({entropy_note}, {entropy_level})",
@@ -868,7 +883,8 @@ def _compact_column_guide(*, trend_steps: int) -> str:
             "    stable randomness (flat): usually fine.",
             "  approx_kl",
             "    Mean policy change per training update (Kullback–Leibler divergence).",
-            "    Levels: STUCK! below 0.001 (barely moving — burning steps); ok 0.001–0.02; watch 0.02–0.05; bad above 0.05.",
+            "    Levels (recent median of last 5 updates): STUCK! below 0.001 (barely moving); "
+            "ok 0.001–0.02; watch 0.02–0.05; bad above 0.05. Cell shows the latest value.",
             "  explained_variance",
             "    Critic quality: a separate value head predicts future score from each board state.",
             "    This is how well those predictions match actual returns (1 = perfect, 0 = no better than guessing the average, negative = worse than that).",

@@ -19,9 +19,9 @@ Scenario episodes use this same stack. ``passingLegal`` marks PASS-grade curricu
 
 Eval runs with profile shaping off.
 
-Harness ``rewards.players`` (absolute coords + ``playerId``) and ``ballCoordinate``
-(where the ball is). Legal rows = action + curriculum flags only. Packed ``legalMoves``
-are policy-only — never read here.
+Harness ``rewards.players`` (absolute coords + ``status`` + ``playerId``) and
+``ballCoordinate`` (where the ball is). Legal rows = action + curriculum flags only.
+Packed ``legalMoves`` are policy-only — never read here.
 
 Called by
 ---------
@@ -41,6 +41,7 @@ from gridiron_ai.api.harness_wire import (
     LegalActionDict,
     MatchResultKind,
     PackedStepDict,
+    PlayerStatus,
     TeamRel,
     TeamSide,
     TrainingOutcome,
@@ -59,9 +60,9 @@ AllProfilesPurpose = Literal["train", "eval", "summary"]
 # post-split ``--profile all`` rotation as the unshaped control (``TRAINING_ROADMAP.md``).
 SHAPED_PROFILES: tuple[RewardProfileName, ...] = ("general", "spread", "td", "defense")
 REWARD_PROFILES: tuple[RewardProfileName, ...] = ("baseline", *SHAPED_PROFILES)
-# Default train/eval ``--profile all`` rotates these shaped specialists only. ``td`` / ``defense``
-# stay pin-able and appear in summary ``all`` (``profiles_for_all``).
-TRAIN_ALL_SHAPED_PROFILES: tuple[RewardProfileName, ...] = ("general", "spread")
+# Default train/eval ``--profile all`` rotates these shaped specialists. ``td`` stays
+# pin-able and appears in summary ``all`` (``profiles_for_all``).
+TRAIN_ALL_SHAPED_PROFILES: tuple[RewardProfileName, ...] = ("general", "spread", "defense")
 # Full-game train/eval seats these as ``ComputerOpponentKind.ONNX`` (classpath
 # ``ai-opponent/{id}/`` — same ids as reward profiles). Equal parts with heuristic/lookahead.
 FULL_GAME_ONNX_OPPONENT_PROFILES: tuple[RewardProfileName, ...] = ("general", "defense")
@@ -70,8 +71,8 @@ FULL_GAME_ONNX_OPPONENT_PROFILES: tuple[RewardProfileName, ...] = ("general", "d
 def profiles_for_all(purpose: AllProfilesPurpose = "train") -> tuple[RewardProfileName, ...]:
     """Canonical CLI ``all`` → concrete reward profile names.
 
-    Train/eval omit ``td`` / ``defense`` (still pin with ``--profile td|defense``).
-    Summary includes every reward profile so specialist checkpoints stay visible.
+    Train/eval omit ``td`` (still pin with ``--profile td``). Summary includes every
+    reward profile so specialist checkpoints stay visible.
     """
     if purpose == "summary":
         return REWARD_PROFILES
@@ -97,6 +98,8 @@ class RewardShaping:
     them_lost_ball_bonus: float = 0.0
     them_holds_ball_step_penalty: float = 0.0
     opponent_dugout_delta_bonus: float = 0.0
+    # Positive Δ in them PRONE count (STANDING→PRONE). Separate from dugout send-offs.
+    opponent_prone_delta_bonus: float = 0.0
     any_block_bonus: float = 0.0
     # Initiating a block action whose target holds the ball (before dice / follow-ups).
     block_ball_carrier_bonus: float = 0.0
@@ -124,6 +127,7 @@ class RewardShaping:
                 self.them_lost_ball_bonus,
                 self.them_holds_ball_step_penalty,
                 self.opponent_dugout_delta_bonus,
+                self.opponent_prone_delta_bonus,
                 self.any_block_bonus,
                 self.block_ball_carrier_bonus,
                 self.block_non_carrier_penalty,
@@ -190,6 +194,8 @@ PROFILE_SHAPING: dict[RewardProfileName, RewardShaping] = {
         ball_carrier_action_bonus=_SHARED_BALL_CARRIER_ACTION,
         empty_scoring_endzone_penalty=_SHARED_EMPTY_SCORING_ENDZONE,
     ),
+    # Bash outcomes only: KD (prone Δ) + send-offs (dugout Δ) + free the ball
+    # (them_lost / us_gained). No initiate-block bonuses — dice results own the credit.
     "defense": RewardShaping(
         idle_turn_penalty=_SHARED_IDLE,
         ball_possession_bonus=_SHARED_BALL,
@@ -200,9 +206,7 @@ PROFILE_SHAPING: dict[RewardProfileName, RewardShaping] = {
         them_lost_ball_bonus=_SHARED_THEM_LOST_BALL,
         them_holds_ball_step_penalty=0.03,
         opponent_dugout_delta_bonus=1.0,
-        any_block_bonus=0.2,
-        block_ball_carrier_bonus=1.0,
-        block_non_carrier_penalty=0.3,
+        opponent_prone_delta_bonus=0.5,
         ball_carrier_action_bonus=_SHARED_BALL_CARRIER_ACTION,
         empty_scoring_endzone_penalty=_SHARED_EMPTY_SCORING_ENDZONE,
     ),
@@ -361,11 +365,24 @@ def endzone_proximity(xy: tuple[int, int], *, acting_seat: TeamSide) -> float:
 
 
 def them_in_dugout(rewards: HarnessRewardSnapshotDict) -> int:
-    """Count perspective-them players with no pitch coordinate (dugout)."""
+    """Count perspective-them players in reserves (dugout)."""
     return sum(
         1
         for player in _players(rewards)
-        if _is_them_team_rel(player.get("teamRel")) and player.get("coordinate") is None
+        if _is_them_team_rel(player.get("teamRel"))
+        and (
+            player.get("status") == PlayerStatus.RESERVES
+            or (player.get("status") is None and player.get("coordinate") is None)
+        )
+    )
+
+
+def them_prone(rewards: HarnessRewardSnapshotDict) -> int:
+    """Count perspective-them players currently PRONE on the pitch."""
+    return sum(
+        1
+        for player in _players(rewards)
+        if _is_them_team_rel(player.get("teamRel")) and player.get("status") == PlayerStatus.PRONE
     )
 
 
@@ -536,6 +553,11 @@ def shaping_reward(
         dugout_delta = them_in_dugout(next_observation) - them_in_dugout(observation_before_move)
         if dugout_delta > 0:
             extra += shaping.opponent_dugout_delta_bonus * dugout_delta
+
+    if shaping.opponent_prone_delta_bonus > 0.0:
+        prone_delta = them_prone(next_observation) - them_prone(observation_before_move)
+        if prone_delta > 0:
+            extra += shaping.opponent_prone_delta_bonus * prone_delta
 
     return float(extra)
 

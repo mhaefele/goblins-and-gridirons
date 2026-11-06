@@ -18,12 +18,16 @@ def _player(
     player_index: int,
     team_rel: str,
     coordinate: dict | None,
+    status: str | None = None,
 ) -> dict:
+    if status is None:
+        status = "RESERVES" if coordinate is None else "STANDING"
     return {
         "playerId": player_id,
         "playerIndex": player_index,
         "teamRel": team_rel,
         "coordinate": coordinate,
+        "status": status,
     }
 
 
@@ -34,6 +38,7 @@ def _obs(
     us_holds: bool = False,
     them: tuple[int, int] | None = None,
     them_holds: bool = False,
+    them_status: str = "STANDING",
     them_in_dugout: int = 0,
 ) -> dict:
     players: list[dict] = []
@@ -54,6 +59,7 @@ def _obs(
                 player_index=1,
                 team_rel="THEM",
                 coordinate=_coord(*them),
+                status=them_status,
             )
         )
     for i in range(them_in_dugout):
@@ -63,6 +69,7 @@ def _obs(
                 player_index=min(i + 2, 10),
                 team_rel="THEM",
                 coordinate=None,
+                status="RESERVES",
             )
         )
     ball_coordinate = None
@@ -208,15 +215,17 @@ def test_general_ignores_covering_radius() -> None:
 
 
 def test_block_shaping_joins_them_ball_via_ball_coordinate() -> None:
+    """Initiate-block carrier join still works on knobs (general keeps a light any_block)."""
     before = _obs(them=(1, 1), them_holds=True)
     hit_choice = {"kind": "block", "playerId": "h0", "targetCoordinate": _coord(1, 1)}
     miss_choice = {"kind": "block", "playerId": "h0", "targetCoordinate": _coord(2, 1)}
     shaping = replace(
-        PROFILE_SHAPING["defense"],
+        PROFILE_SHAPING["general"],
         them_lost_ball_bonus=0.0,
         them_holds_ball_step_penalty=0.0,
         them_gained_ball_penalty=0.0,
         opponent_dugout_delta_bonus=0.0,
+        opponent_prone_delta_bonus=0.0,
         idle_turn_penalty=0.0,
         ball_possession_bonus=0.0,
         approach_ball_bonus=0.0,
@@ -225,8 +234,70 @@ def test_block_shaping_joins_them_ball_via_ball_coordinate() -> None:
         ball_carrier_action_bonus=0.0,
         empty_scoring_endzone_penalty=0.0,
         any_block_bonus=0.0,
+        block_ball_carrier_bonus=1.0,
+        block_non_carrier_penalty=0.3,
     )
     hit = _delta(before, before, hit_choice, shaping=shaping)
     miss = _delta(before, before, miss_choice, shaping=shaping)
     assert hit == shaping.block_ball_carrier_bonus
     assert miss == -shaping.block_non_carrier_penalty
+
+
+def test_defense_has_no_initiate_block_shaping() -> None:
+    defense = PROFILE_SHAPING["defense"]
+    assert defense.any_block_bonus == 0.0
+    assert defense.block_ball_carrier_bonus == 0.0
+    assert defense.block_non_carrier_penalty == 0.0
+    assert defense.opponent_prone_delta_bonus > 0.0
+    assert defense.opponent_dugout_delta_bonus > 0.0
+    assert defense.them_lost_ball_bonus > 0.0
+
+
+def _defense_outcome_only():
+    """Zero hold/idle noise — isolate prone / dugout / free-ball outcomes."""
+    return replace(
+        PROFILE_SHAPING["defense"],
+        idle_turn_penalty=0.0,
+        ball_possession_bonus=0.0,
+        approach_ball_bonus=0.0,
+        uncertain_challenge_bonus=0.0,
+        them_gained_ball_penalty=0.0,
+        them_holds_ball_step_penalty=0.0,
+        ball_carrier_action_bonus=0.0,
+        empty_scoring_endzone_penalty=0.0,
+    )
+
+
+def test_defense_rewards_knock_prone() -> None:
+    before = _obs(them=(3, 3), them_status="STANDING")
+    after = _obs(them=(3, 3), them_status="PRONE")
+    shaping = _defense_outcome_only()
+    assert shaping.opponent_prone_delta_bonus == 0.5
+    assert _delta(before, after, {"kind": "block", "playerId": "h0"}, shaping=shaping) == (
+        shaping.opponent_prone_delta_bonus
+    )
+
+
+def test_defense_rewards_send_to_reserves() -> None:
+    before = _obs(them=(3, 3), them_status="PRONE")
+    after = _obs(them_in_dugout=1)
+    shaping = _defense_outcome_only()
+    assert shaping.opponent_dugout_delta_bonus == 1.0
+    assert _delta(before, after, {"kind": "block", "playerId": "h0"}, shaping=shaping) == (
+        shaping.opponent_dugout_delta_bonus
+    )
+
+
+def test_defense_rewards_freeing_the_ball() -> None:
+    before = _obs(them=(3, 3), them_holds=True)
+    after_loose = _obs(them=(3, 3), them_holds=False, ball=(4, 4))
+    after_us = _obs(us=[(5, 5)], us_holds=True, them=(3, 3))
+    shaping = _defense_outcome_only()
+    assert shaping.them_lost_ball_bonus == PROFILE_SHAPING["defense"].them_lost_ball_bonus
+    assert shaping.us_gained_ball_bonus == PROFILE_SHAPING["defense"].us_gained_ball_bonus
+    assert _delta(before, after_loose, {"kind": "block", "playerId": "h0"}, shaping=shaping) == (
+        shaping.them_lost_ball_bonus
+    )
+    assert _delta(before, after_us, {"kind": "block", "playerId": "h0"}, shaping=shaping) == (
+        shaping.them_lost_ball_bonus + shaping.us_gained_ball_bonus
+    )
