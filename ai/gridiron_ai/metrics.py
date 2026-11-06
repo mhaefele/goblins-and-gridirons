@@ -124,6 +124,7 @@ def format_scenario_eval_headline(
     difficulty: int,
     stats: dict[str, Any],
     prior: dict[str, Any] | None = None,
+    rank_history: list[float] | None = None,
     eval_difficulty: int | None = None,
 ) -> str:
     """Readable drill line: ``loose_ball_run  d1  @d1 drill_rate=0% W0/L10/D0 (10 ep) expected: …``.
@@ -145,7 +146,7 @@ def format_scenario_eval_headline(
     return (
         f"{short_name}  d{difficulty}  {eval_tag}drill_rate={rate_bit} "
         f"W{wins}/L{losses}/D{draws} ({games} ep)"
-        f"{format_opening_score_bits(stats, prior=prior)}"
+        f"{format_opening_score_bits(stats, prior=prior, rank_history=rank_history)}"
     )
 
 
@@ -203,13 +204,14 @@ def format_scenario_success_line(
     stats: dict[str, Any],
     *,
     prior: dict[str, Any] | None = None,
+    rank_history: list[float] | None = None,
 ) -> str:
     """``scenario success:`` drill_rate + win_by_4 + opening bits (optional prior deltas)."""
     prior_rate = float(prior["winrate"]) if prior is not None and prior.get("winrate") is not None else None
     return (
         f"  scenario success: drill_rate={format_rate_bit(float(stats['winrate']), prior_rate)} "
         f"win_by_4_rate={float(stats['win_by_4_rate']):.3f}"
-        f"{format_opening_score_bits(stats, prior=prior)}"
+        f"{format_opening_score_bits(stats, prior=prior, rank_history=rank_history)}"
     )
 
 
@@ -219,6 +221,7 @@ def format_scenario_learn_line(
     difficulty: int,
     after: dict[str, Any],
     before: dict[str, Any] | None = None,
+    rank_history: list[float] | None = None,
 ) -> str:
     """Post-sandwich ``scenario learn:`` drill_rate + opening bits vs ``before``."""
     after_rate = float(after["winrate"])
@@ -228,7 +231,7 @@ def format_scenario_learn_line(
         bits.append(f"drill_rate {format_rate_bit(after_rate, prior_rate, with_delta=True)}")
     else:
         bits.append(f"drill_rate {after_rate:.3f}")
-    opening = format_opening_score_bits(after, prior=before).lstrip()
+    opening = format_opening_score_bits(after, prior=before, rank_history=rank_history).lstrip()
     if opening:
         bits.append(opening)
     return "  " + " ".join(bits)
@@ -256,6 +259,7 @@ def print_scenario_eval_metrics(
     difficulty: int,
     stats: dict[str, Any],
     prior: dict[str, Any] | None = None,
+    rank_history: list[float] | None = None,
     indent: int = 0,
 ) -> None:
     """Scenario eval: drill headline first, then score/kinds/submit extras."""
@@ -265,6 +269,7 @@ def print_scenario_eval_metrics(
             difficulty=difficulty,
             stats=stats,
             prior=prior,
+            rank_history=rank_history,
         ),
         indent=indent,
     )

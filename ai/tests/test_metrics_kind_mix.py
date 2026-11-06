@@ -169,7 +169,7 @@ def test_format_metrics_line_winrate_delta_vs_prior() -> None:
         "opening_expected_n_preferred_mean": 1,
         "opening_expected_logit_gap_mean": 0.05,
     }
-    expected_bit = "expected: 10.0/180→17.5/200 (n=1) p=0.050→0.006 logit_gap=0.05→0.20"
+    expected_bit = "expected: 10.0→17.5 (n=1/200) p=0.050→0.006 logit_gap=0.05→0.20"
     line = format_metrics_line("Eval [baseline] vs-x", stats, prior=prior)
     assert "winrate=0.200→0.000" in line
     assert expected_bit in line

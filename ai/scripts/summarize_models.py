@@ -50,6 +50,7 @@ from gridiron_ai.scenario_curriculum import (
     is_progress_waived,
     last_eval_metrics,
     last_eval_prior_metrics,
+    last_eval_rank_history,
     load_gate_failures,
     load_last_eval,
     load_levels,
@@ -936,8 +937,8 @@ def _legend() -> str:
             "  turns / total_actions  match length + policy submits",
             "  drill_rate             scenario winrate (PASS / decided games)",
             "  W/L/D on drill rows      decided scenario episodes (DISTRACTED → D)",
-            "  expected: rank/N→… (n=) p= logit_gap=   best PASS-row rank over legal count "
-            "(prior→current as whole fractions); n= preferred-row count (shape, no arrow); "
+            "  expected: rank→…→rank (n=pref/legal) p= logit_gap=   last ≤4 train-time eval "
+            "best PASS ranks (oldest→newest; before+after); n= preferred/legal (latest only); "
             "p= best expected-row softmax; logit_gap= logit(argmax)−logit(best PASS) — not p−first_p",
             "  first_p                mean opening chosen-move p (can exceed expected p when argmax ≠ lesson)",
             "  d0–d5                 curriculum level (active phase checkpoint)",
@@ -1418,6 +1419,7 @@ def _fmt_scenario_drills(target: TrainTarget) -> str:
                 fail_bit = f" gate_fails={fails}/{fails_total}" if fails_total else ""
                 opening_stats = last_eval_metrics(last_eval, scenario, level) or stats
                 opening_prior = last_eval_prior_metrics(last_eval, scenario, level)
+                rank_history = last_eval_rank_history(last_eval, scenario, level)
                 headline_stats = {
                     **opening_stats,
                     "winrate": stats["winrate"],
@@ -1432,6 +1434,7 @@ def _fmt_scenario_drills(target: TrainTarget) -> str:
                     difficulty=level,
                     stats=headline_stats,
                     prior=opening_prior,
+                    rank_history=rank_history or None,
                     eval_difficulty=eval_d,
                 )
                 # prefix already has ``NN  ``; headline starts with padded short name + dN.

@@ -27,8 +27,10 @@ from gridiron_ai.scenario_curriculum import (
     gating_scenarios_mastered,
     get_difficulty,
     is_progress_waived,
+    last_eval_history,
     last_eval_metrics,
     last_eval_prior_metrics,
+    last_eval_rank_history,
     load_last_eval,
     maybe_bump_after_perfect_eval,
     merge_drill_stats,
@@ -228,6 +230,7 @@ def test_last_eval_round_trip(tmp_path) -> None:
     assert current["opening_expected_p_mean"] is None
     assert last_eval_prior_metrics(loaded, "TD_RUN", 1) is None
     assert last_eval_metrics(loaded, "TD_RUN", 2) is None
+    assert last_eval_rank_history(loaded, "TD_RUN", 1) == [12.0]
 
     second = {
         "winrate": 0.9,
@@ -241,6 +244,18 @@ def test_last_eval_round_trip(tmp_path) -> None:
     loaded = load_last_eval(path)
     assert last_eval_metrics(loaded, "TD_RUN", 1)["opening_expected_p_mean"] == 0.77
     assert last_eval_prior_metrics(loaded, "TD_RUN", 1)["winrate"] == 0.3
+    assert last_eval_rank_history(loaded, "TD_RUN", 1) == [12.0, 1.0]
+
+    # Before+after sandwich snapshots both stay in the rolling window (max 4).
+    for rank in (20.5, 19.5, 20.1, 18.8):
+        loaded = record_last_eval(
+            loaded,
+            "TD_RUN",
+            1,
+            {"winrate": 0.0, "opening_expected_rank_best_mean": rank},
+        )
+    assert last_eval_rank_history(loaded, "TD_RUN", 1) == [20.5, 19.5, 20.1, 18.8]
+    assert len(last_eval_history(loaded, "TD_RUN", 1)) == 4
 
 
 def test_last_eval_loads_legacy_flat(tmp_path) -> None:

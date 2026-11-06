@@ -370,36 +370,25 @@ def fmt_metric_delta(before: float | None, after: float | None, *, digits: int =
     return f"{before:.{digits}f}→{after:.{digits}f}"
 
 
-def _fmt_rank_over_n(
-    rank: float | None,
-    legal: float | None,
-    *,
-    rank_before: float | None = None,
-    legal_before: float | None = None,
-) -> str | None:
-    """``1.2/168`` or ``2.0/150→1.2/168`` when priors exist (whole fractions, not nested arrows)."""
-    if rank is None:
+def _fmt_rank_trail(ranks: list[float]) -> str | None:
+    """``18.8`` or ``20.5→19.5→20.1→18.8`` (oldest→newest)."""
+    if not ranks:
         return None
-
-    def _one(r: float, n: float | None) -> str:
-        return f"{r:.1f}" if n is None else f"{r:.1f}/{n:.0f}"
-
-    after = _one(rank, legal)
-    if rank_before is None:
-        return after
-    return f"{_one(rank_before, legal_before)}→{after}"
+    return "→".join(f"{rank:.1f}" for rank in ranks)
 
 
 def format_opening_score_bits(
     stats: dict[str, Any],
     *,
     prior: dict[str, Any] | None = None,
+    rank_history: list[float] | None = None,
 ) -> str:
-    """Compact `` expected: 1.2/168 (n=1) p=0.300 logit_gap=+0.07 first_p=…`` or empty.
+    """Compact `` expected: 20.5→…→18.8 (n=1/145) p=… logit_gap=… first_p=…`` or empty.
 
-    Measured bits (rank/N, p, logit_gap, first_p) use prior→current when the sidecar has
-    both. ``n`` is drill shape (PASS-preferred row count) — printed once, no arrow. Omits
-    the strip when neither side has expected-row scores — chosen-only ``first_p`` alone is noise.
+    Rank uses ``rank_history`` when provided (up to 4, oldest→newest, includes current);
+    otherwise falls back to prior→current or current alone. ``n=pref/legal`` is latest-only.
+    ``p`` / ``logit_gap`` / ``first_p`` stay prior→current. Omits the strip when neither side
+    has expected-row scores — chosen-only ``first_p`` alone is noise.
     """
     fields = opening_score_fields(stats)
     prior_fields = opening_score_fields(prior) if prior is not None else None
@@ -417,24 +406,25 @@ def format_opening_score_bits(
     gap_after = _f("opening_expected_logit_gap_mean")
     p_before = _p("opening_expected_p_best_mean")
     rank_before = _p("opening_expected_rank_best_mean")
-    legal_before = _p("opening_expected_legal_count_mean")
-    n_before = _p("opening_expected_n_preferred_mean")
     gap_before = _p("opening_expected_logit_gap_mean")
     has_expected = any(
         v is not None
         for v in (p_after, rank_after, legal_after, n_after, gap_after, p_before, rank_before)
-    )
+    ) or bool(rank_history)
     if not has_expected:
         return ""
     expected_parts: list[str] = []
-    head = _fmt_rank_over_n(
-        rank_after, legal_after, rank_before=rank_before, legal_before=legal_before
-    )
+    if rank_history:
+        trail_ranks = [float(r) for r in rank_history if r is not None][-4:]
+    else:
+        trail_ranks = [r for r in (rank_before, rank_after) if r is not None]
+    head = _fmt_rank_trail(trail_ranks)
     if head is not None:
         expected_parts.append(head)
-    n_val = n_after if n_after is not None else n_before
-    if n_val is not None:
-        expected_parts.append(f"(n={n_val:.0f})")
+    if n_after is not None and legal_after is not None:
+        expected_parts.append(f"(n={n_after:.0f}/{legal_after:.0f})")
+    elif n_after is not None:
+        expected_parts.append(f"(n={n_after:.0f})")
     p_rendered = fmt_metric_delta(p_before, p_after, digits=3)
     if p_rendered is not None:
         expected_parts.append(f"p={p_rendered}")

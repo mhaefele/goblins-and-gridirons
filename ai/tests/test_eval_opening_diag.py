@@ -112,7 +112,7 @@ def test_format_opening_score_bits_and_episodes_raw_fallback() -> None:
                 "opening_expected_logit_gap_mean": 0.07,
             }
         )
-        == " expected: 12.0/168 (n=1) p=0.020 logit_gap=+0.07 first_p=0.100"
+        == " expected: 12.0 (n=1/168) p=0.020 logit_gap=+0.07 first_p=0.100"
     )
     assert (
         format_opening_score_bits(
@@ -135,7 +135,27 @@ def test_format_opening_score_bits_and_episodes_raw_fallback() -> None:
                 "opening_expected_logit_gap_mean": 0.05,
             },
         )
-        == " expected: 10.0/180→17.5/200 (n=1) p=0.080→0.006 logit_gap=0.05→0.20 first_p=0.200→0.157"
+        == " expected: 10.0→17.5 (n=1/200) p=0.080→0.006 logit_gap=0.05→0.20 first_p=0.200→0.157"
+    )
+    assert (
+        format_opening_score_bits(
+            {
+                "opening_expected_p_best_mean": 0.014,
+                "opening_chosen_p_mean": 0.015,
+                "opening_expected_rank_best_mean": 18.8,
+                "opening_expected_legal_count_mean": 145,
+                "opening_expected_n_preferred_mean": 1,
+                "opening_expected_logit_gap_mean": 0.12,
+            },
+            prior={
+                "opening_expected_p_best_mean": 0.015,
+                "opening_chosen_p_mean": 0.016,
+                "opening_expected_rank_best_mean": 20.1,
+                "opening_expected_logit_gap_mean": 0.11,
+            },
+            rank_history=[20.5, 19.5, 20.1, 18.8],
+        )
+        == " expected: 20.5→19.5→20.1→18.8 (n=1/145) p=0.015→0.014 logit_gap=0.11→0.12 first_p=0.016→0.015"
     )
     fields = opening_score_fields(
         {

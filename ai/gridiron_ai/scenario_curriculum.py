@@ -11,8 +11,8 @@ after-eval; demote when a drill labeled d5 fails after-eval with ``DEMOTE_FROM_M
 or fewer wins — default 7/10; 8/10 is a gate fail only); ``.scenario_gate_failures.json``
 (imperfect after-evals per difficulty level; all-time = sum; current level cleared on waive
 recover); ``.scenario_drill_stats.json`` (per-phase ``cycles`` / ``d5_demotes``; summary uses
-``training_phases.load_drill_stats_cumulative``); ``.scenario_last_eval.json`` (``current`` +
-``prior`` slim metrics per drill@d for prior→current deltas across restarts / summary).
+``training_phases.load_drill_stats_cumulative``); ``.scenario_last_eval.json`` (up to 4 slim
+snapshots per drill@d — ``history`` plus ``current``/``prior`` mirrors — for deltas / rank trails).
 Phases (scenario_a board→d4 / scenario_b all→d5 / profiles games): ``training_phases``.
 8× train units use ``SCENARIO_EVAL_GAMES_HEAVY`` (50) after-evals with scaled pass/demote.
 Drills with fails at their **current** difficulty get ``SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER``×
@@ -60,6 +60,7 @@ from gridiron_ai.persistence.scenario_gate_failures import (  # noqa: F401 — r
     save_gate_failures,
 )
 from gridiron_ai.persistence.scenario_last_eval import (  # noqa: F401 — re-export
+    LAST_EVAL_HISTORY_MAX,
     LAST_EVAL_METRIC_KEYS,
     LastEvalEntryDict,
     LastEvalMetricsDict,
@@ -132,9 +133,32 @@ def last_eval_entry(
     scenario: ScenarioName,
     difficulty: int,
 ) -> LastEvalEntryDict | None:
-    """``{current, prior}`` for ``scenario`` at ``difficulty``, or ``None`` when missing."""
+    """History entry for ``scenario`` at ``difficulty``, or ``None`` when missing."""
     by_level = last_eval.get(curriculum_key(scenario), {})
     return by_level.get(str(_clamp(difficulty)))
+
+
+def last_eval_history(
+    last_eval: LastEvalStore,
+    scenario: ScenarioName,
+    difficulty: int,
+) -> list[LastEvalMetricsDict]:
+    """Oldest→newest slim snapshots (≤ ``LAST_EVAL_HISTORY_MAX``), or empty."""
+    entry = last_eval_entry(last_eval, scenario, difficulty)
+    if entry is None:
+        return []
+    history = entry.get("history")
+    if isinstance(history, list) and history:
+        return [dict(snap) for snap in history[-LAST_EVAL_HISTORY_MAX:]]
+    # Defensive: mirrors only (should not happen after parse/record).
+    out: list[LastEvalMetricsDict] = []
+    prior = entry.get("prior")
+    current = entry.get("current")
+    if isinstance(prior, dict):
+        out.append(dict(prior))
+    if isinstance(current, dict):
+        out.append(dict(current))
+    return out[-LAST_EVAL_HISTORY_MAX:]
 
 
 def last_eval_metrics(
@@ -155,12 +179,26 @@ def last_eval_prior_metrics(
     scenario: ScenarioName,
     difficulty: int,
 ) -> LastEvalMetricsDict | None:
-    """Slim **prior** (one-before-last) metrics, or ``None`` when missing."""
+    """Slim **prior** (one-before-last write) metrics, or ``None`` when missing."""
     entry = last_eval_entry(last_eval, scenario, difficulty)
     if entry is None:
         return None
     prior = entry.get("prior")
     return prior if isinstance(prior, dict) else None
+
+
+def last_eval_rank_history(
+    last_eval: LastEvalStore,
+    scenario: ScenarioName,
+    difficulty: int,
+) -> list[float]:
+    """Opening expected-best ranks from stored history (oldest→newest), skipping missing."""
+    ranks: list[float] = []
+    for snap in last_eval_history(last_eval, scenario, difficulty):
+        rank = snap.get("opening_expected_rank_best_mean")
+        if rank is not None:
+            ranks.append(float(rank))
+    return ranks
 
 
 def record_last_eval(
@@ -169,10 +207,15 @@ def record_last_eval(
     difficulty: int,
     stats: dict[str, Any],
 ) -> LastEvalStore:
-    """Copy of ``last_eval`` with new ``current``; previous ``current`` becomes ``prior``."""
+    """Copy of ``last_eval`` with ``stats`` appended (keeps last ``LAST_EVAL_HISTORY_MAX``).
+
+    Every train-time eval writes here — before-eval and after-eval alike — so the rank
+    trail can show drift into the sandwich and recovery out of it.
+    """
     updated: LastEvalStore = {
         name: {
             level: {
+                "history": [dict(snap) for snap in (entry.get("history") or [])],
                 "current": dict(entry.get("current") or {}),
                 "prior": dict(entry["prior"]) if entry.get("prior") is not None else None,
             }
@@ -185,8 +228,18 @@ def record_last_eval(
     level_key = str(_clamp(difficulty))
     previous = by_level.get(level_key) or {}
     old_current = previous.get("current")
+    new_slim = extract_last_eval_metrics(stats)
+    old_history = [dict(snap) for snap in (previous.get("history") or [])]
+    if not old_history:
+        # Migrate legacy current/prior into history once.
+        if previous.get("prior") is not None:
+            old_history.append(dict(previous["prior"]))
+        if isinstance(old_current, dict):
+            old_history.append(dict(old_current))
+    history = (old_history + [new_slim])[-LAST_EVAL_HISTORY_MAX:]
     by_level[level_key] = {
-        "current": extract_last_eval_metrics(stats),
+        "history": history,
+        "current": new_slim,
         "prior": dict(old_current) if isinstance(old_current, dict) else None,
     }
     updated[key] = by_level

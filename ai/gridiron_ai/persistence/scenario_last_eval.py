@@ -1,4 +1,8 @@
-"""``{stem}.scenario_last_eval.json`` — last + previous train-time eval metrics per drill@d."""
+"""``{stem}.scenario_last_eval.json`` — last train-time eval metrics per drill@d.
+
+Each slot keeps up to ``LAST_EVAL_HISTORY_MAX`` slim snapshots (oldest→newest). ``current`` /
+``prior`` are the last two entries (dual-written for readers that only need a delta).
+"""
 
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ from gridiron_ai.persistence.json_io import atomic_write_json
 
 _SUFFIX = ".scenario_last_eval.json"
 _MAX_DIFFICULTY = 5
+LAST_EVAL_HISTORY_MAX = 4
 
 # Slim fields persisted for Eval-line / learn-line / summary prior→current deltas.
 LAST_EVAL_METRIC_KEYS = (
@@ -39,13 +44,14 @@ class LastEvalMetricsDict(TypedDict):
 
 
 class LastEvalEntryDict(TypedDict):
-    """One drill@d slot: current metrics plus optional prior."""
+    """One drill@d slot: rolling history plus last-two mirrors."""
 
+    history: list[LastEvalMetricsDict]
     current: LastEvalMetricsDict
     prior: LastEvalMetricsDict | None
 
 
-# scenario → level (str) → ``{"current": slim, "prior": slim | None}``
+# scenario → level (str) → entry
 LastEvalStore: TypeAlias = dict[ScenarioName, dict[str, LastEvalEntryDict]]
 
 
@@ -87,23 +93,40 @@ def _slim_metrics(raw: object) -> LastEvalMetricsDict | None:
     return LastEvalMetricsDict(**values)  # type: ignore[misc]
 
 
+def _entry_from_history(history: list[LastEvalMetricsDict]) -> LastEvalEntryDict | None:
+    if not history:
+        return None
+    trimmed = history[-LAST_EVAL_HISTORY_MAX:]
+    return {
+        "history": trimmed,
+        "current": trimmed[-1],
+        "prior": trimmed[-2] if len(trimmed) >= 2 else None,
+    }
+
+
 def _parse_entry(raw: dict[str, object]) -> LastEvalEntryDict | None:
-    """Normalize nested ``current``/``prior`` or legacy flat metrics → entry dict."""
+    """Normalize ``history`` / nested ``current``/``prior`` / legacy flat → entry dict."""
+    if isinstance(raw.get("history"), list):
+        history = [m for m in (_slim_metrics(item) for item in raw["history"]) if m is not None]
+        return _entry_from_history(history)
     if "current" in raw or "prior" in raw:
-        current = _slim_metrics(raw.get("current"))
-        if current is None:
-            return None
+        history: list[LastEvalMetricsDict] = []
         prior = _slim_metrics(raw["prior"]) if raw.get("prior") is not None else None
-        return {"current": current, "prior": prior}
+        current = _slim_metrics(raw.get("current"))
+        if prior is not None:
+            history.append(prior)
+        if current is not None:
+            history.append(current)
+        return _entry_from_history(history)
     # Legacy flat object = current only.
     current = _slim_metrics(raw)
     if current is None:
         return None
-    return {"current": current, "prior": None}
+    return _entry_from_history([current])
 
 
 def load_last_eval(path: Path) -> LastEvalStore:
-    """Scenario curriculum key → difficulty level (str) → ``{current, prior}``."""
+    """Scenario curriculum key → difficulty level (str) → history entry."""
     if not path.is_file():
         return {}
     raw = json.loads(path.read_text(encoding="utf-8"))
@@ -133,6 +156,10 @@ def save_last_eval(path: Path, last_eval: LastEvalStore) -> None:
     payload = {
         scenario: {
             str(_clamp(int(level))): {
+                "history": [
+                    {field: snap.get(field) for field in LAST_EVAL_METRIC_KEYS}
+                    for snap in (entry.get("history") or [])[-LAST_EVAL_HISTORY_MAX:]
+                ],
                 "current": {
                     field: entry.get("current", {}).get(field) for field in LAST_EVAL_METRIC_KEYS
                 },

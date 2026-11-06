@@ -107,7 +107,9 @@ from gridiron_ai.scenario_curriculum import (
     gate_failure_count,
     gating_scenarios_mastered,
     get_difficulty,
+    LAST_EVAL_HISTORY_MAX,
     last_eval_metrics,
+    last_eval_rank_history,
     load_drill_stats,
     load_gate_failures,
     load_last_eval,
@@ -1147,8 +1149,12 @@ def _eval_one_scenario(
     Eval line shows ``before→after`` vs the last same drill@d train-time eval (memory,
     else ``{stem}.scenario_last_eval.json``). Persists only while training — ``--eval-only``
     never writes the cache or sidecar. ``games`` is 50 for 8× train units, else 10.
+    Before-eval and after-eval both append to the rolling last-eval history.
     """
     prior = _prior_scenario_eval(scenario, difficulty, save_stem)
+    stored_ranks = last_eval_rank_history(
+        load_last_eval(path_for_last_eval(save_stem)), scenario, difficulty
+    )
     stats = _eval_segment(
         model,
         args=args,
@@ -1162,6 +1168,7 @@ def _eval_one_scenario(
         scenario=scenario,
         scenario_difficulty=difficulty,
         metrics_prior=prior,
+        rank_history_before=stored_ranks,
     )
     if not args.eval_only:
         _remember_scenario_eval(scenario, difficulty, stats, save_stem)
@@ -1602,11 +1609,13 @@ def _eval_segment(
     scenario: str | None = None,
     scenario_difficulty: int = 0,
     metrics_prior: dict[str, Any] | None = None,
+    rank_history_before: list[float] | None = None,
 ) -> dict[str, Any]:
     """Deterministic games; shaping off. Soft-mask bias follows ``eval_episode_mode`` (TRAIN=on).
 
     ``metrics_prior``: optional prior same-drill eval stats so the Eval line can show
     ``before→after`` drift (``_eval_one_scenario`` supplies the last eval this process).
+    ``rank_history_before``: stored ranks (before+after evals); current rank appended for the trail.
     """
     workers = min(games, DEFAULT_N_ENVS)
     opp_label = opponent_metrics_label(computer_opponent, onnx_profile)
@@ -1708,11 +1717,19 @@ def _eval_segment(
                 # Built-in ``  game`` + detail indents; +1 nests under the Eval header.
                 _section_print(line, indent=body_indent)
         if scenario is not None:
+            rank_history: list[float] | None = None
+            if rank_history_before is not None:
+                rank_history = list(rank_history_before)
+                cur_rank = stats.get("opening_expected_rank_best_mean")
+                if cur_rank is not None:
+                    rank_history.append(float(cur_rank))
+                rank_history = rank_history[-LAST_EVAL_HISTORY_MAX:]
             print_scenario_eval_metrics(
                 short_name=require_catalog().short_name(scenario),
                 difficulty=int(scenario_difficulty),
                 stats=stats,
                 prior=metrics_prior,
+                rank_history=rank_history,
                 indent=body_indent,
             )
         else:
