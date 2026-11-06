@@ -133,7 +133,7 @@ from gridiron_ai.scenario_curriculum import (
     train_timesteps_for_scenario,
 )
 from gridiron_ai.api.scenarios import refresh_catalog, require_catalog, resolve_scenario_pin
-from gridiron_ai.tb_callback import GridironMetricsCallback, PeriodicFinalSaveCallback
+from gridiron_ai.tb_callback import GridironMetricsCallback, PeriodicFinalSaveCallback, PpoUpdateEvidenceCallback
 from gridiron_ai.training_phases import (
     EVAL_PHASE_CHOICES,
     PhaseName,
@@ -411,6 +411,7 @@ class SegmentEnvConfig:
     scenario_difficulty: int
     episode_mode: str
     soft_mask_bias: bool
+    verbose: bool
 
 
 class WorkerPool:
@@ -434,6 +435,7 @@ class WorkerPool:
             scenario_difficulty=0,
             episode_mode="TRAIN",
             soft_mask_bias=True,
+            verbose=bool(args.verbose),
         )
         self._active_view = ActiveSubprocVecEnv(self._subproc, n_envs)
         self._last_config: SegmentEnvConfig | None = None
@@ -451,6 +453,7 @@ class WorkerPool:
         scenario_difficulty: int,
         episode_mode: str,
         soft_mask_bias: bool,
+        verbose: bool = False,
     ) -> None:
         config = SegmentEnvConfig(
             opponent_mode=opponent_mode,
@@ -462,6 +465,7 @@ class WorkerPool:
             scenario_difficulty=scenario_difficulty,
             episode_mode=episode_mode,
             soft_mask_bias=soft_mask_bias,
+            verbose=verbose,
         )
         if config == self._last_config:
             return
@@ -476,6 +480,7 @@ class WorkerPool:
             scenario_difficulty=scenario_difficulty,
             episode_mode=episode_mode,
             soft_mask_bias=soft_mask_bias,
+            verbose=verbose,
         )
         self._last_config = config
 
@@ -505,6 +510,7 @@ def make_env(
     scenario_difficulty: int = 0,
     episode_mode: str = "TRAIN",
     soft_mask_bias: bool = True,
+    verbose: bool = False,
 ) -> _PoolWorkerRoot:
     return _PoolWorkerRoot(
         ActionMasker(
@@ -522,6 +528,7 @@ def make_env(
                     scenario_difficulty=scenario_difficulty,
                     episode_mode=episode_mode,
                     soft_mask_bias=soft_mask_bias,
+                    verbose=verbose,
                 )
             ),
             _mask_fn,
@@ -542,6 +549,7 @@ def _env_thunk(
     scenario_difficulty: int,
     episode_mode: str,
     soft_mask_bias: bool,
+    verbose: bool,
 ) -> Callable[[], _PoolWorkerRoot]:
     def _init() -> _PoolWorkerRoot:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", force=True)
@@ -558,6 +566,7 @@ def _env_thunk(
             scenario_difficulty=scenario_difficulty,
             episode_mode=episode_mode,
             soft_mask_bias=soft_mask_bias,
+            verbose=verbose,
         )
 
     return _init
@@ -578,6 +587,7 @@ def make_vec_env(
     scenario_difficulty: int = 0,
     episode_mode: str = "TRAIN",
     soft_mask_bias: bool = True,
+    verbose: bool = False,
 ) -> SubprocVecEnv:
     # spawn: N fresh Python interpreters; each imports torch/sb3/gym and builds GridironEnv
     # (HTTP client only — backend matches start on first reset(), not during spawn).
@@ -596,6 +606,7 @@ def make_vec_env(
                 scenario_difficulty,
                 episode_mode,
                 soft_mask_bias,
+                verbose,
             )
             for _ in range(n_envs)
         ],
@@ -627,7 +638,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval-onnx", type=int, default=DEFAULT_EVAL_ONNX, help=f"Deterministic eval games per ONNX profile ({', '.join(FULL_GAME_ONNX_OPPONENT_PROFILES)}; same cadence as heuristic/lookahead; 0 = skip)")
     p.add_argument("--eval-only", action="store_true", help="Skip all train; eval pass without eval JSON (eval.sh sets this)")
     p.add_argument("--eval-episode-mode", choices=("EVAL", "TRAIN"), default="EVAL", help="Scenario/full-game eval: EVAL=unaided (soft-mask bias off); TRAIN=soft-mask logit bias on (+ claim reachability soft-mask search)")
-    p.add_argument("--verbose", action="store_true", help="Scenario eval: extra opening-mispick policy_diag line (expected/soft row rank + plain vs soft-mask probs) on THEM games; rank/p on expected+turn1 always")
+    p.add_argument("--verbose", action="store_true", help="Scenario eval opening-mispick policy_diag on THEM games; also drill PASS reward + PPO update evidence (approx_kl / Δθ / PASS-step advantages)")
     p.add_argument("--super-verbose", action="store_true", help="Implies --verbose; also dumps the full ranked legal menu (idx + probs) on THEM opening mispicks")
     p.add_argument("--phase", choices=EVAL_PHASE_CHOICES, default=None, help="Eval-only: load the zip that phase produced (seed / scenario_a / scenario_b); read-only; one pass")
     p.add_argument("--scenario", default=None, help="One drill only — skips full-game train/eval (default: cycle all from server)")
@@ -1014,6 +1025,7 @@ def _train_segment(
         scenario_difficulty=scenario_difficulty,
         episode_mode="TRAIN",
         soft_mask_bias=True,
+        verbose=bool(args.verbose),
     )
     clk.lap("configure workers", indent=lap_indent)
     env = _wrap_vecnormalize(pool.vec_env(DEFAULT_N_ENVS), save_stem, training=True)
@@ -1029,7 +1041,10 @@ def _train_segment(
         # Scenario sandwich: final Train metrics line only (no per-rollout reprint).
         verbose=0 if scenario is not None else 1,
     )
-    callbacks: list[Any] = [metrics_cb]
+    callbacks: list[Any] = [
+        metrics_cb,
+        PpoUpdateEvidenceCallback(scenario=scenario, verbose=1 if args.verbose else 0),
+    ]
     if FINAL_SAVE_FREQ > 0 and timesteps >= FINAL_SAVE_FREQ:
         callbacks.append(PeriodicFinalSaveCallback(save_stem, FINAL_SAVE_FREQ))
 
@@ -1588,6 +1603,7 @@ def _eval_segment(
         scenario_difficulty=scenario_difficulty,
         episode_mode=episode_mode,
         soft_mask_bias=soft_mask_bias,
+        verbose=bool(args.verbose),
     )
     configure_s = clk.lap("configure workers", echo=echo_laps, indent=1)
     env = pool.vec_env(workers)

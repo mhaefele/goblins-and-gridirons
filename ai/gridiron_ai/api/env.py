@@ -39,6 +39,7 @@ from gridiron_ai.api.harness_wire import (
     PackedSubmitDict,
     ScenarioName,
     TeamSide,
+    TrainingOutcome,
 )
 from gridiron_ai.metrics import EpisodeActionStats, total_score
 from gridiron_ai.obs import dict_observation_space, slice_packed_step
@@ -117,6 +118,7 @@ class GridironEnv(gym.Env):
         scenario_difficulty: int = 0,
         episode_mode: EpisodeMode = EpisodeMode.EVAL,
         soft_mask_bias: bool = False,
+        verbose: bool = False,
     ) -> None:
         super().__init__()
         if opponent_mode not in _VALID_OPPONENT_MODES:
@@ -148,6 +150,7 @@ class GridironEnv(gym.Env):
         self.episode_mode = episode_mode
         # Policy +SOFT_MASK_LOGIT_BIAS from obs. Train rollouts True; eval follows episode_mode (TRAIN=on).
         self.soft_mask_bias = soft_mask_bias
+        self.verbose = verbose
 
         self.observation_space = dict_observation_space()
         self.action_space = spaces.Discrete(legal_row_action_n())
@@ -176,6 +179,7 @@ class GridironEnv(gym.Env):
         scenario_difficulty: int,
         episode_mode: EpisodeMode,
         soft_mask_bias: bool,
+        verbose: bool = False,
     ) -> None:
         """Reconfigure an idle worker between train/eval segments (pool reuse)."""
         if opponent_mode not in _VALID_OPPONENT_MODES:
@@ -200,6 +204,7 @@ class GridironEnv(gym.Env):
         self.scenario_difficulty = scenario_difficulty
         self.episode_mode = episode_mode
         self.soft_mask_bias = soft_mask_bias
+        self.verbose = verbose
         if scenario is not None:
             if self._scenario_eval_debug is None:
                 self._scenario_eval_debug = ScenarioEvalDebug()
@@ -495,6 +500,22 @@ class GridironEnv(gym.Env):
             legal_choice=resolved.legal_choice,
             perspective_seat=self._perspective_seat,
         )
+        # Train-only (--verbose): raw step reward that enters the rollout buffer
+        # (VecNormalize may rescale later). Quiet by default — PASS rate can flood stdout.
+        if (
+            self.verbose
+            and self.scenario is not None
+            and self.episode_mode == EpisodeMode.TRAIN
+            and bool(terminal.get("trainingEpisodeEnded"))
+            and terminal.get("trainingOutcome") == TrainingOutcome.US
+        ):
+            print(
+                f"[gridiron] drill PASS → PPO reward={reward:+.3f} "
+                f"{self.scenario} d{self.scenario_difficulty} "
+                f"td={int(after_obs['touchdownsUs'])} kind={resolved.sampled_kind} "
+                f"match={self.match_id}",
+                flush=True,
+            )
         if self._scenario_eval_debug is not None:
             scored_td = int(after_obs["touchdownsUs"]) > int(observation_before_move["touchdownsUs"])
             acquired_card = int(scoring["challengeCardsUs"]) > 0

@@ -107,7 +107,7 @@ Options:
   --eval-lookahead N               eval games vs LOOKAHEAD (train: every 4 visits/profile; eval-only: each pass; 0 = skip)
   --eval-onnx N                    eval games per ONNX profile (general,defense; same cadence; 0 = skip)
   --eval-episode-mode EVAL|TRAIN   eval episodeMode (default EVAL=unaided; TRAIN=soft-mask logit bias on + claim soft-mask search)
-  --verbose                          scenario eval: opening-mispick policy_diag (expected/soft row ranks) on THEM games
+  --verbose                          scenario eval opening-mispick policy_diag; also drill PASS + PPO update evidence
   --super-verbose                    implies --verbose; also dumps full ranked legal menu (idx/probs) on THEM mispicks
   --phase seed|scenario_a|scenario_b  eval.sh only: load the zip that phase produced (seed end =
                                    scenario_a start; scenario_a end = scenario_b start); read-only; one pass
