@@ -19,6 +19,10 @@ data class AiHarnessStepDto(
             require(resultKind == null) { "trainingEpisodeEnded must not combine with match resultKind=$resultKind" }
             require(trainingOutcome != null) { "trainingEpisodeEnded requires trainingOutcome" }
         }
+        // US may precede window end; loss grades only at episode close.
+        if (trainingOutcome == AiTrainingOutcome.THEM || trainingOutcome == AiTrainingOutcome.DISTRACTED) {
+            require(trainingEpisodeEnded) { "trainingOutcome=$trainingOutcome requires trainingEpisodeEnded" }
+        }
     }
 
     fun isGameEnded(): Boolean = resultKind != null

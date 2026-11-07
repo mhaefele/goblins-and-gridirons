@@ -18,16 +18,16 @@ Shell chain: `dump → pack → seed → scenario_a → scenario_b → checkpoin
 
 1. **Usual scoring** — Δ score margin + terminal win/loss/draw when the **server**
    match ends
-2. **Scenario coach-window** — ±0.5 from `trainingOutcome` when `trainingEpisodeEnded`
-   (half match terminal; not stacked on real match W/L)
+2. **Scenario curriculum** — +0.5 when `trainingOutcome` first becomes `US` (PASS;
+   often mid coach-window). −0.5 when the window closes on `THEM`. `DISTRACTED` at
+   end is 0. Episode end is still `trainingEpisodeEnded` only.
 3. **Scenario passing-move** — +0.25 when the submitted row was `passingLegal`
-   (mid-episode; stacks with coach-window if that step also ends the drill)
+   (mid-episode; stacks with +0.5 if that submit also grades PASS)
 4. **Profile shaping** — `general` / `spread` / `td` / `defense` presets (train only; eval off);
-   scenario_a / scenario_b use **baseline** (no shaping) — passing-move bonus still applies
+   scenario_a / scenario_b use **baseline** (no shaping) — curriculum bonuses still apply
 
-Drill US/THEM still grades curriculum/winrate. Soft-mask still owns **sampling** tilt
-([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference)); the +0.25 is the
-only per-move curriculum reward term.
+Drill US/THEM still grades curriculum/winrate (counted at window close). Soft-mask still
+owns **sampling** tilt ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference)).
 
 Train also: **VecNormalize** reward normalization (obs not normalized).
 
@@ -189,8 +189,8 @@ Ask before merging:
 
 1. Does this change the **reward stack** (new term, slap, amplify)? Prefer no until a
    scenario_a / scenario_b gate fails for a clear reason. Allowed curriculum terms:
-   coach-window ±0.5 and passing-move +0.25 — do not add further per-move slap/bonus
-   without revisiting this checklist.
+   PASS-edge +0.5 / window-loss −0.5 and passing-move +0.25 — do not add further
+   per-move slap/bonus without revisiting this checklist.
 2. Does this **unlock games or claims** earlier than the gate? Prefer no.
 3. Does this add a **Python re-implementation** of something the server already flags
    (`expectedScenarioMove`)? Prefer delete the duplicate.
@@ -239,7 +239,7 @@ Apply on create **and** resume via `_set_learning_rate` / `_set_ent_coef` / `_se
 | `ent_coef` `0.005` / `vf_coef` `0.5` | shared all profiles | Create **and** resume; no profile overrides |
 | VecNormalize `norm_reward` | train segments; `{stem}_vecnormalize.pkl` | Obs not normalized |
 | Soft-mask bias `2.5` | `constants.SOFT_MASK_LOGIT_BIAS` | Train rollouts on; eval/gates off unless `--eval-episode-mode TRAIN` — [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference) |
-| Scenario coach-window ±0.5 | `reward.SCENARIO_TERMINAL_*` | Only when `trainingEpisodeEnded`; not stacked on match ±1 |
+| Scenario PASS +0.5 / window loss −0.5 | `reward.SCENARIO_TERMINAL_*` | +0.5 on `trainingOutcome` → US edge; −0.5 on ended+THEM |
 | Scenario passing-move +0.25 | `reward.SCENARIO_PASSING_MOVE_BONUS` | When submitted row was `passingLegal`; mid-episode OK |
 | Claim unlock board d4 | `scenario_curriculum.CLAIM_UNLOCK_BOARD_DIFFICULTY` | scenario_a → scenario_b |
 | Full-game unlock d5 | `scenario_curriculum.FULL_GAME_UNLOCK_DIFFICULTY` | After all drills mastered |

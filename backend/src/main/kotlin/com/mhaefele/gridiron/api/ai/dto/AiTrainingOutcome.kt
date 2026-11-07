@@ -1,6 +1,11 @@
 package com.mhaefele.gridiron.api.ai.dto
 
-/** Drill grade when a training scenario gym episode ends — harness / curriculum only (not obs-packed). */
+/**
+ * Drill grade on the harness — curriculum / reward only (not obs-packed).
+ *
+ * [US] may appear mid coach-window once [com.mhaefele.gridiron.model.TrainingDrillStatus.PASS]
+ * is set; [THEM] / [DISTRACTED] only when the gym episode ends.
+ */
 enum class AiTrainingOutcome {
     /** Focus lesson solved ([com.mhaefele.gridiron.model.TrainingDrillStatus.PASS]). */
     US,

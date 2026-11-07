@@ -1,4 +1,4 @@
-"""Coach-window scenario terminal (±0.5) + passing-move (+0.25) vs match W/L (±1)."""
+"""Scenario curriculum: PASS-edge +0.5, window-loss −0.5, passing-move +0.25."""
 
 from __future__ import annotations
 
@@ -28,12 +28,36 @@ def _reward(*, before: dict, after: dict, **terminal: object) -> float:
         result_kind=terminal.get("resultKind"),
         result_winner_rel=terminal.get("resultWinnerRel"),
         training_episode_ended=bool(terminal.get("trainingEpisodeEnded")),
-        training_outcome=terminal.get("trainingOutcome"),
+        training_outcome=terminal.get("trainingOutcome"),  # type: ignore[arg-type]
+        training_outcome_before=terminal.get("training_outcome_before"),  # type: ignore[arg-type]
         passing_legal_move=bool(terminal.get("passing_legal_move")),
     )
 
 
-def test_scenario_win_adds_half_terminal() -> None:
+def test_pass_edge_adds_half_without_episode_end() -> None:
+    before = _rewards()
+    after = _rewards()
+    assert _reward(
+        before=before,
+        after=after,
+        trainingOutcome="US",
+        training_outcome_before=None,
+    ) == SCENARIO_TERMINAL_WIN
+
+
+def test_pass_edge_not_double_counted_on_later_steps() -> None:
+    before = _rewards()
+    after = _rewards()
+    assert _reward(
+        before=before,
+        after=after,
+        trainingOutcome="US",
+        training_outcome_before="US",
+        trainingEpisodeEnded=True,
+    ) == 0.0
+
+
+def test_pass_edge_and_window_end_same_submit_credits_once() -> None:
     before = _rewards()
     after = _rewards()
     assert _reward(
@@ -41,6 +65,7 @@ def test_scenario_win_adds_half_terminal() -> None:
         after=after,
         trainingEpisodeEnded=True,
         trainingOutcome="US",
+        training_outcome_before=None,
     ) == SCENARIO_TERMINAL_WIN
 
 
@@ -76,13 +101,14 @@ def test_match_win_not_stacked_with_training_outcome() -> None:
         resultWinnerRel="US",
         trainingEpisodeEnded=False,
         trainingOutcome="US",
-    ) == 4.0 + TERMINAL_WIN
+        training_outcome_before=None,
+    ) == 4.0 + SCENARIO_TERMINAL_WIN + TERMINAL_WIN
 
 
-def test_no_scenario_terminal_without_coach_window_flag() -> None:
+def test_no_scenario_win_without_outcome_edge() -> None:
     before = _rewards()
     after = _rewards()
-    assert _reward(before=before, after=after, trainingOutcome="US") == 0.0
+    assert _reward(before=before, after=after, trainingOutcome="US", training_outcome_before="US") == 0.0
 
 
 def test_passing_legal_move_adds_bonus() -> None:
@@ -91,14 +117,14 @@ def test_passing_legal_move_adds_bonus() -> None:
     assert _reward(before=before, after=after, passing_legal_move=True) == SCENARIO_PASSING_MOVE_BONUS
 
 
-def test_passing_legal_stacks_with_coach_window_win() -> None:
+def test_passing_legal_stacks_with_pass_edge() -> None:
     before = _rewards()
     after = _rewards()
     assert _reward(
         before=before,
         after=after,
-        trainingEpisodeEnded=True,
         trainingOutcome="US",
+        training_outcome_before=None,
         passing_legal_move=True,
     ) == SCENARIO_PASSING_MOVE_BONUS + SCENARIO_TERMINAL_WIN
 

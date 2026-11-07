@@ -9,8 +9,9 @@ from the wire (submitter perspective after the move).
 
   1. **Score-margin change** — (our score − their score) after minus before.
   2. **Match-end bonus** — +1 win / 0 draw / −1 loss when the match just finished.
-  3. **Scenario coach-window terminal** — ±0.5 from ``trainingOutcome`` when
-     ``trainingEpisodeEnded`` (not stacked on real match W/L).
+  3. **Scenario curriculum** — +0.5 when ``trainingOutcome`` first becomes ``US``
+     (PASS graded; often mid coach-window). −0.5 when the window closes on ``THEM``.
+     ``DISTRACTED`` at end is 0. Not stacked on real match W/L.
   4. **Scenario passing-move bonus** — +0.25 when the submitted row was
      ``passingLegal`` (mid-episode, whether or not the drill has PASSed yet).
   5. **Profile shaping** ([RewardShaping]) — possession / approach / TD amp / defense
@@ -53,7 +54,8 @@ from gridiron_ai.api.harness_wire import (
 TERMINAL_WIN = 1.0
 TERMINAL_DRAW = 0.0
 TERMINAL_LOSS = -1.0
-# Coach-window drill grade — half match terminal so short episodes nudge without matching full-game stakes.
+# Curriculum drill grade — half match terminal so short episodes nudge without matching full-game stakes.
+# Win credits on the PASS edge (``trainingOutcome`` → US); loss stays at coach-window close.
 SCENARIO_TERMINAL_WIN = 0.5
 SCENARIO_TERMINAL_LOSS = -0.5
 # Per submitting a ``passingLegal`` row (pickup / lesson path) — not soft-mask distractors.
@@ -593,6 +595,7 @@ def step_reward(
         result_winner_rel: TeamRel | None = None,
         training_episode_ended: bool = False,
         training_outcome: TrainingOutcome | None = None,
+        training_outcome_before: TrainingOutcome | None = None,
         turn_start_score_us: int = 0,
         shaping: RewardShaping | None = None,
         scoring: AiScoringDeltaDict | None = None,
@@ -605,6 +608,7 @@ def step_reward(
     ``perspective_seat`` is the acting seat (absolute end-zone geometry + us/them scores).
     Board facts join via ``rewards.players`` / ``ballCoordinate``.
     ``passing_legal_move`` is True when the submitted harness row had ``passingLegal``.
+    ``training_outcome_before`` / ``training_outcome`` edge-detect PASS → +0.5 once.
     """
     shaping_cfg = shaping or RewardShaping()
     reward = score_margin(rewards_after) - score_margin(rewards_before)
@@ -619,6 +623,9 @@ def step_reward(
     )
     if passing_legal_move:
         reward += SCENARIO_PASSING_MOVE_BONUS
+    # PASS may land mid coach-window; credit here so chaff after the lesson is not the carrier.
+    if _is_us_winner_rel(training_outcome) and not _is_us_winner_rel(training_outcome_before):
+        reward += SCENARIO_TERMINAL_WIN
     if result_kind is not None:
         if _is_us_winner_rel(result_winner_rel):
             reward += TERMINAL_WIN
@@ -629,7 +636,7 @@ def step_reward(
         return float(reward)
     if training_episode_ended:
         if _is_us_winner_rel(training_outcome):
-            reward += SCENARIO_TERMINAL_WIN
+            pass  # +0.5 already applied on the PASS edge (possibly this same submit)
         elif _is_them_winner_rel(training_outcome):
             reward += SCENARIO_TERMINAL_LOSS
         elif not _is_distracted_training_outcome(training_outcome):

@@ -27,6 +27,22 @@ class TrainingEpisodeEndDistractedTest {
     }
 
     @Test
+    fun `PASS maps to US while coach window is still open`() {
+        val state = scenarioState(drillStatus = TrainingDrillStatus.PASS)
+            .withTurnNumber(ChallengeClaimTableau.OPENING_TURN)
+        assertThat(TrainingEpisodeEnd.trainingEpisodeEnded(state)).isFalse()
+        assertThat(TrainingEpisodeEnd.trainingOutcome(state)).isEqualTo(AiTrainingOutcome.US)
+    }
+
+    @Test
+    fun `STILL_IN_PROGRESS stays null until window closes`() {
+        val open = scenarioState(drillStatus = TrainingDrillStatus.STILL_IN_PROGRESS)
+            .withTurnNumber(ChallengeClaimTableau.OPENING_TURN)
+        assertThat(TrainingEpisodeEnd.trainingOutcome(open)).isNull()
+        assertThat(TrainingEpisodeEnd.trainingEpisodeEnded(open)).isFalse()
+    }
+
+    @Test
     fun `opening turn score gain at least focus points grades DISTRACTED`() {
         val focusPoints = ChallengeClaimCondition.PUSH_FORWARD.points
         val before = scenarioState(

@@ -29,7 +29,9 @@ class TrainingEpisodeEndApiTest : BaseApiTest() {
             assertThat(opening.harness.trainingOutcome).isNull()
 
             val passing = opening.harness.legalRows.first { it.passingLegal }
-            api.aiSubmit(created.matchId, passing.action.id, forSeat = TeamSide.HOME)
+            val afterPass = api.aiSubmit(created.matchId, passing.action.id, forSeat = TeamSide.HOME)
+            // PASS grades immediately; gym episode may still be live for the rest of the coach turn.
+            assertThat(afterPass.next.harness.trainingOutcome).isEqualTo(AiTrainingOutcome.US)
 
             // Coach window is one turn at difficulty 0 — keep acting until the server ends the episode.
             var guard = 0
@@ -37,16 +39,20 @@ class TrainingEpisodeEndApiTest : BaseApiTest() {
                 val step = api.aiStep(created.matchId, forSeat = TeamSide.HOME)
                 if (step.isEpisodeEnded()) {
                     assertThat(step.harness.legalRows).isEmpty()
+                    assertThat(step.harness.trainingEpisodeEnded).isTrue()
                     assertThat(step.harness.trainingOutcome).isEqualTo(AiTrainingOutcome.US)
                     return@withRandomDiceRetries
                 }
+                assertThat(step.harness.trainingOutcome).isEqualTo(AiTrainingOutcome.US)
                 val pick = step.harness.legalRows.first().action.id
                 val result = api.aiSubmit(created.matchId, pick, forSeat = TeamSide.HOME)
                 if (result.next.isEpisodeEnded()) {
                     assertThat(result.next.harness.legalRows).isEmpty()
+                    assertThat(result.next.harness.trainingEpisodeEnded).isTrue()
                     assertThat(result.next.harness.trainingOutcome).isEqualTo(AiTrainingOutcome.US)
                     return@withRandomDiceRetries
                 }
+                assertThat(result.next.harness.trainingOutcome).isEqualTo(AiTrainingOutcome.US)
             }
             error("training episode did not end within $guard submits")
         }

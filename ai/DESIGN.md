@@ -77,7 +77,7 @@ Computed in the harness from game-state scores / result — no `AiRewardDto`. Ph
 |--------|-----|
 | Terminal W/L/D | Primary terminal reward (`resultKind` / `resultWinnerRel`) |
 | Point differential | Dense Δ`(scoreUs − scoreThem)` |
-| Scenario coach-window | Small ± from `trainingOutcome` when `trainingEpisodeEnded` (not stacked on match W/L) |
+| Scenario curriculum | +0.5 on `trainingOutcome`→US (PASS edge); −0.5 on ended+THEM (not stacked on match W/L) |
 | Profile shaping | `general` / `spread` / `td` / `defense` — train only; eval off |
 | Marked scenario move | Soft-mask only (`preferred_legal`); drill grade also feeds curriculum/winrate |
 

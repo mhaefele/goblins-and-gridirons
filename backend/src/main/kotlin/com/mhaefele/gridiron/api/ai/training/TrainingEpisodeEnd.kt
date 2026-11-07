@@ -15,9 +15,16 @@ object TrainingEpisodeEnd {
     fun trainingEpisodeEnded(state: MatchState): Boolean =
         state.trainingEpisode != null && !state.isGameEnded() && isCoachWindowExceeded(state)
 
-    /** Set when the gym episode is over (curriculum PASS/DISTRACTED/THEM or match ended). */
+    /**
+     * Curriculum grade on the harness.
+     *
+     * - [AiTrainingOutcome.US] as soon as [TrainingDrillStatus.PASS] (mid-window OK — PPO credits
+     *   +0.5 on that edge, not on leftover chaff at window close).
+     * - [AiTrainingOutcome.THEM] / [AiTrainingOutcome.DISTRACTED] only once the gym episode is over.
+     */
     fun trainingOutcome(state: MatchState): AiTrainingOutcome? {
         val episode = state.trainingEpisode ?: return null
+        if (episode.drillStatus == TrainingDrillStatus.PASS) return AiTrainingOutcome.US
         if (!state.isGameEnded() && !isCoachWindowExceeded(state)) return null
         return when (episode.drillStatus) {
             TrainingDrillStatus.PASS              -> AiTrainingOutcome.US

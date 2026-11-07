@@ -494,13 +494,16 @@ class GridironEnv(gym.Env):
             passing_legal_move = row < len(passing) and passing[row]
         except ValueError:
             pass
+        training_outcome_before = self._current_step_dto.get("trainingOutcome")
+        training_outcome = terminal.get("trainingOutcome")
         reward = step_reward(
             rewards_before=observation_before_move,
             rewards_after=after_obs,
             result_kind=terminal.get("resultKind"),
             result_winner_rel=terminal.get("resultWinnerRel"),
             training_episode_ended=bool(terminal.get("trainingEpisodeEnded")),
-            training_outcome=terminal.get("trainingOutcome"),
+            training_outcome=training_outcome,
+            training_outcome_before=training_outcome_before,
             turn_start_score_us=self._turn_start_score_us,
             shaping=self.reward_shaping,
             scoring=scoring,
@@ -508,14 +511,15 @@ class GridironEnv(gym.Env):
             perspective_seat=self._perspective_seat,
             passing_legal_move=passing_legal_move,
         )
-        # Train-only (--verbose): raw step reward that enters the rollout buffer
-        # (VecNormalize may rescale later). Quiet by default — PASS rate can flood stdout.
+        # Train-only (--verbose): raw step reward on the PASS edge (not window-close chaff).
+        drill_just_passed = (
+            training_outcome == TrainingOutcome.US and training_outcome_before != TrainingOutcome.US
+        )
         if (
             self.verbose
             and self.scenario is not None
             and self.episode_mode == EpisodeMode.TRAIN
-            and bool(terminal.get("trainingEpisodeEnded"))
-            and terminal.get("trainingOutcome") == TrainingOutcome.US
+            and drill_just_passed
         ):
             print(
                 f"[gridiron] drill PASS → PPO reward={reward:+.3f} "
@@ -618,12 +622,11 @@ class GridironEnv(gym.Env):
         obs = self._harness_rewards(state)
         result_kind = state.get("resultKind")
         result_winner_rel = state.get("resultWinnerRel")
-        # Server drill grade — curriculum/winrate; reward.py also uses it on coach-window end.
+        # Server drill grade — winrate only once the coach window closes (US may appear earlier).
         training_outcome = state.get("trainingOutcome")
-        if training_outcome is not None:
+        if state.get("trainingEpisodeEnded") and training_outcome is not None:
             result_winner_rel = training_outcome_winner_rel(training_outcome)
-            if state.get("trainingEpisodeEnded"):
-                result_kind = _SCENARIO_RESULT_KIND
+            result_kind = _SCENARIO_RESULT_KIND
         summary = self._action_stats.episode_summary(
             turns=int(obs["turnNumber"]),
             truncated=truncated,
