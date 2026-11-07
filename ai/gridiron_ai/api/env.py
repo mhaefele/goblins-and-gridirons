@@ -162,6 +162,9 @@ class GridironEnv(gym.Env):
         self._action_stats = EpisodeActionStats()
         self._pending_episode_summary: dict[str, Any] | None = None
         self._pending_submit_error: dict[str, Any] | None = None
+        # Train --verbose only: feed for ``ppo_update_evidence`` (opening menu + played path).
+        self._episode_opening_snapshot: dict[str, Any] | None = None
+        self._episode_move_sequence: list[dict[str, Any]] = []
         self._turn_start_score_us = 0
         self._tracked_turn_number = 0
         self._sampled_turn_starts: set[int] = set()
@@ -266,6 +269,32 @@ class GridironEnv(gym.Env):
 
             row_i = int(np.asarray(chosen_row_index, dtype=np.int64).reshape(-1)[0])
             policy_obs = self._build_observation()
+            # Train --verbose: freeze opening for PPO chosen-mass before→after (joined at episode end).
+            if (
+                self.verbose
+                and self.scenario is not None
+                and self.episode_mode == EpisodeMode.TRAIN
+                and self._episode_steps == 0
+            ):
+                from gridiron_ai.eval_opening_diag import snapshot_opening_mispick
+
+                opening_rewards = self._harness_rewards(self._current_step_dto)
+                self._episode_opening_snapshot = snapshot_opening_mispick(
+                    rewards=opening_rewards,
+                    policy_obs=policy_obs,
+                    legal_moves=np.asarray(self._legal_moves, dtype=np.int64),
+                    passing_legal=self._passing_legal,
+                    soft_mask_legal=self._server_soft_mask_legal,
+                    legal_row_meta=self._legal_row_meta,
+                    chosen_row_index=row_i,
+                    chosen_label=ScenarioEvalDebug.format_action(
+                        resolved.legal_choice,
+                        rewards=opening_rewards,
+                        expected_move=bool(
+                            row_i < len(self._passing_legal) and self._passing_legal[row_i]
+                        ),
+                    ),
+                )
             reward, submit_error = self._submit_resolved_action(
                 resolved,
                 chosen_row_index=row_i,
@@ -435,6 +464,8 @@ class GridironEnv(gym.Env):
         self._match_released = False
         self._episode_steps = 0
         self._action_stats.reset()
+        self._episode_opening_snapshot = None
+        self._episode_move_sequence = []
         self._turn_start_score_us = 0
         self._tracked_turn_number = 0
         self._sampled_turn_starts = set()
@@ -496,6 +527,14 @@ class GridironEnv(gym.Env):
             pass
         training_outcome_before = self._current_step_dto.get("trainingOutcome")
         training_outcome = terminal.get("trainingOutcome")
+        # First TRAIN scenario submit: slap non-passing when a passing row was on the menu.
+        scenario_opening_non_passing = (
+            self.scenario is not None
+            and self.episode_mode == EpisodeMode.TRAIN
+            and self._episode_steps == 1
+            and not passing_legal_move
+            and any(passing)
+        )
         reward = step_reward(
             rewards_before=observation_before_move,
             rewards_after=after_obs,
@@ -510,26 +549,31 @@ class GridironEnv(gym.Env):
             legal_choice=resolved.legal_choice,
             perspective_seat=self._perspective_seat,
             passing_legal_move=passing_legal_move,
+            scenario_opening_non_passing=scenario_opening_non_passing,
         )
-        # Train-only (--verbose): raw step reward on the PASS edge (not window-close chaff).
-        drill_just_passed = (
-            training_outcome == TrainingOutcome.US and training_outcome_before != TrainingOutcome.US
-        )
-        if (
-            self.verbose
-            and self.scenario is not None
-            and self.episode_mode == EpisodeMode.TRAIN
-            and drill_just_passed
-        ):
-            print(
-                f"[gridiron] drill PASS → PPO reward={reward:+.3f} "
-                f"{self.scenario} d{self.scenario_difficulty} "
-                f"td={int(after_obs['touchdownsUs'])} kind={resolved.sampled_kind} "
-                f"match={self.match_id}",
-                flush=True,
+        scored_td = int(after_obs["touchdownsUs"]) > int(observation_before_move["touchdownsUs"])
+        # Train --verbose: played path + PASS-edge tag for PPO evidence (not window close).
+        if self.verbose and self.scenario is not None and self.episode_mode == EpisodeMode.TRAIN:
+            move_label = ScenarioEvalDebug.format_action(
+                resolved.legal_choice,
+                rewards=observation_before_move,
+                expected_move=passing_legal_move,
+                scored_touchdown=scored_td,
+            )
+            pass_edge = (
+                training_outcome == TrainingOutcome.US
+                and training_outcome_before != TrainingOutcome.US
+            )
+            self._episode_move_sequence.append(
+                {
+                    "label": move_label,
+                    "passing": bool(passing_legal_move),
+                    "reward": float(reward),
+                    "scored_td": bool(scored_td),
+                    "pass_edge": bool(pass_edge),
+                }
             )
         if self._scenario_eval_debug is not None:
-            scored_td = int(after_obs["touchdownsUs"]) > int(observation_before_move["touchdownsUs"])
             acquired_card = int(scoring["challengeCardsUs"]) > 0
             self._scenario_eval_debug.maybe_record_action(
                 turn_number=int(observation_before_move["turnNumber"]),
@@ -645,6 +689,13 @@ class GridironEnv(gym.Env):
             summary["scenario_difficulty"] = self.scenario_difficulty
             if self._action_stats.first_kind is not None:
                 summary["first_kind"] = self._action_stats.first_kind
+            # Verbose train only — join opening + played path to US/fail for PPO mass evidence.
+            if self._episode_opening_snapshot is not None:
+                summary["opening_snapshot"] = self._episode_opening_snapshot
+                self._episode_opening_snapshot = None
+            if self._episode_move_sequence:
+                summary["move_sequence"] = list(self._episode_move_sequence)
+                self._episode_move_sequence = []
         if self._scenario_eval_debug is not None:
             summary.update(self._scenario_eval_debug.episode_fields())
             snapshot = self._scenario_eval_debug.opening_decision_snapshot()

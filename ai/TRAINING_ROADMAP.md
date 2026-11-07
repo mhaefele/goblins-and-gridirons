@@ -29,7 +29,8 @@ Shell chain: `dump → pack → seed → scenario_a → scenario_b → checkpoin
 Drill US/THEM still grades curriculum/winrate (counted at window close). Soft-mask still
 owns **sampling** tilt ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference)).
 
-Train also: **VecNormalize** reward normalization (obs not normalized).
+Train also: **VecNormalize** reward normalization on **full-game** segments (obs not normalized).
+Scenario train keeps **raw** rewards (`norm_reward=False`; return stats frozen) — see [`PPO_LEARNING_DEBUG.md`](PPO_LEARNING_DEBUG.md).
 
 PPO knobs: see [PPO vs SB3 stock](#ppo-vs-sb3-stock) below — join-score era uses stock
 `lr` / `n_epochs` / `clip_range` / `target_kl`; only `ent_coef` is intentionally raised.
@@ -217,7 +218,7 @@ Standing record of MaskablePPO hyperparameters vs Stable-Baselines3 defaults.
 | `n_steps` × `n_envs` | `2048` × 1 | `128` × `30` (=3840) | **Intentional** — parallel HTTP envs; same order of rollout size. |
 | `batch_size` | `64` | `256` | **Intentional** — matches multi-env rollout chunks. |
 | `gamma` / `gae_lambda` | `0.99` / `0.95` | stock | Unchanged. |
-| VecNormalize rewards | off | on (train) | **Intentional** — coach-window + shaping scale; obs not normalized. |
+| VecNormalize rewards | off | on (full-game train); **off** on scenario train | **Intentional** — games need calm scale; drills need loud sparse ± (see `PPO_LEARNING_DEBUG.md`). |
 | `device` | cuda if present | `cpu` | **Intentional** for this harness (see README). |
 
 Apply on create **and** resume via `_set_learning_rate` / `_set_ent_coef` / `_set_vf_coef` /
@@ -237,10 +238,11 @@ Apply on create **and** resume via `_set_learning_rate` / `_set_ent_coef` / `_se
 | `n_envs` / `n_steps` / `batch_size` | `train_self_play` — 30 / 128 / 256 | See [PPO vs SB3 stock](#ppo-vs-sb3-stock) |
 | `learning_rate` / `n_epochs` / `clip_range` / `target_kl` | stock SB3 | See table above |
 | `ent_coef` `0.005` / `vf_coef` `0.5` | shared all profiles | Create **and** resume; no profile overrides |
-| VecNormalize `norm_reward` | train segments; `{stem}_vecnormalize.pkl` | Obs not normalized |
+| VecNormalize `norm_reward` | full-game train only; `{stem}_vecnormalize.pkl` | Scenario train: raw rewards, stats frozen / not saved |
 | Soft-mask bias `2.5` | `constants.SOFT_MASK_LOGIT_BIAS` | Train rollouts on; eval/gates off unless `--eval-episode-mode TRAIN` — [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference) |
 | Scenario PASS +0.5 / window loss −0.5 | `reward.SCENARIO_TERMINAL_*` | +0.5 on `trainingOutcome` → US edge; −0.5 on ended+THEM |
 | Scenario passing-move +0.25 | `reward.SCENARIO_PASSING_MOVE_BONUS` | When submitted row was `passingLegal`; mid-episode OK |
+| Scenario opening non-passing −1.0 | `reward.SCENARIO_OPENING_NON_PASSING_PENALTY` | First TRAIN scenario submit when a passing row was available and they took something else |
 | Claim unlock board d4 | `scenario_curriculum.CLAIM_UNLOCK_BOARD_DIFFICULTY` | scenario_a → scenario_b |
 | Full-game unlock d5 | `scenario_curriculum.FULL_GAME_UNLOCK_DIFFICULTY` | After all drills mastered |
 | Gate-fail double run | `scenario_curriculum.SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER` | 2× when gating drill has current-difficulty `gate_fails` > 0 below d5; optional drills never multiply; d5 fails excluded |

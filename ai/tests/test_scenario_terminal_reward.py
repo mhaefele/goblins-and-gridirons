@@ -1,8 +1,9 @@
-"""Scenario curriculum: PASS-edge +0.5, window-loss −0.5, passing-move +0.25."""
+"""Scenario curriculum: PASS-edge +0.5, window-loss −0.5, passing-move +0.25, opening mispick −1."""
 
 from __future__ import annotations
 
 from gridiron_ai.reward import (
+    SCENARIO_OPENING_NON_PASSING_PENALTY,
     SCENARIO_PASSING_MOVE_BONUS,
     SCENARIO_TERMINAL_LOSS,
     SCENARIO_TERMINAL_WIN,
@@ -31,6 +32,7 @@ def _reward(*, before: dict, after: dict, **terminal: object) -> float:
         training_outcome=terminal.get("trainingOutcome"),  # type: ignore[arg-type]
         training_outcome_before=terminal.get("training_outcome_before"),  # type: ignore[arg-type]
         passing_legal_move=bool(terminal.get("passing_legal_move")),
+        scenario_opening_non_passing=bool(terminal.get("scenario_opening_non_passing")),
     )
 
 
@@ -133,3 +135,27 @@ def test_non_passing_move_gets_no_bonus() -> None:
     before = _rewards()
     after = _rewards()
     assert _reward(before=before, after=after, passing_legal_move=False) == 0.0
+
+
+def test_scenario_opening_non_passing_penalty() -> None:
+    before = _rewards()
+    after = _rewards()
+    assert (
+        _reward(before=before, after=after, scenario_opening_non_passing=True)
+        == -SCENARIO_OPENING_NON_PASSING_PENALTY
+    )
+
+
+def test_opening_non_passing_stacks_with_window_loss() -> None:
+    before = _rewards()
+    after = _rewards()
+    assert (
+        _reward(
+            before=before,
+            after=after,
+            trainingEpisodeEnded=True,
+            trainingOutcome="THEM",
+            scenario_opening_non_passing=True,
+        )
+        == -SCENARIO_OPENING_NON_PASSING_PENALTY + SCENARIO_TERMINAL_LOSS
+    )

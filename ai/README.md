@@ -93,7 +93,8 @@ Cycle / PPO / curriculum defaults: [TRAINING_ROADMAP.md](TRAINING_ROADMAP.md#cur
 .venv/bin/tensorboard --logdir output/runs
 ```
 
-Logs per profile under `output/runs/{profile}/`. Metric keys: see `metrics.py` / `tb_callback.py`.
+Logs per profile under `output/runs/{profile}/`. Metric keys: see `metrics.py` / `tb_callback.py`.  
+Stuck scenario learning / `--verbose` evidence: [`PPO_LEARNING_DEBUG.md`](PPO_LEARNING_DEBUG.md).
 
 ## Checkpoints
 

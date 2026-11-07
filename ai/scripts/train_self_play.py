@@ -137,7 +137,8 @@ from gridiron_ai.scenario_curriculum import (
     train_timesteps_for_scenario,
 )
 from gridiron_ai.api.scenarios import refresh_catalog, require_catalog, resolve_scenario_pin
-from gridiron_ai.tb_callback import GridironMetricsCallback, PeriodicFinalSaveCallback, PpoUpdateEvidenceCallback
+from gridiron_ai.ppo_update_evidence import PpoUpdateEvidenceCallback
+from gridiron_ai.tb_callback import GridironMetricsCallback, PeriodicFinalSaveCallback
 from gridiron_ai.training_phases import (
     EVAL_PHASE_CHOICES,
     PhaseName,
@@ -683,7 +684,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval-onnx", type=int, default=DEFAULT_EVAL_ONNX, help=f"Deterministic eval games per ONNX profile ({', '.join(FULL_GAME_ONNX_OPPONENT_PROFILES)}; same cadence as heuristic/lookahead; 0 = skip)")
     p.add_argument("--eval-only", action="store_true", help="Skip all train; eval pass without eval JSON (eval.sh sets this)")
     p.add_argument("--eval-episode-mode", choices=("EVAL", "TRAIN"), default="EVAL", help="Scenario/full-game eval: EVAL=unaided (soft-mask bias off); TRAIN=soft-mask logit bias on (+ claim reachability soft-mask search)")
-    p.add_argument("--verbose", action="store_true", help="Scenario eval opening-mispick policy_diag on THEM games; also drill PASS reward + PPO update evidence (approx_kl / Δθ / PASS-step advantages)")
+    p.add_argument("--verbose", action="store_true", help="Scenario eval opening-mispick policy_diag on THEM games; also PPO update evidence (‖θ‖/approx_kl, PASS-edge adv, opening Δp_chosen US vs fail with played paths)")
     p.add_argument("--super-verbose", action="store_true", help="Implies --verbose; also dumps the full ranked legal menu (idx + probs) on THEM opening mispicks")
     p.add_argument("--phase", choices=EVAL_PHASE_CHOICES, default=None, help="Eval-only: load the zip that phase produced (seed / scenario_a / scenario_b); read-only; one pass")
     p.add_argument("--scenario", default=None, help="One drill only — skips full-game train/eval (default: cycle all from server)")
@@ -822,19 +823,34 @@ def _vecnormalize_path(save_stem: Path) -> Path:
     return Path(str(save_stem) + _VECNORMALIZE_SUFFIX)
 
 
-def _wrap_vecnormalize(env: SubprocVecEnv, save_stem: Path, *, training: bool) -> VecNormalize:
-    """Reward-normalize rollouts; reload running stats from the checkpoint sidecar when present."""
+def _wrap_vecnormalize(
+    env: SubprocVecEnv,
+    save_stem: Path,
+    *,
+    training: bool,
+    norm_reward: bool | None = None,
+) -> VecNormalize:
+    """Wrap rollouts; reload running stats from the checkpoint sidecar when present.
+
+    ``norm_reward=None`` follows ``training`` (full-game default). Scenario segments pass
+    ``norm_reward=False`` so drills keep raw ±; SB3 still updates ``ret_rms`` whenever
+    ``training=True``, so we freeze stats (``training=False`` on the wrapper) whenever
+    reward norm is off — otherwise short +4.75/−0.5 spikes poison the shared game pickle.
+    """
+    reward_norm = training if norm_reward is None else bool(norm_reward)
+    # Update ret_rms only while actually normalizing rewards for this segment.
+    update_stats = bool(training and reward_norm)
     stats_path = _vecnormalize_path(save_stem)
     if stats_path.is_file():
         wrapped = VecNormalize.load(str(stats_path), env)
-        wrapped.training = training
-        wrapped.norm_reward = training
+        wrapped.training = update_stats
+        wrapped.norm_reward = reward_norm
         return wrapped
     return VecNormalize(
         env,
-        training=training,
+        training=update_stats,
         norm_obs=False,
-        norm_reward=training,
+        norm_reward=reward_norm,
         clip_reward=10.0,
         gamma=0.99,
     )
@@ -1069,7 +1085,13 @@ def _train_segment(
         verbose=bool(args.verbose),
     )
     clk.lap("configure workers", indent=lap_indent)
-    env = _wrap_vecnormalize(pool.vec_env(DEFAULT_N_ENVS), save_stem, training=True)
+    # Scenarios: raw rewards (see PPO_LEARNING_DEBUG.md). Full-game: keep reward norm.
+    env = _wrap_vecnormalize(
+        pool.vec_env(DEFAULT_N_ENVS),
+        save_stem,
+        training=True,
+        norm_reward=scenario is None,
+    )
     clk.lap("vecnormalize load", indent=lap_indent)
     model.set_env(env)
     _require_batch_divides_rollout(int(model.n_steps), DEFAULT_N_ENVS, int(model.batch_size))
@@ -1101,8 +1123,10 @@ def _train_segment(
         _release_segment_env(env, pool)
         raise SystemExit(1) from None
     clk.lap("learn", indent=lap_indent)
-    _save_vecnormalize(env, save_stem)
-    clk.lap("vecnormalize save", indent=lap_indent)
+    # Only persist return stats from segments that updated them (full-game).
+    if scenario is None:
+        _save_vecnormalize(env, save_stem)
+        clk.lap("vecnormalize save", indent=lap_indent)
     atomic_model_save(model, save_stem)
     _save_step_checkpoint(model, save_dir, name_prefix=name_prefix, timesteps=timesteps)
     clk.lap("checkpoint save", indent=lap_indent)

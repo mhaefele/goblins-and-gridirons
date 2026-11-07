@@ -14,7 +14,9 @@ from the wire (submitter perspective after the move).
      ``DISTRACTED`` at end is 0. Not stacked on real match W/L.
   4. **Scenario passing-move bonus** — +0.25 when the submitted row was
      ``passingLegal`` (mid-episode, whether or not the drill has PASSed yet).
-  5. **Profile shaping** ([RewardShaping]) — possession / approach / TD amp / defense
+  5. **Scenario opening mispick** — −1.0 on the **first** submit when a ``passingLegal``
+     row was available and the chosen row was not (TRAIN scenarios only; env-gated).
+  6. **Profile shaping** ([RewardShaping]) — possession / approach / TD amp / defense
      targeting / covering-radius spread / etc. (see presets below).
 
 Scenario episodes use this same stack. ``passingLegal`` marks PASS-grade curriculum moves
@@ -60,6 +62,8 @@ SCENARIO_TERMINAL_WIN = 0.5
 SCENARIO_TERMINAL_LOSS = -0.5
 # Per submitting a ``passingLegal`` row (pickup / lesson path) — not soft-mask distractors.
 SCENARIO_PASSING_MOVE_BONUS = 0.25
+# First submit when a passing row was on the menu and they took something else (env gates opening).
+SCENARIO_OPENING_NON_PASSING_PENALTY = 1.0
 
 RewardProfileName = Literal["baseline", "general", "spread", "td", "defense"]
 AllProfilesPurpose = Literal["train", "eval", "summary"]
@@ -602,12 +606,15 @@ def step_reward(
         legal_choice: LegalActionDict | None = None,
         perspective_seat: TeamSide = TeamSide.HOME,
         passing_legal_move: bool = False,
+        scenario_opening_non_passing: bool = False,
 ) -> float:
     """Reward for the seat that just moved.
 
     ``perspective_seat`` is the acting seat (absolute end-zone geometry + us/them scores).
     Board facts join via ``rewards.players`` / ``ballCoordinate``.
     ``passing_legal_move`` is True when the submitted harness row had ``passingLegal``.
+    ``scenario_opening_non_passing`` is env-gated (first TRAIN scenario step, passing
+    available, non-passing chosen) → −[SCENARIO_OPENING_NON_PASSING_PENALTY].
     ``training_outcome_before`` / ``training_outcome`` edge-detect PASS → +0.5 once.
     """
     shaping_cfg = shaping or RewardShaping()
@@ -623,6 +630,8 @@ def step_reward(
     )
     if passing_legal_move:
         reward += SCENARIO_PASSING_MOVE_BONUS
+    if scenario_opening_non_passing:
+        reward -= SCENARIO_OPENING_NON_PASSING_PENALTY
     # PASS may land mid coach-window; credit here so chaff after the lesson is not the carrier.
     if _is_us_winner_rel(training_outcome) and not _is_us_winner_rel(training_outcome_before):
         reward += SCENARIO_TERMINAL_WIN

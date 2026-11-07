@@ -33,6 +33,7 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 | Harness wire TypedDicts / closed wire enums | `gridiron_ai/api/harness_wire.py` | Mirror scenario catalog membership |
 | Reward margin / terminal / profile shaping / scenario coach-window ± | `gridiron_ai/reward.py` (LegalAction + `rewards.players` / `ballCoordinate`) | Per-move expected-move slap/bonus (soft-mask owns that); packed-row business logic |
 | Episode metrics / TB aggregates / eval·learn stdout lines | `gridiron_ai/metrics.py`, `tb_callback.py` (opening bits → `eval_opening_diag`) | Re-format winrate/opening deltas in `train_self_play` |
+| Verbose PPO update evidence (Passed/Failed / buf adv) | `gridiron_ai/ppo_update_evidence.py` (sidecar; `--verbose` only) | Stuff evidence into `tb_callback` / core train loop |
 | **Drill board / expected moves / coach window** | Kotlin `api/ai/training/**` + `TrainingScenarioEnum`; semantics in [`backend/TRAINING_SCENARIOS.md`](../backend/TRAINING_SCENARIOS.md) | Script boards in Python |
 | Scenario catalog (name / family / difficultyProxy) | Kotlin `GET /api/ai/training/scenarios` → cached `output/scenario_catalog.json` via `api/scenarios.py` + `persistence/scenario_catalog.py` | Hard-code name lists in Python or frontend |
 | Difficulty / gate-failure / drill-stats / last-eval JSON | `gridiron_ai/persistence/` (I/O); curriculum *policy* in `scenario_curriculum.py` | — |
@@ -92,6 +93,7 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `pipeline_state.py` | Pipeline types + rewind; load/save via `persistence/pipeline` |
 | `scenario_training.py` | Pointer: grading is Kotlin |
 | `metrics.py` / `tb_callback.py` | Episode aggregates / TensorBoard / metrics·success·learn lines; kind totals I/O via `persistence/kind_totals` |
+| `ppo_update_evidence.py` | `--verbose` Passed/Failed drill blocks + PASS-edge buffer; see [`PPO_LEARNING_DEBUG.md`](PPO_LEARNING_DEBUG.md) |
 | `eval_opening_diag.py` | Opening join-score aggregates + ``expected_p``/rank format (+ prior deltas) |
 | `eval_debug.py` | Throwaway per-episode turn1 / expected-move logging |
 | `paths.py` | `output/` roots |
