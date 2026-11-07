@@ -6,11 +6,22 @@ import com.mhaefele.gridiron.model.MatchState
 import com.mhaefele.gridiron.model.TrainingDrillStatus
 import com.mhaefele.gridiron.model.TrainingScenarioEnum
 import com.mhaefele.gridiron.shared.TeamSide
+import com.mhaefele.gridiron.shared.TrainingEpisodeMode
 import org.springframework.stereotype.Component
 
 /**
- * Soft-mask / expected: no ball → pickup; has ball → carrier EZ run.
- * PASS only on a Run touchdown — pickup and non-Run TDs must not grade PASS.
+ * Soft-mask and PASS diverge on the **first** opening select (no ball yet), **TRAIN only**:
+ *
+ * - **PASS / expected** (`passingLegal`): pickup only — Python opening stats / expected rank use this.
+ * - **Soft-mask** (`softMaskLegal`, TRAIN): pickup **plus every** empty-handed run that ends in the
+ *   scoring end zone. EVAL episode mode: soft-mask == PASS (no empty-EZ distractors).
+ *
+ * Why: shared policy + TD_RUN make “run toward endzone_y” hot. Soft-masking pickup alone means
+ * train barely samples empty-EZ dashes, so PPO never sees no-+4 / loss on that failure mode.
+ * Soft-mask is a sampling tilt only — empty-EZ rows stay off `passingLegal`, and [drillStatus]
+ * still PASSes only on a Run touchdown (pickup / empty dash never PASS).
+ *
+ * After pickup: soft-mask == PASS == carrier EZ run.
  */
 @Component
 class LooseBallRunTrainingScenario : AbstractLooseBallTrainingScenario(contested = false) {
@@ -24,12 +35,20 @@ class LooseBallRunTrainingScenario : AbstractLooseBallTrainingScenario(contested
         ) { "LOOSE_BALL_RUN: no legal trainer run picks up the loose ball" }
     }
 
-    override fun isSoftMaskScenarioMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
-        isLessonRun(action, state, trainerSide)
+    override fun isSoftMaskScenarioMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
+        if (isLessonRun(action, state, trainerSide)) return true
+        // Empty-EZ distractors: TRAIN rollouts only (eval/gates keep soft-mask == lesson).
+        if (state.trainingEpisode?.episodeMode != TrainingEpisodeMode.TRAIN) return false
+        // First budgeted select only — force train to try empty-EZ dashes (not wins).
+        if (state.currentTurnState.actionsThisTurn.isNotEmpty()) return false
+        return isEmptyHandedEndZoneRun(action, state, trainerSide)
+    }
 
+    /** Expected / winrate path — never empty-EZ soft-mask distractors. */
     override fun isPassingScenarioMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean =
         isLessonRun(action, state, trainerSide)
 
+    /** Run TD only — empty-EZ soft-mask trials and pickup itself do not PASS. */
     override fun drillStatus(before: MatchState, after: MatchState, action: LegalAction): TrainingDrillStatus =
         drillStatusForTouchdownByRun(before, after, action) ?: TrainingDrillStatus.STILL_IN_PROGRESS
 
@@ -41,5 +60,12 @@ class LooseBallRunTrainingScenario : AbstractLooseBallTrainingScenario(contested
         } else {
             action.playerId == carrier.id && state.board.squareAt(action.path.squares.last()).isEndZone(trainerSide.opposite())
         }
+    }
+
+    /** Trainer run into scoring EZ that is not a pickup (empty-handed dash). */
+    private fun isEmptyHandedEndZoneRun(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
+        if (action !is LegalAction.Run || state.board.players[action.playerId]?.team != trainerSide) return false
+        if (action.ballEncounter == BallEncounter.PICK_UP) return false
+        return state.board.squareAt(action.path.squares.last()).isEndZone(trainerSide.opposite())
     }
 }

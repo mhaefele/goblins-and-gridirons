@@ -1,8 +1,9 @@
-"""Coach-window scenario terminal (±0.5) vs match W/L (±1)."""
+"""Coach-window scenario terminal (±0.5) + passing-move (+0.25) vs match W/L (±1)."""
 
 from __future__ import annotations
 
 from gridiron_ai.reward import (
+    SCENARIO_PASSING_MOVE_BONUS,
     SCENARIO_TERMINAL_LOSS,
     SCENARIO_TERMINAL_WIN,
     TERMINAL_WIN,
@@ -28,6 +29,7 @@ def _reward(*, before: dict, after: dict, **terminal: object) -> float:
         result_winner_rel=terminal.get("resultWinnerRel"),
         training_episode_ended=bool(terminal.get("trainingEpisodeEnded")),
         training_outcome=terminal.get("trainingOutcome"),
+        passing_legal_move=bool(terminal.get("passing_legal_move")),
     )
 
 
@@ -81,3 +83,27 @@ def test_no_scenario_terminal_without_coach_window_flag() -> None:
     before = _rewards()
     after = _rewards()
     assert _reward(before=before, after=after, trainingOutcome="US") == 0.0
+
+
+def test_passing_legal_move_adds_bonus() -> None:
+    before = _rewards()
+    after = _rewards()
+    assert _reward(before=before, after=after, passing_legal_move=True) == SCENARIO_PASSING_MOVE_BONUS
+
+
+def test_passing_legal_stacks_with_coach_window_win() -> None:
+    before = _rewards()
+    after = _rewards()
+    assert _reward(
+        before=before,
+        after=after,
+        trainingEpisodeEnded=True,
+        trainingOutcome="US",
+        passing_legal_move=True,
+    ) == SCENARIO_PASSING_MOVE_BONUS + SCENARIO_TERMINAL_WIN
+
+
+def test_non_passing_move_gets_no_bonus() -> None:
+    before = _rewards()
+    after = _rewards()
+    assert _reward(before=before, after=after, passing_legal_move=False) == 0.0

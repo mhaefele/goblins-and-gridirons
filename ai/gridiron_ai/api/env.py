@@ -487,6 +487,13 @@ class GridironEnv(gym.Env):
         terminal = submit_terminal_meta(result)
         scoring = submit_scoring(result)
         self._action_stats.record_ball_gain(observation_before_move, after_obs)
+        passing = self._passing_legal
+        passing_legal_move = False
+        try:
+            row = self._legal_action_ids.index(resolved.legal_action_id)
+            passing_legal_move = row < len(passing) and passing[row]
+        except ValueError:
+            pass
         reward = step_reward(
             rewards_before=observation_before_move,
             rewards_after=after_obs,
@@ -499,6 +506,7 @@ class GridironEnv(gym.Env):
             scoring=scoring,
             legal_choice=resolved.legal_choice,
             perspective_seat=self._perspective_seat,
+            passing_legal_move=passing_legal_move,
         )
         # Train-only (--verbose): raw step reward that enters the rollout buffer
         # (VecNormalize may rescale later). Quiet by default — PASS rate can flood stdout.
@@ -519,19 +527,12 @@ class GridironEnv(gym.Env):
         if self._scenario_eval_debug is not None:
             scored_td = int(after_obs["touchdownsUs"]) > int(observation_before_move["touchdownsUs"])
             acquired_card = int(scoring["challengeCardsUs"]) > 0
-            passing = self._passing_legal
-            was_expected = False
-            try:
-                row = self._legal_action_ids.index(resolved.legal_action_id)
-                was_expected = row < len(passing) and passing[row]
-            except ValueError:
-                pass
             self._scenario_eval_debug.maybe_record_action(
                 turn_number=int(observation_before_move["turnNumber"]),
                 rewards=observation_before_move,
                 legal_choice=resolved.legal_choice,
                 scored_touchdown=scored_td,
-                expected_move=was_expected,
+                expected_move=passing_legal_move,
                 acquired_card=acquired_card,
                 step_reward=reward,
                 policy_obs=policy_obs,

@@ -11,11 +11,14 @@ from the wire (submitter perspective after the move).
   2. **Match-end bonus** — +1 win / 0 draw / −1 loss when the match just finished.
   3. **Scenario coach-window terminal** — ±0.5 from ``trainingOutcome`` when
      ``trainingEpisodeEnded`` (not stacked on real match W/L).
-  4. **Profile shaping** ([RewardShaping]) — possession / approach / TD amp / defense
+  4. **Scenario passing-move bonus** — +0.25 when the submitted row was
+     ``passingLegal`` (mid-episode, whether or not the drill has PASSed yet).
+  5. **Profile shaping** ([RewardShaping]) — possession / approach / TD amp / defense
      targeting / covering-radius spread / etc. (see presets below).
 
-Scenario episodes use this same stack. ``passingLegal`` marks PASS-grade curriculum moves;
-``softMaskLegal`` biases sampling only. Drill US/THEM grades curriculum/winrate.
+Scenario episodes use this same stack. ``passingLegal`` marks PASS-grade curriculum moves
+(and the +0.25 above); ``softMaskLegal`` biases sampling only. Drill US/THEM grades
+curriculum/winrate.
 
 Eval runs with profile shaping off.
 
@@ -53,6 +56,8 @@ TERMINAL_LOSS = -1.0
 # Coach-window drill grade — half match terminal so short episodes nudge without matching full-game stakes.
 SCENARIO_TERMINAL_WIN = 0.5
 SCENARIO_TERMINAL_LOSS = -0.5
+# Per submitting a ``passingLegal`` row (pickup / lesson path) — not soft-mask distractors.
+SCENARIO_PASSING_MOVE_BONUS = 0.25
 
 RewardProfileName = Literal["baseline", "general", "spread", "td", "defense"]
 AllProfilesPurpose = Literal["train", "eval", "summary"]
@@ -593,11 +598,13 @@ def step_reward(
         scoring: AiScoringDeltaDict | None = None,
         legal_choice: LegalActionDict | None = None,
         perspective_seat: TeamSide = TeamSide.HOME,
+        passing_legal_move: bool = False,
 ) -> float:
     """Reward for the seat that just moved.
 
     ``perspective_seat`` is the acting seat (absolute end-zone geometry + us/them scores).
     Board facts join via ``rewards.players`` / ``ballCoordinate``.
+    ``passing_legal_move`` is True when the submitted harness row had ``passingLegal``.
     """
     shaping_cfg = shaping or RewardShaping()
     reward = score_margin(rewards_after) - score_margin(rewards_before)
@@ -610,6 +617,8 @@ def step_reward(
         legal_choice=legal_choice,
         perspective_seat=perspective_seat,
     )
+    if passing_legal_move:
+        reward += SCENARIO_PASSING_MOVE_BONUS
     if result_kind is not None:
         if _is_us_winner_rel(result_winner_rel):
             reward += TERMINAL_WIN

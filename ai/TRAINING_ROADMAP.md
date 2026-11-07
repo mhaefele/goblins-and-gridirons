@@ -20,12 +20,14 @@ Shell chain: `dump → pack → seed → scenario_a → scenario_b → checkpoin
    match ends
 2. **Scenario coach-window** — ±0.5 from `trainingOutcome` when `trainingEpisodeEnded`
    (half match terminal; not stacked on real match W/L)
-3. **Profile shaping** — `general` / `spread` / `td` / `defense` presets (train only; eval off);
-   scenario_a / scenario_b use **baseline** (no shaping)
+3. **Scenario passing-move** — +0.25 when the submitted row was `passingLegal`
+   (mid-episode; stacks with coach-window if that step also ends the drill)
+4. **Profile shaping** — `general` / `spread` / `td` / `defense` presets (train only; eval off);
+   scenario_a / scenario_b use **baseline** (no shaping) — passing-move bonus still applies
 
-Drill US/THEM still grades curriculum/winrate. Direction on flagged openings comes from
-**soft-mask** sampling ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference)),
-not per-move bonus/slap terms.
+Drill US/THEM still grades curriculum/winrate. Soft-mask still owns **sampling** tilt
+([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference)); the +0.25 is the
+only per-move curriculum reward term.
 
 Train also: **VecNormalize** reward normalization (obs not normalized).
 
@@ -186,8 +188,9 @@ keep writing the `scenario_b` tree.
 Ask before merging:
 
 1. Does this change the **reward stack** (new term, slap, amplify)? Prefer no until a
-   scenario_a / scenario_b gate fails for a clear reason — and never reintroduce
-   **per-move** scenario bonus/slap (coach-window ±0.5 is the intentional exception).
+   scenario_a / scenario_b gate fails for a clear reason. Allowed curriculum terms:
+   coach-window ±0.5 and passing-move +0.25 — do not add further per-move slap/bonus
+   without revisiting this checklist.
 2. Does this **unlock games or claims** earlier than the gate? Prefer no.
 3. Does this add a **Python re-implementation** of something the server already flags
    (`expectedScenarioMove`)? Prefer delete the duplicate.
@@ -237,6 +240,7 @@ Apply on create **and** resume via `_set_learning_rate` / `_set_ent_coef` / `_se
 | VecNormalize `norm_reward` | train segments; `{stem}_vecnormalize.pkl` | Obs not normalized |
 | Soft-mask bias `2.5` | `constants.SOFT_MASK_LOGIT_BIAS` | Train rollouts on; eval/gates off unless `--eval-episode-mode TRAIN` — [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference) |
 | Scenario coach-window ±0.5 | `reward.SCENARIO_TERMINAL_*` | Only when `trainingEpisodeEnded`; not stacked on match ±1 |
+| Scenario passing-move +0.25 | `reward.SCENARIO_PASSING_MOVE_BONUS` | When submitted row was `passingLegal`; mid-episode OK |
 | Claim unlock board d4 | `scenario_curriculum.CLAIM_UNLOCK_BOARD_DIFFICULTY` | scenario_a → scenario_b |
 | Full-game unlock d5 | `scenario_curriculum.FULL_GAME_UNLOCK_DIFFICULTY` | After all drills mastered |
 | Gate-fail double run | `scenario_curriculum.SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER` | 2× when gating drill has current-difficulty `gate_fails` > 0 below d5; optional drills never multiply; d5 fails excluded |

@@ -2,6 +2,7 @@ package com.mhaefele.gridiron.integration
 
 import com.mhaefele.gridiron.api.ai.training.TrainingScenarioFamily
 import com.mhaefele.gridiron.api.ai.training.TrainingScenarios
+import com.mhaefele.gridiron.api.dto.response.BallEncounter
 import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.game.legalmoves.LegalMovesGenerator
 import com.mhaefele.gridiron.integration.support.BaseApiTest
@@ -93,12 +94,16 @@ class TrainingScenarioApiTest : BaseApiTest() {
         val softMask = step.harness.legalRows.filter { it.softMaskLegal }
         val passing = step.harness.legalRows.filter { it.passingLegal }
         when (scenario) {
-            TrainingScenarioEnum.MARKED_RUN,
-            TrainingScenarioEnum.LOOSE_BALL_RUN,
-                                         -> {
+            TrainingScenarioEnum.MARKED_RUN     -> {
                 // Multi-step: opening expected (= passing) matches soft-mask; drill PASSes on TD only.
                 assertThat(softMask).isNotEmpty()
                 assertThat(passing).isEqualTo(softMask)
+            }
+            TrainingScenarioEnum.LOOSE_BALL_RUN -> {
+                // Opening soft-mask = pickup + every empty-EZ run; PASS = pickup only.
+                assertThat(softMask).isNotEmpty()
+                assertThat(passing).isNotEmpty()
+                assertThat(passing).isSubsetOf(softMask)
             }
             TrainingScenarioEnum.THROW_TO_ENDZONE,
             TrainingScenarioEnum.THROW_CLOSER_RANGE,
@@ -131,10 +136,19 @@ class TrainingScenarioApiTest : BaseApiTest() {
             val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.LOOSE_BALL_RUN))
             val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
             val openingSoft = opening.harness.legalRows.filter { it.softMaskLegal }
+            val openingPass = opening.harness.legalRows.filter { it.passingLegal }
             assertThat(openingSoft).isNotEmpty()
-            assertThat(opening.harness.legalRows.filter { it.passingLegal }).isEqualTo(openingSoft)
+            assertThat(openingPass).isNotEmpty()
+            // PASS = pickup only; soft-mask also includes every empty-EZ dash (not wins).
+            assertThat(openingPass).isSubsetOf(openingSoft)
+            assertThat(openingPass).allMatch { it.action is LegalAction.Run && (it.action as LegalAction.Run).ballEncounter == BallEncounter.PICK_UP }
+            val emptyEzSoft = openingSoft.filter { row ->
+                val run = row.action as? LegalAction.Run ?: return@filter false
+                run.ballEncounter != BallEncounter.PICK_UP
+            }
+            assertThat(emptyEzSoft).allMatch { !it.passingLegal }
             // Shortest pickup leaves the most residual MA for the EZ continue.
-            val pickup = openingSoft.map { it.action }.filterIsInstance<LegalAction.Run>().minBy { it.path.steps }
+            val pickup = openingPass.map { it.action }.filterIsInstance<LegalAction.Run>().minBy { it.path.steps }
 
             val afterPickup = api.aiSubmit(response.matchId, pickup.id, forSeat = TeamSide.HOME)
             val afterPickupState = loadMatch(response.matchId)
@@ -151,6 +165,20 @@ class TrainingScenarioApiTest : BaseApiTest() {
 
             api.aiSubmit(response.matchId, continueSoft.first().action.id, forSeat = TeamSide.HOME)
             assertThat(loadMatch(response.matchId).trainingEpisode!!.drillStatus).isEqualTo(TrainingDrillStatus.PASS)
+        }
+    }
+
+    @Test
+    fun `LOOSE_BALL_RUN empty-EZ soft-mask distractor does not PASS`() {
+        withRandomDiceRetries {
+            val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.LOOSE_BALL_RUN))
+            val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
+            val distractor = opening.harness.legalRows.first { row ->
+                !row.passingLegal && row.softMaskLegal && row.action is LegalAction.Run
+            }
+            api.aiSubmit(response.matchId, distractor.action.id, forSeat = TeamSide.HOME)
+            val status = loadMatch(response.matchId).trainingEpisode!!.drillStatus
+            assertThat(status).isNotEqualTo(TrainingDrillStatus.PASS)
         }
     }
 
