@@ -108,6 +108,7 @@ from gridiron_ai.scenario_curriculum import (
     gating_scenarios_mastered,
     get_difficulty,
     LAST_EVAL_HISTORY_MAX,
+    last_eval_history,
     last_eval_metrics,
     last_eval_rank_history,
     last_eval_winrate_history,
@@ -1159,6 +1160,12 @@ def _eval_one_scenario(
     stored = load_last_eval(path_for_last_eval(save_stem))
     stored_ranks = last_eval_rank_history(stored, scenario, difficulty)
     stored_rates = last_eval_winrate_history(stored, scenario, difficulty)
+    # ball_swap_probe — removable
+    from gridiron_ai.eval_ball_swap_probe import ball_swap_rank_trail_from_history
+
+    stored_ball_swap_ranks = ball_swap_rank_trail_from_history(
+        last_eval_history(stored, scenario, difficulty)
+    )
     stats = _eval_segment(
         model,
         args=args,
@@ -1174,6 +1181,7 @@ def _eval_one_scenario(
         metrics_prior=prior,
         rank_history_before=stored_ranks,
         winrate_history_before=stored_rates,
+        ball_swap_rank_history_before=stored_ball_swap_ranks,
     )
     if not args.eval_only:
         _remember_scenario_eval(scenario, difficulty, stats, save_stem)
@@ -1534,6 +1542,7 @@ def _attach_opening_move_scores(
     *,
     verbose: bool = False,
     all_rows: bool = False,
+    scenario: str | None = None,
 ) -> None:
     """Score opening join-score mass for expected/turn1 rank+p; full diag on verbose THEM mispicks."""
     snapshot = summary.pop("_opening_mispick_snapshot", None)
@@ -1542,6 +1551,7 @@ def _attach_opening_move_scores(
         summary.pop("opening_mispick_chosen", None)
         summary.pop("opening_mispick_diag", None)
         summary.pop("opening_move_scores", None)
+        summary.pop("opening_ball_swap", None)  # ball_swap_probe
         return
     try:
         diag = diagnose_opening_mispick(
@@ -1551,6 +1561,7 @@ def _attach_opening_move_scores(
         )
     except Exception as exc:
         summary.pop("opening_move_scores", None)
+        summary.pop("opening_ball_swap", None)  # ball_swap_probe
         if verbose and summary.get("opening_mispick") and summary.get("result_winner_rel") == "THEM":
             summary["opening_mispick_diag"] = {"error": str(exc)}
         else:
@@ -1563,6 +1574,13 @@ def _attach_opening_move_scores(
         summary["opening_move_scores"] = scores
     else:
         summary.pop("opening_move_scores", None)
+    # ball_swap_probe — removable (eval_ball_swap_probe.py)
+    from gridiron_ai.eval_ball_swap_probe import attach_ball_swap_opening_scores
+
+    try:
+        attach_ball_swap_opening_scores(model.policy, snapshot, summary, scenario=scenario)
+    except Exception:
+        summary.pop("opening_ball_swap", None)
     keep_verbose_diag = (
         verbose
         and summary.get("opening_mispick")
@@ -1584,6 +1602,7 @@ def _drop_opening_mispick_snapshot(summary: dict[str, Any]) -> None:
     summary.pop("opening_mispick_chosen", None)
     summary.pop("opening_mispick_diag", None)
     summary.pop("opening_move_scores", None)
+    summary.pop("opening_ball_swap", None)  # ball_swap_probe
 
 
 def _log_eval_game(
@@ -1624,12 +1643,14 @@ def _eval_segment(
     metrics_prior: dict[str, Any] | None = None,
     rank_history_before: list[float] | None = None,
     winrate_history_before: list[float] | None = None,
+    ball_swap_rank_history_before: list[float] | None = None,
 ) -> dict[str, Any]:
     """Deterministic games; shaping off. Soft-mask bias follows ``eval_episode_mode`` (TRAIN=on).
 
     ``metrics_prior``: optional prior same-drill eval stats so the Eval line can show
     ``before→after`` drift (``_eval_one_scenario`` supplies the last eval this process).
     ``rank_history_before`` / ``winrate_history_before``: stored trails; current appended.
+    ``ball_swap_rank_history_before``: removable probe trail (``eval_ball_swap_probe``).
     """
     workers = min(games, DEFAULT_N_ENVS)
     opp_label = opponent_metrics_label(computer_opponent, onnx_profile)
@@ -1687,6 +1708,7 @@ def _eval_segment(
                             summary,
                             verbose=bool(args.verbose),
                             all_rows=bool(args.super_verbose),
+                            scenario=scenario,
                         )
                     else:
                         _drop_opening_mispick_snapshot(summary)
@@ -1713,6 +1735,10 @@ def _eval_segment(
     if scenario is not None:
         stats["scenario_difficulty"] = scenario_difficulty
         stats.update(aggregate_opening_move_scores(episodes))
+        # ball_swap_probe — removable
+        from gridiron_ai.eval_ball_swap_probe import aggregate_ball_swap_scores
+
+        stats.update(aggregate_ball_swap_scores(episodes))
     quiet_perfect = quiet_scenario and _eval_batch_all_wins(stats, games=games)
     if quiet_perfect:
         _record_scenario_perfect_summary(
@@ -1752,6 +1778,24 @@ def _eval_segment(
                 winrate_history=winrate_history,
                 indent=body_indent,
             )
+            # ball_swap_probe — removable second line (TD_RUN / LOOSE_BALL_RUN only)
+            from gridiron_ai.eval_ball_swap_probe import format_ball_swap_headline_bits, probe_enabled_for
+
+            if probe_enabled_for(scenario):
+                ball_swap_rank_history: list[float] | None = None
+                if ball_swap_rank_history_before is not None:
+                    ball_swap_rank_history = list(ball_swap_rank_history_before)
+                    cur_swap = stats.get("opening_ball_swap_expected_rank_best_mean")
+                    if cur_swap is not None:
+                        ball_swap_rank_history.append(float(cur_swap))
+                    ball_swap_rank_history = ball_swap_rank_history[-LAST_EVAL_HISTORY_MAX:]
+                bit = format_ball_swap_headline_bits(
+                    stats,
+                    prior=metrics_prior,
+                    rank_history=ball_swap_rank_history,
+                )
+                if bit:
+                    _section_print(bit.lstrip(), indent=body_indent)
         else:
             print_metrics(f"Eval {tagged}", stats, prior=metrics_prior, indent=body_indent)
         _note_kind_mix(

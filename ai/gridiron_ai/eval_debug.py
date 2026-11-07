@@ -319,6 +319,11 @@ class ScenarioEvalDebug:
         elif summary.get("opening_mispick"):
             line5 = "\n            policy_diag=pending"
 
+        # ball_swap_probe — removable; see eval_ball_swap_probe.py
+        from gridiron_ai.eval_ball_swap_probe import format_ball_swap_turn1_line
+
+        line_ball_swap = format_ball_swap_turn1_line(summary)
+
         parts: list[str] = []
         if line1_bits:
             parts.append(" " + " ".join(line1_bits))
@@ -326,6 +331,8 @@ class ScenarioEvalDebug:
             parts.append(f"\n{indent}" + " ".join(line2_bits))
         if line3:
             parts.append(f"\n{line3}")
+        if line_ball_swap:
+            parts.append(line_ball_swap)
         if line_cards:
             parts.append(line_cards)
         if line4:
