@@ -29,8 +29,9 @@ Shell chain: `dump → pack → seed → scenario_a → scenario_b → checkpoin
 Drill US/THEM still grades curriculum/winrate (counted at window close). Soft-mask still
 owns **sampling** tilt ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference)).
 
-Train also: **VecNormalize** reward normalization on **full-game** segments (obs not normalized).
-Scenario train keeps **raw** rewards (`norm_reward=False`; return stats frozen) — see [`PPO_LEARNING_DEBUG.md`](PPO_LEARNING_DEBUG.md).
+Train also: **VecNormalize** reward normalization (obs not normalized) on scenario and
+full-game segments. A trial of raw scenario rewards did not unstick hard openings and
+regressed easier drills — see [`PPO_LEARNING_DEBUG.md`](PPO_LEARNING_DEBUG.md).
 
 PPO knobs: see [PPO vs SB3 stock](#ppo-vs-sb3-stock) below — join-score era uses stock
 `lr` / `n_epochs` / `clip_range` / `target_kl`; only `ent_coef` is intentionally raised.
@@ -238,7 +239,7 @@ Apply on create **and** resume via `_set_learning_rate` / `_set_ent_coef` / `_se
 | `n_envs` / `n_steps` / `batch_size` | `train_self_play` — 30 / 128 / 256 | See [PPO vs SB3 stock](#ppo-vs-sb3-stock) |
 | `learning_rate` / `n_epochs` / `clip_range` / `target_kl` | stock SB3 | See table above |
 | `ent_coef` `0.005` / `vf_coef` `0.5` | shared all profiles | Create **and** resume; no profile overrides |
-| VecNormalize `norm_reward` | full-game train only; `{stem}_vecnormalize.pkl` | Scenario train: raw rewards, stats frozen / not saved |
+| VecNormalize `norm_reward` | scenario + full-game train; `{stem}_vecnormalize.pkl` | Obs not normalized; raw-scenario trial reverted |
 | Soft-mask bias `2.5` | `constants.SOFT_MASK_LOGIT_BIAS` | Train rollouts on; eval/gates off unless `--eval-episode-mode TRAIN` — [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference) |
 | Scenario PASS +0.5 / window loss −0.5 | `reward.SCENARIO_TERMINAL_*` | +0.5 on `trainingOutcome` → US edge; −0.5 on ended+THEM |
 | Scenario passing-move +0.25 | `reward.SCENARIO_PASSING_MOVE_BONUS` | When submitted row was `passingLegal`; mid-episode OK |

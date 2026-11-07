@@ -26,7 +26,7 @@ From `LOOSE_BALL_RUN` `--verbose` blocks (Passed / Failed + buffer fields):
 |---|---|
 | Soft-mask samples both pass and fail openings | **True.** We see pickup→score *and* empty-EZ / junk fail paths. |
 | Env rewards are correct | **True.** `env=+0.25` on pickup, `env=+4.75` on score, `env=-0.50` on fail window close. |
-| Those env numbers are what PPO trains on | **Was False under normalize** (scoring `+4.75`→~`0.12`). With scenario `norm_reward=False`, `buf` should match `env` — but see logging bug below. |
+| Those env numbers are what PPO trains on | **False under normalize** (scoring `+4.75`→~`0.12`). Raw-scenario trial matched `buf`≈`env` but did not unstick openings — **reverted**. |
 | Opening gets loud advantage after a TD | **Unreliable in early verbose logs.** Evidence used `buf.pos-1` before SB3 `add`, so “scoring” often showed the **pickup** slot and “opening” showed the **previous episode’s** terminal. Re-check after the index fix. |
 | Fail openings get negative advantage | **Unreliable for the same off-by-one.** Re-measure with fixed `buf.pos`. |
 | Policy mass / KL move after those returns | **False.** Mass flat (`0.030→0.030`), `approx_kl≈5e-5`, almost no `‖θ‖` change. |
@@ -83,22 +83,16 @@ Games and drills share the **objective** (score / don’t lose the window). They
 
 ---
 
-## What we flipped: scenario `norm_reward=False`
+## Trial: scenario `norm_reward=False` — **reverted**
 
-`_train_segment` now passes **`norm_reward=(scenario is None)`**.
+Tried raw scenario rewards so GAE would “hear” ±4.75 / −0.5. Hard openings
+(LOOSE_BALL_RUN / TD_RUN) stayed flat; easier drills (e.g. THROW_CLOSER_RANGE)
+regressed. **Normalize is back on** for scenario and full-game segments (same as
+pre-trial). Scale was not the missing piece for the stuck openings.
 
-| Segment | Reward in the PPO buffer | Return-stats sidecar |
-|---|---|---|
-| Scenario drills | **Raw** env rewards (+4.75 / −0.5 / +0.25) | Frozen — do not update or save (`ret_rms` stays the game pickle) |
-| Full-game | Still **VecNormalize** scaled | Update + save as before |
+### Overnight while raw was on (kept for the record)
 
-Same sparse *rules* (scoreboard TD / window loss). Different **hearing** on drills so GAE has something loud to assign. Games do not “suddenly obey different physics” — they keep a calmer update scale after drills have already moved the plain policy.
-
----
-
-## Overnight (scenario_a restart, norm_reward off) — still stuck
-
-~27 cycles after the flip. LOOSE_BALL_RUN stayed at **d0**, gate fails accumulating (`gate_failures[0]=28`).
+~27 cycles. LOOSE_BALL_RUN stayed at **d0**, gate fails accumulating.
 
 | Meter | Result |
 |---|---|
@@ -106,9 +100,8 @@ Same sparse *rules* (scoreboard TD / window loss). Different **hearing** on dril
 | Opening `E[p]` (lesson row) | stuck ~**0.013–0.015** |
 | Opening rank of lesson | stuck ~**17–19** (of ~145 legals) |
 | Train (soft-mask on), last 50MB draws | ~**5.9% US** (5286 US vs 84489 THEM at d0) |
-| `buf` / verbose Pass-Fail | overnight run was **not** `--verbose` — no evidence blocks |
 
-**Conclusion:** raw scenario rewards were necessary but **not sufficient**. Normalize was not the only blocker.
+**Conclusion:** raw rewards ≠ representation/bind fix. Reverted.
 
 ### Why soft-mask doesn’t break the EZ habit
 

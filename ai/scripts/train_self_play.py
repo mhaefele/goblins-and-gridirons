@@ -823,34 +823,19 @@ def _vecnormalize_path(save_stem: Path) -> Path:
     return Path(str(save_stem) + _VECNORMALIZE_SUFFIX)
 
 
-def _wrap_vecnormalize(
-    env: SubprocVecEnv,
-    save_stem: Path,
-    *,
-    training: bool,
-    norm_reward: bool | None = None,
-) -> VecNormalize:
-    """Wrap rollouts; reload running stats from the checkpoint sidecar when present.
-
-    ``norm_reward=None`` follows ``training`` (full-game default). Scenario segments pass
-    ``norm_reward=False`` so drills keep raw ±; SB3 still updates ``ret_rms`` whenever
-    ``training=True``, so we freeze stats (``training=False`` on the wrapper) whenever
-    reward norm is off — otherwise short +4.75/−0.5 spikes poison the shared game pickle.
-    """
-    reward_norm = training if norm_reward is None else bool(norm_reward)
-    # Update ret_rms only while actually normalizing rewards for this segment.
-    update_stats = bool(training and reward_norm)
+def _wrap_vecnormalize(env: SubprocVecEnv, save_stem: Path, *, training: bool) -> VecNormalize:
+    """Wrap rollouts; reload running stats from the checkpoint sidecar when present."""
     stats_path = _vecnormalize_path(save_stem)
     if stats_path.is_file():
         wrapped = VecNormalize.load(str(stats_path), env)
-        wrapped.training = update_stats
-        wrapped.norm_reward = reward_norm
+        wrapped.training = training
+        wrapped.norm_reward = training
         return wrapped
     return VecNormalize(
         env,
-        training=update_stats,
+        training=training,
         norm_obs=False,
-        norm_reward=reward_norm,
+        norm_reward=training,
         clip_reward=10.0,
         gamma=0.99,
     )
@@ -1085,13 +1070,7 @@ def _train_segment(
         verbose=bool(args.verbose),
     )
     clk.lap("configure workers", indent=lap_indent)
-    # Scenarios: raw rewards (see PPO_LEARNING_DEBUG.md). Full-game: keep reward norm.
-    env = _wrap_vecnormalize(
-        pool.vec_env(DEFAULT_N_ENVS),
-        save_stem,
-        training=True,
-        norm_reward=scenario is None,
-    )
+    env = _wrap_vecnormalize(pool.vec_env(DEFAULT_N_ENVS), save_stem, training=True)
     clk.lap("vecnormalize load", indent=lap_indent)
     model.set_env(env)
     _require_batch_divides_rollout(int(model.n_steps), DEFAULT_N_ENVS, int(model.batch_size))
@@ -1123,10 +1102,8 @@ def _train_segment(
         _release_segment_env(env, pool)
         raise SystemExit(1) from None
     clk.lap("learn", indent=lap_indent)
-    # Only persist return stats from segments that updated them (full-game).
-    if scenario is None:
-        _save_vecnormalize(env, save_stem)
-        clk.lap("vecnormalize save", indent=lap_indent)
+    _save_vecnormalize(env, save_stem)
+    clk.lap("vecnormalize save", indent=lap_indent)
     atomic_model_save(model, save_stem)
     _save_step_checkpoint(model, save_dir, name_prefix=name_prefix, timesteps=timesteps)
     clk.lap("checkpoint save", indent=lap_indent)
