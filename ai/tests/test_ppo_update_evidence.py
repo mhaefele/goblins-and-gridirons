@@ -6,6 +6,7 @@ import numpy as np
 
 from gridiron_ai.ppo_update_evidence import (
     _unflatten_rollout_field,
+    expected_move_labels_from_snapshot,
     format_failed_drill_block,
     format_move_sequence,
     format_pass_edge_buffer_line,
@@ -50,6 +51,22 @@ def test_passed_drill_block_is_sequential() -> None:
     assert "env=+0.25" in lines[2] and "buf(rew=+0.1200 adv=+0.4000)" in lines[2]
     assert "env=+4.75" in lines[3] and "buf(rew=+1.8500 adv=+2.1000)" in lines[3]
     assert "approx_kl" not in block
+
+
+def test_expected_move_labels_accepts_numpy_passing_legal() -> None:
+    """Opening snapshots store ``passing_legal`` as an ndarray — must not use ``x or []``."""
+    labels = expected_move_labels_from_snapshot(
+        {
+            "passing_legal": np.asarray([0, 1, 0], dtype=np.int8),
+            "legal_row_meta": [
+                {"action": {"kind": "run", "id": "a"}},
+                {"action": {"kind": "run", "id": "b", "playerId": "h0", "targetCoordinate": {"x": 5, "y": 9}}},
+                {"action": {"kind": "block", "id": "c"}},
+            ],
+            "rewards": None,
+        }
+    )
+    assert labels == "run(5,9)*"
 
 
 def test_failed_drill_block_includes_opening_and_last() -> None:

@@ -13,6 +13,7 @@ Each module exposes a named store alias / ``TypedDict`` for its on-disk schema
 | ``scenario_gate_failures`` | ``{stem}.scenario_gate_failures.json`` | Key → level → imperfect after-eval count |
 | ``scenario_drill_stats`` | ``{stem}.scenario_drill_stats.json`` | Key → ``cycles`` / ``d5_demotes`` (per phase) |
 | ``scenario_last_eval`` | ``{stem}.scenario_last_eval.json`` | Key → level → ``history`` (≤4) + ``current``/``prior`` slim metrics |
+| ``scenario_focus`` | ``{stem}.scenario_focus.json`` | Live train cursor (scenario / phase / pid); summarize marks the row |
 | ``pipeline`` | ``checkpoints/pipeline.json`` | Stage + split + per-profile climbing/games |
 | ``kind_totals`` | ``runs/{key}/kind_totals.json`` | Lifetime chosen-move kind counts (+ ``.txt``) |
 | ``scenario_catalog`` | ``output/scenario_catalog.json`` | Cached GET /api/ai/training/scenarios |

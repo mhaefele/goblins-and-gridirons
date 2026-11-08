@@ -329,6 +329,42 @@ def test_scenario_drill_line_shows_wld(monkeypatch, tmp_path: Path) -> None:
     assert "first_p=0.140" in text
     assert "expected_p=" not in text
     assert "expected_best_p=" not in text
+    assert "→" not in text
+
+
+def test_scenario_drill_line_marks_live_focus(monkeypatch, tmp_path: Path) -> None:
+    from gridiron_ai.persistence.scenario_focus import path_for_focus, write_focus
+
+    ckpt_root = tmp_path / "checkpoints"
+    eval_root = tmp_path / "evals" / "baseline"
+    runs_root = tmp_path / "runs"
+    eval_root.mkdir(parents=True)
+    runs_root.mkdir()
+    levels = {name: 0 for name in _BOARD}
+    _plant(ckpt_root, PHASE_SCENARIO_A, levels, steps=10_000)
+    write_focus(
+        path_for_focus(ckpt_root / PHASE_SCENARIO_A / _STEM),
+        scenario="TD_RUN",
+        difficulty=0,
+        phase="train",
+    )
+
+    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
+    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", eval_root.parent)
+    monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", eval_root.parent)
+
+    text = _fmt_scenario_drills(
+        TrainTarget(
+            phase=PHASE_SCENARIO_A,
+            checkpoint_key=PHASE_SCENARIO_A,
+            reward_profile="baseline",
+        )
+    )
+    td_line = next(line for line in text.splitlines() if "td_run" in line)
+    other = next(line for line in text.splitlines() if "marked_run" in line)
+    assert td_line.lstrip().startswith("→")
+    assert not other.lstrip().startswith("→")
 
 
 def test_profiles_bottom_summary_aligns_columns(monkeypatch, tmp_path: Path) -> None:

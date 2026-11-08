@@ -251,12 +251,15 @@ def expected_move_labels_from_snapshot(snapshot: dict[str, Any]) -> str:
     """Format opening ``passingLegal`` rows for failed-drill evidence."""
     from gridiron_ai.eval_debug import ScenarioEvalDebug
 
-    passing = list(snapshot.get("passing_legal") or [])
-    meta = list(snapshot.get("legal_row_meta") or [])
+    # Snapshots store numpy arrays — do not use ``x or []`` (ambiguous truth value).
+    raw_passing = snapshot.get("passing_legal")
+    passing = list(raw_passing) if raw_passing is not None else []
+    raw_meta = snapshot.get("legal_row_meta")
+    meta = list(raw_meta) if raw_meta is not None else []
     rewards = snapshot.get("rewards")
     labels: list[str] = []
     for index, is_pass in enumerate(passing):
-        if not is_pass:
+        if not bool(is_pass):
             continue
         action = None
         if index < len(meta):

@@ -67,6 +67,7 @@ from gridiron_ai.api.scenarios import (
     set_catalog,
     summary_scenario_order,
 )
+from gridiron_ai.persistence.scenario_focus import load_live_focus, path_for_focus
 from gridiron_ai.pipeline_state import load_pipeline
 from gridiron_ai.training_phases import (
     PHASE_SCENARIO_A,
@@ -951,6 +952,7 @@ def _legend() -> str:
             "  first_p                mean opening chosen-move p (can exceed expected p when argmax ≠ lesson)",
             "  d0–d5                 curriculum level (active phase checkpoint); "
             "dN↑/↓ when that level differs from latest eval @d (promoted/demoted since)",
+            "  →                      live train focus (scenario_focus.json; pid still alive)",
             "  (optional)             gatesProgress=false — trained/eval'd, not a curriculum gate (oracle or placement not trusted yet)",
             "  (no scenario eval; tracks X)  difficultyProxy drill — train only; after-eval/gates ride on X",
             "  (waived)               claim hit fail threshold — temporarily excluded from gates "
@@ -1375,6 +1377,8 @@ def _fmt_scenario_drills(target: TrainTarget) -> str:
     name_width = max((len(catalog.short_name(name)) for name in scenarios), default=0)
     scenario_numbers = {name: num for num, name in enumerate(summary_scenario_order(catalog), start=1)}
     proxy_sources = catalog.proxy_sources()
+    focus = load_live_focus(path_for_focus(save_stem))
+    focus_scenario = focus["scenario"] if focus is not None else None
     lines = [
         "scenario drills (curriculum d · latest eval @d; --scenario N or name):",
     ]
@@ -1397,7 +1401,9 @@ def _fmt_scenario_drills(target: TrainTarget) -> str:
             demotes = drill_stat_count(drill_stats, scenario, "d5_demotes")
             cycle_bit = f" cycles={cycles}" if cycles else ""
             demote_bit = f" d5_demotes={demotes}" if demotes else ""
-            prefix = f"  {scenario_numbers[scenario]:2d}  {short}  d{level}  "
+            num = scenario_numbers[scenario]
+            leader = f"→ {num:2d}  " if scenario == focus_scenario else f"  {num:2d}  "
+            prefix = f"{leader}{short}  d{level}  "
             if catalog.is_claim(scenario) and not claims_on:
                 lines.append(f"{prefix}— (deferred){cycle_bit}{demote_bit}{gate_bit}")
                 continue
@@ -1449,9 +1455,9 @@ def _fmt_scenario_drills(target: TrainTarget) -> str:
                     winrate_history=winrate_history or None,
                     eval_difficulty=eval_d,
                 )
-                # prefix already has ``NN  ``; headline starts with padded short name + dN.
+                # leader has ``→ NN  `` / ``  NN  ``; headline starts with padded short name + dN.
                 lines.append(
-                    f"  {scenario_numbers[scenario]:2d}  {headline}"
+                    f"{leader}{headline}"
                     f"{bump}{stale_bit}"
                     f"{fail_bit}{cycle_bit}{demote_bit}{gate_bit}"
                 )

@@ -140,6 +140,7 @@ from gridiron_ai.scenario_curriculum import (
     train_timesteps_for_scenario,
 )
 from gridiron_ai.api.scenarios import refresh_catalog, require_catalog, resolve_scenario_pin
+from gridiron_ai.persistence.scenario_focus import clear_focus, path_for_focus, write_focus
 from gridiron_ai.ppo_update_evidence import PpoUpdateEvidenceCallback
 from gridiron_ai.tb_callback import GridironMetricsCallback, PeriodicFinalSaveCallback
 from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
@@ -1318,6 +1319,7 @@ def _train_scenarios_segment(
     curriculum_path = path_for_stem(save_stem)
     gate_failures_path = path_for_gate_failures(save_stem)
     drill_stats_path = path_for_drill_stats(save_stem)
+    focus_path = path_for_focus(save_stem)
     levels = load_levels(curriculum_path)
     gate_failures = load_gate_failures(gate_failures_path)
     drill_stats = load_drill_stats(drill_stats_path)
@@ -1389,20 +1391,112 @@ def _train_scenarios_segment(
 
     did_train = False
     proxy_sources = require_catalog().proxy_sources()
-    for scenario, difficulty, timesteps, units in plan_units:
-        slug = scenario.lower()
-        do_eval = scenario not in proxy_sources
-        eval_games = scenario_eval_games(units)
-        fresh_before = do_eval and units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
+    try:
+        for scenario, difficulty, timesteps, units in plan_units:
+            slug = scenario.lower()
+            do_eval = scenario not in proxy_sources
+            eval_games = scenario_eval_games(units)
+            fresh_before = do_eval and units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
 
-        before: dict[str, Any] | None = None
-        tag = f"{scenario} d{difficulty}"
-        if fresh_before:
+            before: dict[str, Any] | None = None
+            tag = f"{scenario} d{difficulty}"
+            if fresh_before:
+                write_focus(
+                    focus_path, scenario=scenario, difficulty=difficulty, phase="before-eval"
+                )
+                _scenario_phase_banner(
+                    f"before-eval starting — {tag} ({units}×, {eval_games}g)"
+                )
+                phase_t0 = time.perf_counter()
+                before = _eval_one_scenario(
+                    model,
+                    args=args,
+                    pool=pool,
+                    profile=profile,
+                    runs_key=runs_key,
+                    save_stem=save_stem,
+                    scenario=scenario,
+                    difficulty=difficulty,
+                    games=eval_games,
+                )
+                row.update(_cycle_stats_fields(f"eval_scenario_{slug}_before", before))
+                _scenario_phase_banner(
+                    f"before-eval complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
+                )
+            elif do_eval:
+                prior = _prior_scenario_eval(scenario, difficulty, save_stem)
+                if prior is not None:
+                    before = prior
+
+            bottleneck = units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
+            lr = _BOTTLENECK_LEARNING_RATE if bottleneck else _DEFAULT_LEARNING_RATE
+            curriculum_scale = SCENARIO_BOTTLENECK_CURRICULUM_SCALE if bottleneck else 1.0
+            soft_strength = SOFT_MASK_BOTTLENECK_STRENGTH if bottleneck else 1.0
+            if do_eval:
+                train_detail = f"{timesteps} ts lr={lr:g}"
+            else:
+                proxy = require_catalog().curriculum_key(scenario)
+                train_detail = f"{timesteps} ts lr={lr:g}; no eval — tracks {proxy}"
+            if bottleneck:
+                train_detail = (
+                    f"{train_detail} curriculum×{curriculum_scale:g} "
+                    f"softmask×{soft_strength:g}"
+                )
+            write_focus(focus_path, scenario=scenario, difficulty=difficulty, phase="train")
             _scenario_phase_banner(
-                f"before-eval starting — {tag} ({units}×, {eval_games}g)"
+                f"training starting — {tag} ({train_detail})",
+                blank_before=fresh_before,
+            )
+
+            phase_t0 = time.perf_counter()
+            if bottleneck:
+                _set_learning_rate(model, _BOTTLENECK_LEARNING_RATE)
+                _set_soft_mask_strength(model, soft_strength)
+            try:
+                stats = _train_segment(
+                    model,
+                    args=args,
+                    pool=pool,
+                    timesteps=timesteps,
+                    opponent_mode=OPPONENT_COMPUTER,
+                    computer_opponent="LOOKAHEAD",
+                    onnx_profile=None,
+                    save_stem=save_stem,
+                    save_dir=save_dir,
+                    name_prefix=name_prefix,
+                    reset_num_timesteps=reset_num_timesteps and not did_train,
+                    reward_shaping=reward_shaping,
+                    profile=profile,
+                    runs_key=runs_key,
+                    scenario=scenario,
+                    scenario_difficulty=difficulty,
+                    scenario_curriculum_scale=curriculum_scale,
+                )
+            finally:
+                if bottleneck:
+                    _set_learning_rate(model, _DEFAULT_LEARNING_RATE)
+                    _set_soft_mask_strength(model, 1.0)
+            did_train = True
+            row.update(_cycle_stats_fields(f"train_scenario_{slug}", stats))
+            drill_stats = record_train_cycles(drill_stats, scenario, units=units)
+            save_drill_stats(drill_stats_path, drill_stats)
+            _scenario_phase_banner(
+                f"training complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
+            )
+
+            if not do_eval:
+                _eval_section_break()
+                continue
+
+            write_focus(
+                focus_path, scenario=scenario, difficulty=difficulty, phase="after-eval"
+            )
+            _scenario_phase_banner(
+                f"after-eval starting — {tag} ({eval_games}g)",
+                blank_before=True,
             )
             phase_t0 = time.perf_counter()
-            before = _eval_one_scenario(
+            after = _eval_one_scenario(
                 model,
                 args=args,
                 pool=pool,
@@ -1413,115 +1507,33 @@ def _train_scenarios_segment(
                 difficulty=difficulty,
                 games=eval_games,
             )
-            row.update(_cycle_stats_fields(f"eval_scenario_{slug}_before", before))
-            _scenario_phase_banner(
-                f"before-eval complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
-            )
-        elif do_eval:
-            prior = _prior_scenario_eval(scenario, difficulty, save_stem)
-            if prior is not None:
-                before = prior
-
-        bottleneck = units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
-        lr = _BOTTLENECK_LEARNING_RATE if bottleneck else _DEFAULT_LEARNING_RATE
-        curriculum_scale = SCENARIO_BOTTLENECK_CURRICULUM_SCALE if bottleneck else 1.0
-        soft_strength = SOFT_MASK_BOTTLENECK_STRENGTH if bottleneck else 1.0
-        if do_eval:
-            train_detail = f"{timesteps} ts lr={lr:g}"
-        else:
-            proxy = require_catalog().curriculum_key(scenario)
-            train_detail = f"{timesteps} ts lr={lr:g}; no eval — tracks {proxy}"
-        if bottleneck:
-            train_detail = (
-                f"{train_detail} curriculum×{curriculum_scale:g} "
-                f"softmask×{soft_strength:g}"
-            )
-        _scenario_phase_banner(
-            f"training starting — {tag} ({train_detail})",
-            blank_before=fresh_before,
-        )
-
-        phase_t0 = time.perf_counter()
-        if bottleneck:
-            _set_learning_rate(model, _BOTTLENECK_LEARNING_RATE)
-            _set_soft_mask_strength(model, soft_strength)
-        try:
-            stats = _train_segment(
-                model,
-                args=args,
-                pool=pool,
-                timesteps=timesteps,
-                opponent_mode=OPPONENT_COMPUTER,
-                computer_opponent="LOOKAHEAD",
-                onnx_profile=None,
-                save_stem=save_stem,
-                save_dir=save_dir,
-                name_prefix=name_prefix,
-                reset_num_timesteps=reset_num_timesteps and not did_train,
-                reward_shaping=reward_shaping,
-                profile=profile,
-                runs_key=runs_key,
+            row.update(_cycle_stats_fields(f"eval_scenario_{slug}_after", after))
+            _print_scenario_learn_line(
                 scenario=scenario,
-                scenario_difficulty=difficulty,
-                scenario_curriculum_scale=curriculum_scale,
+                difficulty=difficulty,
+                before=before,
+                after=after,
+                row=row,
+                slug=slug,
             )
-        finally:
-            if bottleneck:
-                _set_learning_rate(model, _DEFAULT_LEARNING_RATE)
-                _set_soft_mask_strength(model, 1.0)
-        did_train = True
-        row.update(_cycle_stats_fields(f"train_scenario_{slug}", stats))
-        drill_stats = record_train_cycles(drill_stats, scenario, units=units)
-        save_drill_stats(drill_stats_path, drill_stats)
-        _scenario_phase_banner(
-            f"training complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
-        )
-
-        if not do_eval:
+            levels, gate_failures, drill_stats = _apply_scenario_after_eval(
+                scenario=scenario,
+                difficulty=difficulty,
+                stats=after,
+                levels=levels,
+                gate_failures=gate_failures,
+                drill_stats=drill_stats,
+                curriculum_path=curriculum_path,
+                gate_failures_path=gate_failures_path,
+                drill_stats_path=drill_stats_path,
+                expected_games=eval_games,
+            )
+            _scenario_phase_banner(
+                f"after-eval complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
+            )
             _eval_section_break()
-            continue
-
-        _scenario_phase_banner(
-            f"after-eval starting — {tag} ({eval_games}g)",
-            blank_before=True,
-        )
-        phase_t0 = time.perf_counter()
-        after = _eval_one_scenario(
-            model,
-            args=args,
-            pool=pool,
-            profile=profile,
-            runs_key=runs_key,
-            save_stem=save_stem,
-            scenario=scenario,
-            difficulty=difficulty,
-            games=eval_games,
-        )
-        row.update(_cycle_stats_fields(f"eval_scenario_{slug}_after", after))
-        _print_scenario_learn_line(
-            scenario=scenario,
-            difficulty=difficulty,
-            before=before,
-            after=after,
-            row=row,
-            slug=slug,
-        )
-        levels, gate_failures, drill_stats = _apply_scenario_after_eval(
-            scenario=scenario,
-            difficulty=difficulty,
-            stats=after,
-            levels=levels,
-            gate_failures=gate_failures,
-            drill_stats=drill_stats,
-            curriculum_path=curriculum_path,
-            gate_failures_path=gate_failures_path,
-            drill_stats_path=drill_stats_path,
-            expected_games=eval_games,
-        )
-        _scenario_phase_banner(
-            f"after-eval complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
-        )
-        _eval_section_break()
+    finally:
+        clear_focus(focus_path)
     if did_train:
         _print_kind_lifetime(runs_key, "Train scenarios")
     return row
@@ -1926,31 +1938,38 @@ def _eval_scenarios_segment(
     drill_stats = load_drill_stats(path_for_drill_stats(save_stem)) if write_curriculum else {}
     gate_failures_path = path_for_gate_failures(save_stem)
     drill_stats_path = path_for_drill_stats(save_stem)
-    for scenario in active:
-        difficulty = pin_difficulty if pin_difficulty is not None else get_difficulty(levels, scenario)
-        stats = _eval_one_scenario(
-            model,
-            args=args,
-            pool=pool,
-            profile=profile,
-            runs_key=runs_key,
-            save_stem=save_stem,
-            scenario=scenario,
-            difficulty=difficulty,
-        )
-        if write_curriculum:
-            levels, gate_failures, drill_stats = _apply_scenario_after_eval(
+    focus_path = path_for_focus(save_stem)
+    try:
+        for scenario in active:
+            difficulty = (
+                pin_difficulty if pin_difficulty is not None else get_difficulty(levels, scenario)
+            )
+            write_focus(focus_path, scenario=scenario, difficulty=difficulty, phase="eval")
+            stats = _eval_one_scenario(
+                model,
+                args=args,
+                pool=pool,
+                profile=profile,
+                runs_key=runs_key,
+                save_stem=save_stem,
                 scenario=scenario,
                 difficulty=difficulty,
-                stats=stats,
-                levels=levels,
-                gate_failures=gate_failures,
-                drill_stats=drill_stats,
-                curriculum_path=curriculum_path,
-                gate_failures_path=gate_failures_path,
-                drill_stats_path=drill_stats_path,
             )
-        row.update(_cycle_stats_fields(f"eval_scenario_{scenario.lower()}", stats))
+            if write_curriculum:
+                levels, gate_failures, drill_stats = _apply_scenario_after_eval(
+                    scenario=scenario,
+                    difficulty=difficulty,
+                    stats=stats,
+                    levels=levels,
+                    gate_failures=gate_failures,
+                    drill_stats=drill_stats,
+                    curriculum_path=curriculum_path,
+                    gate_failures_path=gate_failures_path,
+                    drill_stats_path=drill_stats_path,
+                )
+            row.update(_cycle_stats_fields(f"eval_scenario_{scenario.lower()}", stats))
+    finally:
+        clear_focus(focus_path)
     return row
 
 
