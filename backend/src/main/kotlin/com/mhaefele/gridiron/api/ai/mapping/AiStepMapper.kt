@@ -57,7 +57,8 @@ class AiStepMapper(
      * Fail here (HTTP / expert export) instead of letting the gym harness discover empty choices mid-step.
      */
     fun checkLiveAiLegals(state: MatchState, legalActions: List<LegalAction>) {
-        if (state.isGameEnded() || TrainingEpisodeEnd.isCoachWindowExceeded(state)) {
+        // Same terminal set as AiMatchController.harnessEpisodeOver (window + scenario early-end).
+        if (state.isGameEnded() || TrainingEpisodeEnd.trainingEpisodeEnded(state)) {
             check(legalActions.isEmpty()) { "terminal match must have empty AI legals got=${legalActions.size} ${aiLegalDebug(state)}" }
         } else {
             check(legalActions.isNotEmpty()) { "No legal actions on a live match ${aiLegalDebug(state)}" }

@@ -51,11 +51,50 @@ def install_legacy_pickle_aliases(path: Path | None = None) -> int:
     return applied
 
 
+def _schedule_as_float(value: Any, *, fallback: float) -> float:
+    """Evaluate an SB3 schedule/callable to a plain float for pickle-safe checkpointing."""
+    if value is None:
+        return fallback
+    if callable(value):
+        try:
+            return float(value(1.0))
+        except Exception:
+            return fallback
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
 def atomic_model_save(model: Any, save_stem: str | Path) -> Path:
-    """Write model zip via temp file + rename so resume checkpoint never stays truncated."""
+    """Write model zip via temp file + rename so resume checkpoint never stays truncated.
+
+    # DEVIATION: SB3 excludes ``env`` from the zip dict, but a schedule lambda that closed
+    # over ``model`` (or ``self``) still pickles the live SubprocVecEnv → ``_thread.lock``.
+    # Ctrl-C mid-``remote.recv()`` hits that path. Detach env + rebind schedules to floats
+    # for the save only, then restore.
+    """
     stem = Path(save_stem)
     final_zip = stem.with_suffix(".zip")
     tmp_zip = stem.with_name(f"{stem.name}.writing.zip")
+    held: dict[str, Any] = {}
+    for name in ("env", "_vec_normalize_env"):
+        if hasattr(model, name):
+            held[name] = getattr(model, name)
+            setattr(model, name, None)
+    for name, fallback in (
+        ("learning_rate", 3e-4),
+        ("lr_schedule", 3e-4),
+        ("clip_range", 0.2),
+        ("clip_range_vf", 0.2),
+    ):
+        if not hasattr(model, name):
+            continue
+        current = getattr(model, name)
+        if current is None:
+            continue
+        held[name] = current
+        setattr(model, name, _schedule_as_float(current, fallback=fallback))
     try:
         # SB3 appends/replaces to ``.zip`` only when the path is not already ``.zip``.
         model.save(str(tmp_zip))
@@ -65,6 +104,9 @@ def atomic_model_save(model: Any, save_stem: str | Path) -> Path:
     except Exception:
         tmp_zip.unlink(missing_ok=True)
         raise
+    finally:
+        for name, value in held.items():
+            setattr(model, name, value)
     return final_zip
 
 

@@ -11,9 +11,24 @@ object TrainingEpisodeEnd {
         return state.progress.turnNumber >= episode.openingTurnNumber + scenarioCoachTurnWindow(episode.difficulty)
     }
 
-    /** Synthetic coach-window end while the match is still live. */
-    fun trainingEpisodeEnded(state: MatchState): Boolean =
-        state.trainingEpisode != null && !state.isGameEnded() && isCoachWindowExceeded(state)
+    /**
+     * Synthetic coach-window end while the match is still live, or LOOSE_BALL_RUN d0–d1 after the
+     * first opening budgeted action ([scenarioEndsAfterFirstOpeningAction]).
+     *
+     * One-shot PASS/DISTRACTED ends on grade alone (actionsThisTurn / activeCoach can lag the grade
+     * right after pickup and leave a live menu). Miss stays STILL_IN_PROGRESS until the first
+     * opening action is on the turn log.
+     */
+    fun trainingEpisodeEnded(state: MatchState): Boolean {
+        val episode = state.trainingEpisode ?: return false
+        if (state.isGameEnded()) return false
+        if (isCoachWindowExceeded(state)) return true
+        if (!scenarioEndsAfterFirstOpeningAction(episode)) return false
+        if (episode.drillStatus == TrainingDrillStatus.PASS || episode.drillStatus == TrainingDrillStatus.DISTRACTED) {
+            return true
+        }
+        return state.progress.turnNumber == episode.openingTurnNumber && state.currentTurnState.actionsThisTurn.isNotEmpty()
+    }
 
     /**
      * Curriculum grade on the harness.
@@ -25,7 +40,7 @@ object TrainingEpisodeEnd {
     fun trainingOutcome(state: MatchState): AiTrainingOutcome? {
         val episode = state.trainingEpisode ?: return null
         if (episode.drillStatus == TrainingDrillStatus.PASS) return AiTrainingOutcome.US
-        if (!state.isGameEnded() && !isCoachWindowExceeded(state)) return null
+        if (!state.isGameEnded() && !trainingEpisodeEnded(state)) return null
         return when (episode.drillStatus) {
             TrainingDrillStatus.PASS              -> AiTrainingOutcome.US
             TrainingDrillStatus.DISTRACTED        -> AiTrainingOutcome.DISTRACTED

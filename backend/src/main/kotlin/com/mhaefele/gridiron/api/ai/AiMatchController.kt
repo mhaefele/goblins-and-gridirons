@@ -58,8 +58,7 @@ class AiMatchController(
     ): AiNestedStepDto {
         val waited = turnWait.untilSeatOrTerminal(matchId, forSeat)
         val perspective = perspectiveSeat ?: forSeat
-        val episodeOver = waited.isGameEnded() || TrainingEpisodeEnd.isCoachWindowExceeded(waited)
-        val (state, legals) = if (episodeOver) {
+        val (state, legals) = if (waited.harnessEpisodeOver()) {
             waited to emptyList()
         } else {
             val acting = waited.actingSeat()
@@ -115,14 +114,16 @@ class AiMatchController(
         seat: TeamSide,
         encodeSubmit: (AiNestedSubmitResultDto) -> T,
     ): T {
-        require(!TrainingEpisodeEnd.isCoachWindowExceeded(beforeState)) { "Cannot submit after the training coach-turn window" }
+        require(!beforeState.harnessEpisodeOver()) { "Cannot submit after the training episode ended" }
         val acting = beforeState.actingSeat()
         require(acting == seat) { "forSeat=$seat but acting=$acting — call GET step?forSeat= first" }
         val matchId = beforeState.id
         val timing = submitTiming.startTiming(matchId)
         val afterState = timing.engine { matchGame.submitActionOutcome(matchId, legalActionId).newState }
         val scoring = scoringDelta(beforeState.progress, afterState.progress, seat)
-        val handedOff = !afterState.isGameEnded() && !TrainingEpisodeEnd.isCoachWindowExceeded(afterState) && afterState.actingSeat() != seat
+        // # DEVIATION: use trainingEpisodeEnded (window + LOOSE d0–d1 first-step), not window alone —
+        // otherwise early-end still packs a live menu and fails "terminal step must have empty legals".
+        val handedOff = !afterState.harnessEpisodeOver() && afterState.actingSeat() != seat
         val afterWait = timing.turnWait { if (handedOff) turnWait.untilSeatOrTerminal(matchId, seat) else null }
         val latest = afterWait ?: afterState
         val (stepState, nextLegals) = if (latest.harnessEpisodeOver()) {
@@ -189,5 +190,6 @@ private fun challengeCardsRelative(progress: MatchProgress, perspective: TeamSid
         TeamSide.AWAY -> progress.awayChallengeCards to progress.homeChallengeCards
     }
 
+/** Match over, coach-window over, or scenario early-end (e.g. LOOSE_BALL_RUN d0–d1 first step). */
 private fun MatchState.harnessEpisodeOver(): Boolean =
-    isGameEnded() || TrainingEpisodeEnd.isCoachWindowExceeded(this)
+    isGameEnded() || TrainingEpisodeEnd.trainingEpisodeEnded(this)

@@ -52,7 +52,11 @@ class OpeningTurnDrillStatusTest {
 
         assertThat(tdRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.PASS)
         assertThat(markedRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.PASS)
-        assertThat(looseBallRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.PASS)
+        // LOOSE_BALL_RUN d0–d1 is pickup-one-shot; Run-TD grade lives at d2+.
+        val looseContinue = before.copy(
+            trainingEpisode = episode.copy(scenario = TrainingScenarioEnum.LOOSE_BALL_RUN, difficulty = 2),
+        )
+        assertThat(looseBallRun.drillStatus(looseContinue, after, action)).isEqualTo(TrainingDrillStatus.PASS)
     }
 
     @Test
@@ -69,7 +73,10 @@ class OpeningTurnDrillStatusTest {
 
         assertThat(tdRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.DISTRACTED)
         assertThat(markedRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.DISTRACTED)
-        assertThat(looseBallRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.DISTRACTED)
+        val looseContinue = before.copy(
+            trainingEpisode = episode.copy(scenario = TrainingScenarioEnum.LOOSE_BALL_RUN, difficulty = 2),
+        )
+        assertThat(looseBallRun.drillStatus(looseContinue, after, action)).isEqualTo(TrainingDrillStatus.DISTRACTED)
     }
 
     @Test

@@ -69,6 +69,7 @@ from gridiron_ai.reward import (
     FULL_GAME_ONNX_OPPONENT_PROFILES,
     PROFILE_SHAPING,
     REWARD_PROFILES,
+    SCENARIO_BOTTLENECK_CURRICULUM_SCALE,
     SHAPED_PROFILES,
     RewardProfileName,
     RewardShaping,
@@ -166,8 +167,8 @@ _LONG_RUNNING_STEM = "maskable_ppo_selfplay_final"
 _SESSION_LONG = "train_sessions_long.tsv"
 # PPO knobs: stock SB3 unless noted in TRAINING_ROADMAP.md § "PPO vs SB3 stock".
 _DEFAULT_LEARNING_RATE = 3e-4
-# 2× stock — only while training 8× (bottleneck) scenario drills; restored after the segment.
-_BOTTLENECK_LEARNING_RATE = 6e-4
+# ~3.3× stock — only while training 8× (bottleneck) scenario drills; restored after the segment.
+_BOTTLENECK_LEARNING_RATE = 1e-3
 DEFAULT_MAX_EPISODE_STEPS = 500
 DEFAULT_POLICY_SEAT = "HOME"
 DEFAULT_DEVICE = "cpu"
@@ -425,6 +426,7 @@ class SegmentEnvConfig:
     episode_mode: str
     soft_mask_bias: bool
     verbose: bool
+    scenario_curriculum_scale: float
 
 
 class WorkerPool:
@@ -449,6 +451,7 @@ class WorkerPool:
             episode_mode="TRAIN",
             soft_mask_bias=True,
             verbose=bool(args.verbose),
+            scenario_curriculum_scale=1.0,
         )
         self._active_view = ActiveSubprocVecEnv(self._subproc, n_envs)
         self._last_config: SegmentEnvConfig | None = None
@@ -467,6 +470,7 @@ class WorkerPool:
         episode_mode: str,
         soft_mask_bias: bool,
         verbose: bool = False,
+        scenario_curriculum_scale: float = 1.0,
     ) -> None:
         config = SegmentEnvConfig(
             opponent_mode=opponent_mode,
@@ -479,6 +483,7 @@ class WorkerPool:
             episode_mode=episode_mode,
             soft_mask_bias=soft_mask_bias,
             verbose=verbose,
+            scenario_curriculum_scale=scenario_curriculum_scale,
         )
         if config == self._last_config:
             return
@@ -494,6 +499,7 @@ class WorkerPool:
             episode_mode=episode_mode,
             soft_mask_bias=soft_mask_bias,
             verbose=verbose,
+            scenario_curriculum_scale=scenario_curriculum_scale,
         )
         self._last_config = config
 
@@ -524,6 +530,7 @@ def make_env(
     episode_mode: str = "TRAIN",
     soft_mask_bias: bool = True,
     verbose: bool = False,
+    scenario_curriculum_scale: float = 1.0,
 ) -> _PoolWorkerRoot:
     return _PoolWorkerRoot(
         ActionMasker(
@@ -542,6 +549,7 @@ def make_env(
                     episode_mode=episode_mode,
                     soft_mask_bias=soft_mask_bias,
                     verbose=verbose,
+                    scenario_curriculum_scale=scenario_curriculum_scale,
                 )
             ),
             _mask_fn,
@@ -564,6 +572,7 @@ def _env_thunk(
     soft_mask_bias: bool,
     *,
     verbose: bool = False,
+    scenario_curriculum_scale: float = 1.0,
 ) -> Callable[[], _PoolWorkerRoot]:
     def _init() -> _PoolWorkerRoot:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", force=True)
@@ -581,6 +590,7 @@ def _env_thunk(
             episode_mode=episode_mode,
             soft_mask_bias=soft_mask_bias,
             verbose=verbose,
+            scenario_curriculum_scale=scenario_curriculum_scale,
         )
 
     return _init
@@ -637,6 +647,7 @@ def make_vec_env(
     episode_mode: str = "TRAIN",
     soft_mask_bias: bool = True,
     verbose: bool = False,
+    scenario_curriculum_scale: float = 1.0,
 ) -> SubprocVecEnv:
     # spawn: N fresh Python interpreters; each imports torch/sb3/gym and builds GridironEnv
     # (HTTP client only — backend matches start on first reset(), not during spawn).
@@ -656,6 +667,7 @@ def make_vec_env(
                 episode_mode,
                 soft_mask_bias,
                 verbose=verbose,
+                scenario_curriculum_scale=scenario_curriculum_scale,
             )
             for _ in range(n_envs)
         ],
@@ -1049,6 +1061,7 @@ def _train_segment(
     runs_key: str,
     scenario: str | None = None,
     scenario_difficulty: int = 0,
+    scenario_curriculum_scale: float = 1.0,
 ) -> dict[str, Any]:
     """One ``learn()`` block; swaps vec-env to the requested opponent mode."""
     opp_label = opponent_metrics_label(computer_opponent, onnx_profile)
@@ -1077,6 +1090,7 @@ def _train_segment(
         episode_mode="TRAIN",
         soft_mask_bias=True,
         verbose=bool(args.verbose),
+        scenario_curriculum_scale=scenario_curriculum_scale,
     )
     clk.lap("configure workers", indent=lap_indent)
     env = _wrap_vecnormalize(pool.vec_env(DEFAULT_N_ENVS), save_stem, training=True)
@@ -1390,11 +1404,14 @@ def _train_scenarios_segment(
 
         bottleneck = units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
         lr = _BOTTLENECK_LEARNING_RATE if bottleneck else _DEFAULT_LEARNING_RATE
+        curriculum_scale = SCENARIO_BOTTLENECK_CURRICULUM_SCALE if bottleneck else 1.0
         if do_eval:
             train_detail = f"{timesteps} ts lr={lr:g}"
         else:
             proxy = require_catalog().curriculum_key(scenario)
             train_detail = f"{timesteps} ts lr={lr:g}; no eval — tracks {proxy}"
+        if bottleneck:
+            train_detail = f"{train_detail} curriculum×{curriculum_scale:g}"
         _scenario_phase_banner(
             f"training starting — {tag} ({train_detail})",
             blank_before=fresh_before,
@@ -1421,6 +1438,7 @@ def _train_scenarios_segment(
                 runs_key=runs_key,
                 scenario=scenario,
                 scenario_difficulty=difficulty,
+                scenario_curriculum_scale=curriculum_scale,
             )
         finally:
             if bottleneck:
@@ -2622,6 +2640,8 @@ def main() -> None:
             _print_interrupt_warnings(args.profile)
         except KeyboardInterrupt:
             print("Interrupted again during save — exiting.", flush=True)
+        except Exception as exc:
+            print(f"Interrupted save failed ({type(exc).__name__}: {exc}) — exiting.", flush=True)
     finally:
         try:
             pool.close()

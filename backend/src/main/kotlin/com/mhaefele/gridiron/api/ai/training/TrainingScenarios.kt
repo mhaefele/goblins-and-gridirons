@@ -21,6 +21,7 @@ import com.mhaefele.gridiron.model.board.PlayerStatus
 import com.mhaefele.gridiron.model.catalog.MoveValue
 import com.mhaefele.gridiron.model.pending.ReplaceChallenge
 import com.mhaefele.gridiron.shared.Coordinate
+import com.mhaefele.gridiron.shared.LegalActionId
 import com.mhaefele.gridiron.shared.PlayerActionStep
 import com.mhaefele.gridiron.shared.PreTurnStep
 import com.mhaefele.gridiron.shared.TeamSide
@@ -85,6 +86,17 @@ class TrainingScenarios(
         if (episode.drillStatus != TrainingDrillStatus.STILL_IN_PROGRESS) return false
         if (!isTrainerOpeningTurn(state)) return false
         return implementation(episode.scenario).isSoftMaskScenarioMove(action, state, episode.trainerSide)
+    }
+
+    /**
+     * Menu-level soft-mask ids when the scenario overrides [AbstractTrainingScenario.softMaskLegalIds],
+     * else null (caller uses per-row [isSoftMaskScenarioMove]).
+     */
+    fun softMaskLegalIds(state: MatchState, actions: List<LegalAction>): Set<LegalActionId>? {
+        val episode = state.trainingEpisode ?: return null
+        if (episode.drillStatus != TrainingDrillStatus.STILL_IN_PROGRESS) return null
+        if (!isTrainerOpeningTurn(state)) return null
+        return implementation(episode.scenario).softMaskLegalIds(actions, state, episode.trainerSide)
     }
 
     fun isPassingScenarioMove(action: LegalAction, state: MatchState): Boolean {

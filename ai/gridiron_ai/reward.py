@@ -12,16 +12,18 @@ from the wire (submitter perspective after the move).
   3. **Scenario curriculum** — +0.5 when ``trainingOutcome`` first becomes ``US``
      (PASS graded; often mid coach-window). −0.5 when the window closes on ``THEM``.
      ``DISTRACTED`` at end is 0. Not stacked on real match W/L.
-  4. **Scenario passing-move bonus** — +0.25 when the submitted row was
-     ``passingLegal`` (mid-episode, whether or not the drill has PASSed yet).
-  5. **Scenario opening mispick** — −1.0 on the **first** submit when a ``passingLegal``
+  4. **Scenario passing-move bonus** — when the submitted row was ``passingLegal``
+     (mid-episode, whether or not the drill has PASSed yet). Louder on d0–d2
+     ([SCENARIO_PASSING_MOVE_BONUS_D0_D2]); milder from d3 up.
+  5. **Scenario opening mispick** — on the **first** submit when a ``passingLegal``
      row was available and the chosen row was not (TRAIN scenarios only; env-gated).
+     Louder on d0–d2 ([SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2]).
   6. **Profile shaping** ([RewardShaping]) — possession / approach / TD amp / defense
      targeting / covering-radius spread / etc. (see presets below).
 
 Scenario episodes use this same stack. ``passingLegal`` marks PASS-grade curriculum moves
-(and the +0.25 above); ``softMaskLegal`` biases sampling only. Drill US/THEM grades
-curriculum/winrate.
+(and the passing-move bonus above); ``softMaskLegal`` biases sampling only. Drill US/THEM
+grades curriculum/winrate.
 
 Eval runs with profile shaping off.
 
@@ -62,8 +64,27 @@ SCENARIO_TERMINAL_WIN = 0.5
 SCENARIO_TERMINAL_LOSS = -0.5
 # Per submitting a ``passingLegal`` row (pickup / lesson path) — not soft-mask distractors.
 SCENARIO_PASSING_MOVE_BONUS = 0.25
+# d0–d2: louder so opening mass can move before VecNormalize / GAE dilute the signal.
+SCENARIO_PASSING_MOVE_BONUS_D0_D2 = 1.0
 # First submit when a passing row was on the menu and they took something else (env gates opening).
 SCENARIO_OPENING_NON_PASSING_PENALTY = 1.0
+SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2 = 2.5
+# 8× bottleneck train segments only (env ``scenario_curriculum_scale``) — eval stays 1.0.
+SCENARIO_BOTTLENECK_CURRICULUM_SCALE = 4.0
+
+
+def scenario_passing_move_bonus(difficulty: int | None) -> float:
+    """Passing-row bonus for the active scenario difficulty (``None`` → mild default)."""
+    if difficulty is not None and difficulty <= 2:
+        return SCENARIO_PASSING_MOVE_BONUS_D0_D2
+    return SCENARIO_PASSING_MOVE_BONUS
+
+
+def scenario_opening_non_passing_penalty(difficulty: int | None) -> float:
+    """Opening mispick slap for the active scenario difficulty (``None`` → mild default)."""
+    if difficulty is not None and difficulty <= 2:
+        return SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2
+    return SCENARIO_OPENING_NON_PASSING_PENALTY
 
 RewardProfileName = Literal["baseline", "general", "spread", "td", "defense"]
 AllProfilesPurpose = Literal["train", "eval", "summary"]
@@ -607,6 +628,8 @@ def step_reward(
         perspective_seat: TeamSide = TeamSide.HOME,
         passing_legal_move: bool = False,
         scenario_opening_non_passing: bool = False,
+        scenario_difficulty: int | None = None,
+        scenario_curriculum_scale: float = 1.0,
 ) -> float:
     """Reward for the seat that just moved.
 
@@ -614,10 +637,14 @@ def step_reward(
     Board facts join via ``rewards.players`` / ``ballCoordinate``.
     ``passing_legal_move`` is True when the submitted harness row had ``passingLegal``.
     ``scenario_opening_non_passing`` is env-gated (first TRAIN scenario step, passing
-    available, non-passing chosen) → −[SCENARIO_OPENING_NON_PASSING_PENALTY].
+    available, non-passing chosen) → −[scenario_opening_non_passing_penalty].
+    ``scenario_difficulty`` selects d0–d2 vs milder d3+ opening knobs.
+    ``scenario_curriculum_scale`` multiplies curriculum ± (opening + PASS/THEM grade); 8×
+    bottleneck train segments pass [SCENARIO_BOTTLENECK_CURRICULUM_SCALE], eval stays 1.0.
     ``training_outcome_before`` / ``training_outcome`` edge-detect PASS → +0.5 once.
     """
     shaping_cfg = shaping or RewardShaping()
+    scale = scenario_curriculum_scale if scenario_curriculum_scale > 0.0 else 1.0
     reward = score_margin(rewards_after) - score_margin(rewards_before)
     reward += shaping_reward(
         rewards_before=rewards_before,
@@ -629,12 +656,12 @@ def step_reward(
         perspective_seat=perspective_seat,
     )
     if passing_legal_move:
-        reward += SCENARIO_PASSING_MOVE_BONUS
+        reward += scenario_passing_move_bonus(scenario_difficulty) * scale
     if scenario_opening_non_passing:
-        reward -= SCENARIO_OPENING_NON_PASSING_PENALTY
+        reward -= scenario_opening_non_passing_penalty(scenario_difficulty) * scale
     # PASS may land mid coach-window; credit here so chaff after the lesson is not the carrier.
     if _is_us_winner_rel(training_outcome) and not _is_us_winner_rel(training_outcome_before):
-        reward += SCENARIO_TERMINAL_WIN
+        reward += SCENARIO_TERMINAL_WIN * scale
     if result_kind is not None:
         if _is_us_winner_rel(result_winner_rel):
             reward += TERMINAL_WIN
@@ -647,7 +674,7 @@ def step_reward(
         if _is_us_winner_rel(training_outcome):
             pass  # +0.5 already applied on the PASS edge (possibly this same submit)
         elif _is_them_winner_rel(training_outcome):
-            reward += SCENARIO_TERMINAL_LOSS
+            reward += SCENARIO_TERMINAL_LOSS * scale
         elif not _is_distracted_training_outcome(training_outcome):
             raise ValueError(f"unknown trainingOutcome on coach-window end: {training_outcome!r}")
     return float(reward)

@@ -54,6 +54,45 @@ def test_atomic_model_save_replaces_final(tmp_path: Path) -> None:
     assert (tmp_path / "maskable_ppo_selfplay_final.zip").read_bytes() == b"v2"
 
 
+def test_atomic_model_save_survives_env_lock_via_schedule_closure(tmp_path: Path) -> None:
+    """Ctrl-C mid-SubprocVecEnv: schedule lambda closing over model must not poison save."""
+    import threading
+
+    import cloudpickle
+    from stable_baselines3.common.utils import FloatSchedule
+
+    class _LockyModel:
+        def __init__(self) -> None:
+            self.env = type("E", (), {"lock": threading.Lock()})()
+            self.learning_rate = 3e-4
+            self.lr_schedule = FloatSchedule(lambda _p: self.learning_rate)
+            self.clip_range = FloatSchedule(lambda _p: 0.2)
+            self.clip_range_vf = None
+            self._vec_normalize_env = self.env
+            self._payload = b"saved"
+
+        def save(self, path: str) -> None:
+            # Mimic SB3: schedules are in the pickled ``data`` blob.
+            cloudpickle.dumps(
+                {
+                    "lr_schedule": self.lr_schedule,
+                    "clip_range": self.clip_range,
+                    "learning_rate": self.learning_rate,
+                }
+            )
+            zip_path = Path(path)
+            if zip_path.suffix != ".zip":
+                zip_path = zip_path.with_suffix(".zip")
+            zip_path.write_bytes(self._payload)
+
+    model = _LockyModel()
+    stem = tmp_path / "maskable_ppo_selfplay_final"
+    checkpoints.atomic_model_save(model, stem)
+    assert (tmp_path / "maskable_ppo_selfplay_final.zip").read_bytes() == b"saved"
+    assert model.env is not None
+    assert callable(model.lr_schedule)
+
+
 def test_atomic_model_save_does_not_leave_truncated_final(tmp_path: Path) -> None:
     stem = tmp_path / "maskable_ppo_selfplay_final"
     final_zip = tmp_path / "maskable_ppo_selfplay_final.zip"

@@ -1,5 +1,7 @@
 package com.mhaefele.gridiron.integration
 
+import com.mhaefele.gridiron.api.ai.dto.AiTrainingOutcome
+import com.mhaefele.gridiron.api.ai.training.LooseBallRunTrainingScenario
 import com.mhaefele.gridiron.api.ai.training.TrainingScenarioFamily
 import com.mhaefele.gridiron.api.ai.training.TrainingScenarios
 import com.mhaefele.gridiron.api.dto.response.BallEncounter
@@ -100,10 +102,15 @@ class TrainingScenarioApiTest : BaseApiTest() {
                 assertThat(passing).isEqualTo(softMask)
             }
             TrainingScenarioEnum.LOOSE_BALL_RUN -> {
-                // Opening soft-mask = pickup always + empty-EZ at 1/4; PASS = pickup only.
+                // Opening soft-mask = pickup always + up to 2 empty-EZ; PASS = pickup only.
                 assertThat(softMask).isNotEmpty()
                 assertThat(passing).isNotEmpty()
                 assertThat(passing).isSubsetOf(softMask)
+                val emptyEzSoft = softMask.count { row ->
+                    val run = row.action as? LegalAction.Run ?: return@count false
+                    run.ballEncounter != BallEncounter.PICK_UP
+                }
+                assertThat(emptyEzSoft).isLessThanOrEqualTo(LooseBallRunTrainingScenario.BAD_SOFT_MASK_COUNT)
             }
             TrainingScenarioEnum.THROW_TO_ENDZONE,
             TrainingScenarioEnum.THROW_CLOSER_RANGE,
@@ -131,22 +138,43 @@ class TrainingScenarioApiTest : BaseApiTest() {
     }
 
     @Test
-    fun `LOOSE_BALL_RUN soft-masks pickup then EZ continue and PASSes on score`() {
+    fun `LOOSE_BALL_RUN d0 PASSes and ends on opening pickup`() {
         withRandomDiceRetries {
-            val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.LOOSE_BALL_RUN))
+            val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.LOOSE_BALL_RUN, difficulty = 0))
+            val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
+            val pickup = opening.harness.legalRows.first { it.passingLegal }.action
+            val afterPickup = api.aiSubmit(response.matchId, pickup.id, forSeat = TeamSide.HOME)
+            assertThat(loadMatch(response.matchId).trainingEpisode!!.drillStatus).isEqualTo(TrainingDrillStatus.PASS)
+            assertThat(afterPickup.next.harness.trainingEpisodeEnded).isTrue()
+            assertThat(afterPickup.next.harness.trainingOutcome).isEqualTo(AiTrainingOutcome.US)
+        }
+    }
+
+    @Test
+    fun `LOOSE_BALL_RUN d2 soft-masks pickup then EZ continue and PASSes on score`() {
+        withRandomDiceRetries {
+            // d2+ keeps continue-to-score; d0–d1 are pickup one-shot.
+            val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.LOOSE_BALL_RUN, difficulty = 2))
             val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
             val openingSoft = opening.harness.legalRows.filter { it.softMaskLegal }
             val openingPass = opening.harness.legalRows.filter { it.passingLegal }
             assertThat(openingSoft).isNotEmpty()
             assertThat(openingPass).isNotEmpty()
-            // PASS = pickup only; soft-mask always includes pickup; empty-EZ only at 1/4 per ask.
+            // PASS = pickup only; soft-mask always includes pickup + exactly 2 empty-EZ when available.
             assertThat(openingPass).isSubsetOf(openingSoft)
             assertThat(openingPass).allMatch { it.action is LegalAction.Run && (it.action as LegalAction.Run).ballEncounter == BallEncounter.PICK_UP }
+            val emptyEzAll = opening.harness.legalRows.filter { row ->
+                val run = row.action as? LegalAction.Run ?: return@filter false
+                run.ballEncounter != BallEncounter.PICK_UP
+            }
             val emptyEzSoft = openingSoft.filter { row ->
                 val run = row.action as? LegalAction.Run ?: return@filter false
                 run.ballEncounter != BallEncounter.PICK_UP
             }
             assertThat(emptyEzSoft).allMatch { !it.passingLegal }
+            assertThat(emptyEzSoft).hasSize(
+                minOf(LooseBallRunTrainingScenario.BAD_SOFT_MASK_COUNT, emptyEzAll.size),
+            )
             // Shortest pickup leaves the most residual MA for the EZ continue.
             val pickup = openingPass.map { it.action }.filterIsInstance<LegalAction.Run>().minBy { it.path.steps }
 
@@ -171,9 +199,8 @@ class TrainingScenarioApiTest : BaseApiTest() {
     @Test
     fun `LOOSE_BALL_RUN empty-EZ soft-mask distractor does not PASS`() {
         withRandomDiceRetries {
-            val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.LOOSE_BALL_RUN))
+            val response = api.createScenarioMatch(scenarioMatchRequest(TrainingScenarioEnum.LOOSE_BALL_RUN, difficulty = 0))
             val opening = api.aiStep(response.matchId, forSeat = TeamSide.HOME)
-            // Empty-EZ soft-mask is 1/4 — retry until a soft-masked distractor appears.
             val distractor = opening.harness.legalRows.first { row ->
                 !row.passingLegal && row.softMaskLegal && row.action is LegalAction.Run && (row.action as LegalAction.Run).ballEncounter != BallEncounter.PICK_UP
             }

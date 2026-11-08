@@ -22,8 +22,10 @@ class TrainingEpisodeEndDistractedTest {
             drillStatus = TrainingDrillStatus.DISTRACTED,
             difficulty = 4,
         )
-        assertThat(TrainingEpisodeEnd.trainingOutcome(state.copy(progress = state.progress.copy(turnNumber = 7)))).isEqualTo(AiTrainingOutcome.DISTRACTED)
-        assertThat(TrainingEpisodeEnd.trainingEpisodeEnded(state.copy(progress = state.progress.copy(turnNumber = 7)))).isTrue()
+        // d4 window = 6 coach turns from OPENING_TURN (3) → ended at turn >= 9.
+        val closed = state.copy(progress = state.progress.copy(turnNumber = 9))
+        assertThat(TrainingEpisodeEnd.trainingOutcome(closed)).isEqualTo(AiTrainingOutcome.DISTRACTED)
+        assertThat(TrainingEpisodeEnd.trainingEpisodeEnded(closed)).isTrue()
     }
 
     @Test

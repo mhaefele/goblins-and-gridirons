@@ -118,14 +118,14 @@ def score_opening_chosen_plain(policy: Any, snapshot: dict[str, Any]) -> dict[st
 
 
 def format_move_sequence(sequence: list[dict[str, Any]] | None) -> str:
-    """Lesson path only: stop at the scoring move (``!``), drop coach-window chaff after."""
+    """Lesson path only: stop at PASS-edge / TD (``!``), drop coach-window chaff after."""
     if not sequence:
         return "(no moves)"
     steps: list[dict[str, Any]] = []
     for step in sequence:
         steps.append(step)
         label = str(step.get("label") or "")
-        if "!" in label:
+        if step.get("pass_edge") or step.get("scored_td") or "!" in label:
             break
     parts: list[str] = []
     for step in steps:

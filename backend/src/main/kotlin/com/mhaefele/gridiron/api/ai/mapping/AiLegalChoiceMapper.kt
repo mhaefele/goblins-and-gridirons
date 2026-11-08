@@ -21,12 +21,15 @@ class AiLegalChoiceMapper(
     ): List<AiLegalChoiceDto> {
         // softMaskIds: null = search N/A (use heuristic); non-empty = those ids; empty = searched,
         // none solvable — still fall back to heuristic so soft-mask is not blanked.
-        val solvableIds = solvableSoftMask.softMaskIds(state, actions)
+        // Scenario menu-level ids (e.g. LOOSE fixed distractor sample) win when present.
+        val scenarioSoftIds = trainingScenarios.softMaskLegalIds(state, actions)
+        val solvableIds = if (scenarioSoftIds == null) solvableSoftMask.softMaskIds(state, actions) else null
         val choices = actions.map { action ->
             AiLegalChoiceDto(
                 action = action,
                 passingLegal = trainingScenarios.isPassingScenarioMove(action, state),
                 softMaskLegal = when {
+                    scenarioSoftIds != null  -> action.id in scenarioSoftIds
                     solvableIds == null      -> trainingScenarios.isSoftMaskScenarioMove(action, state)
                     solvableIds.isNotEmpty() -> action.id in solvableIds
                     else                     -> trainingScenarios.isSoftMaskScenarioMove(action, state)

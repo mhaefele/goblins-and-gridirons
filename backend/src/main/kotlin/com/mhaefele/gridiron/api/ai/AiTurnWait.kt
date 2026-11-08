@@ -40,7 +40,7 @@ class AiTurnWait(
     }
 
     private fun ready(state: MatchState, forSeat: TeamSide): Boolean =
-        state.isGameEnded() || TrainingEpisodeEnd.isCoachWindowExceeded(state) || state.actingSeat() == forSeat
+        state.isGameEnded() || TrainingEpisodeEnd.trainingEpisodeEnded(state) || state.actingSeat() == forSeat
 
     private companion object {
         val TIMEOUT: Duration = Duration.ofHours(1)

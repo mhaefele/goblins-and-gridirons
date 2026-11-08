@@ -12,6 +12,7 @@ import com.mhaefele.gridiron.model.board.BoardSquare
 import com.mhaefele.gridiron.model.board.Player
 import com.mhaefele.gridiron.model.catalog.TeamCard
 import com.mhaefele.gridiron.shared.Coordinate
+import com.mhaefele.gridiron.shared.LegalActionId
 import com.mhaefele.gridiron.shared.TeamSide
 
 /** Board setup and post-crank validation for one [TrainingScenarioEnum] curriculum episode. */
@@ -104,6 +105,9 @@ abstract class AbstractTrainingScenario {
      * Default: first budgeted action on the episode opening coach turn via [isSoftMaskOpeningMove].
      * Multi-step drills override to keep flagging follow-ups on that same opening turn.
      * [TrainingScenarios] only consults this on the trainer opening turn.
+     *
+     * Prefer [softMaskLegalIds] when soft-mask needs a fixed-size sample of the menu
+     * (independent per-row predicates cannot guarantee a count).
      */
     open fun isSoftMaskScenarioMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
         if (state.currentTurnState.currentPlayerAction != null) return false
@@ -113,6 +117,16 @@ abstract class AbstractTrainingScenario {
             isSoftMaskFollowUpMove(action, state, trainerSide)
         }
     }
+
+    /**
+     * When non-null, these ids own soft-mask for this menu (instead of per-row
+     * [isSoftMaskScenarioMove]). Default null — keep the boolean path.
+     */
+    open fun softMaskLegalIds(
+        actions: List<LegalAction>,
+        state: MatchState,
+        trainerSide: TeamSide,
+    ): Set<LegalActionId>? = null
 
     /**
      * Move that would grade PASS on the opening coach turn (wired to ``passingScenarioMove`` /

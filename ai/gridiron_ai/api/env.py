@@ -119,6 +119,7 @@ class GridironEnv(gym.Env):
         episode_mode: EpisodeMode = EpisodeMode.EVAL,
         soft_mask_bias: bool = False,
         verbose: bool = False,
+        scenario_curriculum_scale: float = 1.0,
     ) -> None:
         super().__init__()
         if opponent_mode not in _VALID_OPPONENT_MODES:
@@ -132,6 +133,8 @@ class GridironEnv(gym.Env):
             raise ValueError(f"scenario_difficulty must be 0–5, was {scenario_difficulty}")
         if episode_mode not in (EpisodeMode.TRAIN, EpisodeMode.EVAL):
             raise ValueError(f"episode_mode must be TRAIN or EVAL, got {episode_mode!r}")
+        if scenario_curriculum_scale <= 0.0:
+            raise ValueError(f"scenario_curriculum_scale must be > 0, was {scenario_curriculum_scale}")
 
         self._owns_client = client is None
         self.client = client or GridironClient(base_url=base_url)
@@ -151,6 +154,8 @@ class GridironEnv(gym.Env):
         # Policy +SOFT_MASK_LOGIT_BIAS from obs. Train rollouts True; eval follows episode_mode (TRAIN=on).
         self.soft_mask_bias = soft_mask_bias
         self.verbose = verbose
+        # 1.0 normally; 8× bottleneck train segments pass SCENARIO_BOTTLENECK_CURRICULUM_SCALE.
+        self.scenario_curriculum_scale = scenario_curriculum_scale
 
         self.observation_space = dict_observation_space()
         self.action_space = spaces.Discrete(legal_row_action_n())
@@ -183,6 +188,7 @@ class GridironEnv(gym.Env):
         episode_mode: EpisodeMode,
         soft_mask_bias: bool,
         verbose: bool = False,
+        scenario_curriculum_scale: float = 1.0,
     ) -> None:
         """Reconfigure an idle worker between train/eval segments (pool reuse)."""
         if opponent_mode not in _VALID_OPPONENT_MODES:
@@ -196,6 +202,8 @@ class GridironEnv(gym.Env):
             raise ValueError(f"scenario_difficulty must be 0–5, was {scenario_difficulty}")
         if episode_mode not in (EpisodeMode.TRAIN, EpisodeMode.EVAL):
             raise ValueError(f"episode_mode must be TRAIN or EVAL, got {episode_mode!r}")
+        if scenario_curriculum_scale <= 0.0:
+            raise ValueError(f"scenario_curriculum_scale must be > 0, was {scenario_curriculum_scale}")
 
         self._release_match()
         self.opponent_mode = opponent_mode
@@ -208,6 +216,7 @@ class GridironEnv(gym.Env):
         self.episode_mode = episode_mode
         self.soft_mask_bias = soft_mask_bias
         self.verbose = verbose
+        self.scenario_curriculum_scale = scenario_curriculum_scale
         if scenario is not None:
             if self._scenario_eval_debug is None:
                 self._scenario_eval_debug = ScenarioEvalDebug()
@@ -550,6 +559,10 @@ class GridironEnv(gym.Env):
             perspective_seat=self._perspective_seat,
             passing_legal_move=passing_legal_move,
             scenario_opening_non_passing=scenario_opening_non_passing,
+            scenario_difficulty=self.scenario_difficulty if self.scenario is not None else None,
+            scenario_curriculum_scale=(
+                self.scenario_curriculum_scale if self.scenario is not None else 1.0
+            ),
         )
         scored_td = int(after_obs["touchdownsUs"]) > int(observation_before_move["touchdownsUs"])
         # Train --verbose: played path + PASS-edge tag for PPO evidence (not window close).

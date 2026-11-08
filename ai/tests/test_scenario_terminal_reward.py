@@ -1,10 +1,13 @@
-"""Scenario curriculum: PASS-edge +0.5, window-loss −0.5, passing-move +0.25, opening mispick −1."""
+"""Scenario curriculum: PASS-edge +0.5, window-loss −0.5, passing-move / opening mispick."""
 
 from __future__ import annotations
 
 from gridiron_ai.reward import (
+    SCENARIO_BOTTLENECK_CURRICULUM_SCALE,
     SCENARIO_OPENING_NON_PASSING_PENALTY,
+    SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2,
     SCENARIO_PASSING_MOVE_BONUS,
+    SCENARIO_PASSING_MOVE_BONUS_D0_D2,
     SCENARIO_TERMINAL_LOSS,
     SCENARIO_TERMINAL_WIN,
     TERMINAL_WIN,
@@ -33,6 +36,8 @@ def _reward(*, before: dict, after: dict, **terminal: object) -> float:
         training_outcome_before=terminal.get("training_outcome_before"),  # type: ignore[arg-type]
         passing_legal_move=bool(terminal.get("passing_legal_move")),
         scenario_opening_non_passing=bool(terminal.get("scenario_opening_non_passing")),
+        scenario_difficulty=terminal.get("scenario_difficulty"),  # type: ignore[arg-type]
+        scenario_curriculum_scale=float(terminal.get("scenario_curriculum_scale") or 1.0),
     )
 
 
@@ -119,6 +124,23 @@ def test_passing_legal_move_adds_bonus() -> None:
     assert _reward(before=before, after=after, passing_legal_move=True) == SCENARIO_PASSING_MOVE_BONUS
 
 
+def test_passing_legal_d0_d2_uses_louder_bonus() -> None:
+    before = _rewards()
+    after = _rewards()
+    assert (
+        _reward(before=before, after=after, passing_legal_move=True, scenario_difficulty=0)
+        == SCENARIO_PASSING_MOVE_BONUS_D0_D2
+    )
+    assert (
+        _reward(before=before, after=after, passing_legal_move=True, scenario_difficulty=2)
+        == SCENARIO_PASSING_MOVE_BONUS_D0_D2
+    )
+    assert (
+        _reward(before=before, after=after, passing_legal_move=True, scenario_difficulty=3)
+        == SCENARIO_PASSING_MOVE_BONUS
+    )
+
+
 def test_passing_legal_stacks_with_pass_edge() -> None:
     before = _rewards()
     after = _rewards()
@@ -128,7 +150,8 @@ def test_passing_legal_stacks_with_pass_edge() -> None:
         trainingOutcome="US",
         training_outcome_before=None,
         passing_legal_move=True,
-    ) == SCENARIO_PASSING_MOVE_BONUS + SCENARIO_TERMINAL_WIN
+        scenario_difficulty=1,
+    ) == SCENARIO_PASSING_MOVE_BONUS_D0_D2 + SCENARIO_TERMINAL_WIN
 
 
 def test_non_passing_move_gets_no_bonus() -> None:
@@ -146,6 +169,20 @@ def test_scenario_opening_non_passing_penalty() -> None:
     )
 
 
+def test_opening_non_passing_d0_d2_uses_louder_penalty() -> None:
+    before = _rewards()
+    after = _rewards()
+    assert (
+        _reward(
+            before=before,
+            after=after,
+            scenario_opening_non_passing=True,
+            scenario_difficulty=1,
+        )
+        == -SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2
+    )
+
+
 def test_opening_non_passing_stacks_with_window_loss() -> None:
     before = _rewards()
     after = _rewards()
@@ -156,6 +193,31 @@ def test_opening_non_passing_stacks_with_window_loss() -> None:
             trainingEpisodeEnded=True,
             trainingOutcome="THEM",
             scenario_opening_non_passing=True,
+            scenario_difficulty=0,
         )
-        == -SCENARIO_OPENING_NON_PASSING_PENALTY + SCENARIO_TERMINAL_LOSS
+        == -SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2 + SCENARIO_TERMINAL_LOSS
     )
+
+
+def test_bottleneck_curriculum_scale_juices_opening_and_grade() -> None:
+    before = _rewards()
+    after = _rewards()
+    scale = SCENARIO_BOTTLENECK_CURRICULUM_SCALE
+    assert _reward(
+        before=before,
+        after=after,
+        passing_legal_move=True,
+        trainingOutcome="US",
+        training_outcome_before=None,
+        scenario_difficulty=0,
+        scenario_curriculum_scale=scale,
+    ) == (SCENARIO_PASSING_MOVE_BONUS_D0_D2 + SCENARIO_TERMINAL_WIN) * scale
+    assert _reward(
+        before=before,
+        after=after,
+        scenario_opening_non_passing=True,
+        trainingEpisodeEnded=True,
+        trainingOutcome="THEM",
+        scenario_difficulty=0,
+        scenario_curriculum_scale=scale,
+    ) == (-SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2 + SCENARIO_TERMINAL_LOSS) * scale

@@ -21,7 +21,7 @@ Shell chain: `dump → pack → seed → scenario_a → scenario_b → checkpoin
 2. **Scenario curriculum** — +0.5 when `trainingOutcome` first becomes `US` (PASS;
    often mid coach-window). −0.5 when the window closes on `THEM`. `DISTRACTED` at
    end is 0. Episode end is still `trainingEpisodeEnded` only.
-3. **Scenario passing-move** — +0.25 when the submitted row was `passingLegal`
+3. **Scenario passing-move** — +1.0 on d0–d2 / +0.25 from d3 when the submitted row was `passingLegal`
    (mid-episode; stacks with +0.5 if that submit also grades PASS)
 4. **Profile shaping** — `general` / `spread` / `td` / `defense` presets (train only; eval off);
    scenario_a / scenario_b use **baseline** (no shaping) — curriculum bonuses still apply
@@ -191,7 +191,7 @@ Ask before merging:
 
 1. Does this change the **reward stack** (new term, slap, amplify)? Prefer no until a
    scenario_a / scenario_b gate fails for a clear reason. Allowed curriculum terms:
-   PASS-edge +0.5 / window-loss −0.5 and passing-move +0.25 — do not add further
+   PASS-edge +0.5 / window-loss −0.5 and passing-move (+1.0 d0–d2 / +0.25 d3+) — do not add further
    per-move slap/bonus without revisiting this checklist.
 2. Does this **unlock games or claims** earlier than the gate? Prefer no.
 3. Does this add a **Python re-implementation** of something the server already flags
@@ -210,7 +210,7 @@ Standing record of MaskablePPO hyperparameters vs Stable-Baselines3 defaults.
 
 | Knob | SB3 stock | Ours | Why |
 |------|-----------|------|-----|
-| `learning_rate` | `3e-4` | `3e-4` (8× drills `6e-4`) | Stock default; 2× only for bottleneck scenario train segments, then restored. |
+| `learning_rate` | `3e-4` | `3e-4` (8× drills `1e-3`) | Stock default; ~3.3× only for bottleneck scenario train segments, then restored. |
 | `n_epochs` | `10` | `10` | Stock. Was `4` to stop factor-head thrash. |
 | `clip_range` | `0.2` | `0.2` | Stock. Was `0.1`. |
 | `target_kl` | `None` | `None` | Stock (no KL early-stop). Was `0.02`. |
@@ -242,12 +242,12 @@ Apply on create **and** resume via `_set_learning_rate` / `_set_ent_coef` / `_se
 | VecNormalize `norm_reward` | scenario + full-game train; `{stem}_vecnormalize.pkl` | Obs not normalized; raw-scenario trial reverted |
 | Soft-mask bias `2.5` | `constants.SOFT_MASK_LOGIT_BIAS` | Train rollouts on; eval/gates off unless `--eval-episode-mode TRAIN` — [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference) |
 | Scenario PASS +0.5 / window loss −0.5 | `reward.SCENARIO_TERMINAL_*` | +0.5 on `trainingOutcome` → US edge; −0.5 on ended+THEM |
-| Scenario passing-move +0.25 | `reward.SCENARIO_PASSING_MOVE_BONUS` | When submitted row was `passingLegal`; mid-episode OK |
-| Scenario opening non-passing −1.0 | `reward.SCENARIO_OPENING_NON_PASSING_PENALTY` | First TRAIN scenario submit when a passing row was available and they took something else |
+| Scenario passing-move +1.0 (d0–d2) / +0.25 (d3+) | `reward.SCENARIO_PASSING_MOVE_BONUS_D0_D2` / `SCENARIO_PASSING_MOVE_BONUS` | When submitted row was `passingLegal`; mid-episode OK |
+| Scenario opening non-passing −2.5 (d0–d2) / −1.0 (d3+) | `reward.SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2` / `SCENARIO_OPENING_NON_PASSING_PENALTY` | First TRAIN scenario submit when a passing row was available and they took something else |
 | Claim unlock board d4 | `scenario_curriculum.CLAIM_UNLOCK_BOARD_DIFFICULTY` | scenario_a → scenario_b |
 | Full-game unlock d5 | `scenario_curriculum.FULL_GAME_UNLOCK_DIFFICULTY` | After all drills mastered |
 | Gate-fail double run | `scenario_curriculum.SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER` | 2× when gating drill has current-difficulty `gate_fails` > 0 below d5; optional drills never multiply; d5 fails excluded |
-| Behind-pack / bottleneck / demote run | `SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER` / `SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD` | 2× below pack max (no claim-unlock door) or current-level fail; 8× current fail at pack **min**, or below-d4 while boards are not yet d4+, or + `d5_demotes` ≥ 5 once boards are d4+; 8× train uses `_BOTTLENECK_LEARNING_RATE` (`6e-4`) |
+| Behind-pack / bottleneck / demote run | `SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER` / `SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD` | 2× below pack max (no claim-unlock door) or current-level fail; 8× current fail at pack **min**, or below-d4 while boards are not yet d4+, or + `d5_demotes` ≥ 5 once boards are d4+; 8× train uses `_BOTTLENECK_LEARNING_RATE` (`1e-3`) + curriculum reward ×`SCENARIO_BOTTLENECK_CURRICULUM_SCALE` (`4`) on opening ± / PASS–THEM grade (eval unscaled) |
 | Progress waive / recover | `scenario_curriculum.GATE_PROGRESS_WAIVE_FAILURES` (40) | Gating **claims** only — stop blocking gates; boards never waive; perfect at level clears current fails only |
 | Scenario eval games | `scenario_curriculum.SCENARIO_EVAL_GAMES` | 10 games per drill after-eval; `n_envs` = game count |
 | Scenario pass / demote | `SCENARIO_EVAL_PASS_MIN_WINS` (9) / `DEMOTE_FROM_MAX_MAX_WINS` (7) | Pass 9–10/10 to bump; ≤7/10 at d5 demotes; 8/10 is gate-fail only |
