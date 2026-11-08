@@ -24,6 +24,13 @@ from stable_baselines3.common.callbacks import BaseCallback
 from gridiron_ai.eval_opening_diag import diagnose_opening_mispick
 
 
+def uninstall_evidence_train_hook(model: Any) -> None:
+    """Remove verbose ``model.train`` wrapper so SB3 zip pickle cannot see Subproc locks."""
+    if "train" in model.__dict__:
+        del model.train
+    model.__dict__.pop("_gridiron_evidence_train_hook", None)
+
+
 def _policy_param_l2(model: Any) -> float:
     total = 0.0
     for param in model.policy.parameters():
@@ -373,9 +380,7 @@ class PpoUpdateEvidenceCallback(BaseCallback):
         self._buffer_snapshot: dict[str, np.ndarray] | None = None
 
     def _on_training_start(self) -> None:
-        if "train" in self.model.__dict__:
-            del self.model.train
-        self.model.__dict__.pop("_gridiron_evidence_train_hook", None)
+        uninstall_evidence_train_hook(self.model)
         self._l2_before_train = None
         self._graded_openings = []
         self._graded_before = []
@@ -403,6 +408,8 @@ class PpoUpdateEvidenceCallback(BaseCallback):
     def _on_training_end(self) -> None:
         if self.verbose >= 1:
             self._emit_update_evidence()
+        # Drop the closure before any checkpoint — it closes over ``model`` → SubprocVecEnv locks.
+        uninstall_evidence_train_hook(self.model)
 
     def _emit_update_evidence(self) -> None:
         if self._l2_before_train is None:

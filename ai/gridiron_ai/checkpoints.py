@@ -69,15 +69,18 @@ def _schedule_as_float(value: Any, *, fallback: float) -> float:
 def atomic_model_save(model: Any, save_stem: str | Path) -> Path:
     """Write model zip via temp file + rename so resume checkpoint never stays truncated.
 
-    # DEVIATION: SB3 excludes ``env`` from the zip dict, but a schedule lambda that closed
-    # over ``model`` (or ``self``) still pickles the live SubprocVecEnv → ``_thread.lock``.
-    # Ctrl-C mid-``remote.recv()`` hits that path. Detach env + rebind schedules to floats
-    # for the save only, then restore.
+    # DEVIATION: SB3 excludes ``env`` from the zip dict, but instance attrs that close over
+    # ``model`` (verbose ``model.train`` hook, schedule lambdas) still pickle SubprocVecEnv
+    # → ``_thread.lock``. Ctrl-C mid-``remote.recv()`` hits that path. Sanitize for the save
+    # only, then restore.
     """
     stem = Path(save_stem)
     final_zip = stem.with_suffix(".zip")
     tmp_zip = stem.with_name(f"{stem.name}.writing.zip")
     held: dict[str, Any] = {}
+    # Verbose evidence installs ``model.train = closure(model)`` — not in SB3's exclude list.
+    held_train = model.__dict__.pop("train", None)
+    held_hook_flag = model.__dict__.pop("_gridiron_evidence_train_hook", None)
     for name in ("env", "_vec_normalize_env"):
         if hasattr(model, name):
             held[name] = getattr(model, name)
@@ -107,6 +110,10 @@ def atomic_model_save(model: Any, save_stem: str | Path) -> Path:
     finally:
         for name, value in held.items():
             setattr(model, name, value)
+        if held_train is not None:
+            model.__dict__["train"] = held_train
+        if held_hook_flag is not None:
+            model.__dict__["_gridiron_evidence_train_hook"] = held_hook_flag
     return final_zip
 
 

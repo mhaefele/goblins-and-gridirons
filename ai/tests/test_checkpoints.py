@@ -93,6 +93,42 @@ def test_atomic_model_save_survives_env_lock_via_schedule_closure(tmp_path: Path
     assert callable(model.lr_schedule)
 
 
+def test_atomic_model_save_strips_verbose_train_hook_closure(tmp_path: Path) -> None:
+    """``--verbose`` evidence wraps ``model.train`` over ``model`` → env locks."""
+    import threading
+
+    import cloudpickle
+
+    class _HookyModel:
+        def __init__(self) -> None:
+            self.env = type("E", (), {"lock": threading.Lock()})()
+            self.learning_rate = 3e-4
+            self.lr_schedule = 3e-4
+            self.clip_range = 0.2
+            self.clip_range_vf = None
+            self._payload = b"saved"
+
+            def train_with_evidence() -> None:
+                _ = self.env.lock
+
+            self.train = train_with_evidence
+            self.__dict__["_gridiron_evidence_train_hook"] = True
+
+        def save(self, path: str) -> None:
+            if "train" in self.__dict__:
+                cloudpickle.dumps(self.__dict__["train"])
+            zip_path = Path(path)
+            if zip_path.suffix != ".zip":
+                zip_path = zip_path.with_suffix(".zip")
+            zip_path.write_bytes(self._payload)
+
+    model = _HookyModel()
+    stem = tmp_path / "maskable_ppo_selfplay_final"
+    checkpoints.atomic_model_save(model, stem)
+    assert (tmp_path / "maskable_ppo_selfplay_final.zip").read_bytes() == b"saved"
+    assert "train" in model.__dict__
+
+
 def test_atomic_model_save_does_not_leave_truncated_final(tmp_path: Path) -> None:
     stem = tmp_path / "maskable_ppo_selfplay_final"
     final_zip = tmp_path / "maskable_ppo_selfplay_final.zip"
