@@ -22,8 +22,8 @@ def test_legal_row_action_mask_enables_prefix() -> None:
 
 def test_resolve_legal_row_index_returns_harness_id() -> None:
     moves = [
-        [1, 0, 10, 0, 3, 5, 0, 0, 0, 2, 3],
-        [2, 1, 0, 1, 3, 5, 0, 0, 0, 4, 5],
+        [1, 0, 10, 0, 3, 5, 0, 0, 0, 2, 3, 0, 0],
+        [2, 1, 0, 1, 3, 5, 0, 0, 0, 4, 5, 0, 0],
     ]
     rows = [
         {
@@ -46,16 +46,16 @@ def test_resolve_legal_row_index_returns_harness_id() -> None:
 def test_match_legal_row_index_finds_factors() -> None:
     moves = np.asarray(
         [
-            [1, 0, 10, 0, 3, 5, 0, 0, 0, 2, 3],
-            [2, 1, 0, 1, 3, 5, 0, 0, 0, 4, 5],
+            [1, 0, 10, 0, 3, 5, 0, 0, 0, 2, 3, 0, 0],
+            [2, 1, 0, 1, 3, 5, 0, 0, 0, 4, 5, 0, 0],
         ],
         dtype=np.int64,
     )
-    assert match_legal_row_index([2, 1, 0, 1, 3, 5, 0, 0, 0, 4, 5], moves) == 1
+    assert match_legal_row_index([2, 1, 0, 1, 3, 5, 0, 0, 0, 4, 5, 0, 0], moves) == 1
 
 
 def test_resolve_rejects_out_of_range_index() -> None:
-    moves = [[1, 0, 10, 0, 3, 5, 0, 0, 0, 2, 3]]
+    moves = [[1, 0, 10, 0, 3, 5, 0, 0, 0, 2, 3, 0, 0]]
     rows = [
         {
             "action": {"kind": "run", "id": "a"},

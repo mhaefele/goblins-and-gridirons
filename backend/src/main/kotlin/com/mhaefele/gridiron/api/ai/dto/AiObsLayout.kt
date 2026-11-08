@@ -60,8 +60,10 @@ object AiObsLayout {
      * `ballCoordinate`; legal rows = LegalAction + curriculum flags only.
      * v22: [AiCellObs.pitchX]/[pitchY]/[distToBall] ints on the cell; reach bbox 0-based;
      * feature extractor stops inventing / renormalizing board geometry.
+     * v23: legal-row pack appends actorHasBall / targetHasBall metadata (0/1; same sense as
+     * [AiCellObs.hasBall]) so the join scorer does not rediscover ball binding from pitch soup.
      */
-    const val SCHEMA_VERSION = 22
+    const val SCHEMA_VERSION = 23
 
     const val PLAY_WIDTH = 11
     const val PLAY_HEIGHT = 15
@@ -87,10 +89,10 @@ object AiObsLayout {
 
     /**
      * Packed legal-row width: identity (actor, kind, targetX, targetY, challengeSlot, attachedBonus,
-     * face0..2) then metadata (sourceX, sourceY). Who-id = roster actor, not source coords.
-     * Unused axes use pad sentinels (not MultiDiscrete heads — join-score embeds like board).
+     * face0..2) then metadata (sourceX, sourceY, actorHasBall, targetHasBall). Who-id = roster actor,
+     * not source coords. Unused axes use pad sentinels (not MultiDiscrete heads — join-score embeds like board).
      */
-    const val ACTION_FACTOR_COUNT = 11
+    const val ACTION_FACTOR_COUNT = 13
 
     const val ACTIVE_CHALLENGE_SLOTS = 3
     /** Geometry AttachedBonus indices `0..4`; pad = [ATTACHED_BONUS_UNUSED]. */
@@ -98,6 +100,8 @@ object AiObsLayout {
     const val ATTACHED_BONUS_UNUSED = ATTACHED_BONUS_COUNT
     /** Face pack: `0` unused; `1..BlockDieFace.entries` = ordinal+1. */
     const val BLOCK_FACE_PACK_UNUSED = 0
+    /** Boolean pack vocab (`0`/`1`) — same codes as [AiObsEncoding] `Boolean.toObsCode()`. */
+    val BOOL_PACK_WIDTH: Int = 2
 
     /** Free actor playerIndex pad — `0` unused, `1..MAX_PLAYERS_PER_TEAM` roster. */
     val ACTOR_PACK_WIDTH: Int = MAX_PLAYERS_PER_TEAM + 1
@@ -117,7 +121,7 @@ object AiObsLayout {
     /** `0` unused + one code per [com.mhaefele.gridiron.game.dice.dto.BlockDieFace]. */
     val BLOCK_FACE_PACK_SIZE: Int = 1 + 5
     /** Column vocab widths on each legal row — must match `ai/gridiron_ai/constants.py` ACTION_FACTOR_WIDTHS. Not MultiDiscrete heads. */
-    val ACTION_FACTOR_WIDTHS: IntArray = intArrayOf(ACTOR_PACK_WIDTH, KIND_PACK_WIDTH, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, CHALLENGE_SLOT_PACK_WIDTH, ATTACHED_BONUS_PACK_WIDTH, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH,)
+    val ACTION_FACTOR_WIDTHS: IntArray = intArrayOf(ACTOR_PACK_WIDTH, KIND_PACK_WIDTH, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, CHALLENGE_SLOT_PACK_WIDTH, ATTACHED_BONUS_PACK_WIDTH, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, BOOL_PACK_WIDTH, BOOL_PACK_WIDTH,)
     /** Pad width for the legal-row menu (Python ``MAX_LEGAL_MOVES``). */
     const val MAX_LEGAL_MOVES = 1024
     /** ONNX / policy output width — one score per padded legal-row slot. */
@@ -136,6 +140,9 @@ object AiObsLayout {
     /** Metadata only (pack tail) — actor’s current pitch x/y; not legal-choice identity. */
     const val FACTOR_SOURCE_X = 9
     const val FACTOR_SOURCE_Y = 10
+    /** Metadata — actor holds the ball / dest square has ball (loose or carrier); 0 when no actor/dest. */
+    const val FACTOR_ACTOR_HAS_BALL = 11
+    const val FACTOR_TARGET_HAS_BALL = 12
 
     /**
      * Mid-turn hand capacity for obs: end-of-turn trim keeps 3, Clean Sweep allows 3 claims in one

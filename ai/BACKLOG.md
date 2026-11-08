@@ -2,7 +2,7 @@
 
 Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) defers here.
 
-**Status:** Open. Live contract is **schema 22** ([`constants.py`](gridiron_ai/constants.py)). Train/eval still HTTP packed JSON against `./dev.sh` `:18080`. AI1 shipped — [archive](../archive/BACKLOG-done.md).
+**Status:** Open. Live contract is **schema 23** ([`constants.py`](gridiron_ai/constants.py)). Train/eval still HTTP packed JSON against `./dev.sh` `:18080`. AI1 shipped — [archive](../archive/BACKLOG-done.md).
 
 **Near-term (product):** [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) scenarios · [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) · [AI2.6](#ai26--onnx-export--kotlin-compute-opponent) regen · [AI2.5](#ai25--multi-team-curriculum).
 
@@ -156,7 +156,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 | Field | Detail |
 |-------|--------|
-| **Status** | **Partial.** Kotlin path (`OnnxPolicySession.chooseRow` / obs+`legal_moves`→row index) landed; classpath artifacts lag live **schema 22** until re-export. |
+| **Status** | **Partial.** Kotlin path (`OnnxPolicySession.chooseRow` / obs+`legal_moves`→row index) landed; classpath artifacts lag live **schema 23** until re-export. |
 | **Goal** | Freeze obs + action schema version; export trained policy to ONNX; Kotlin `OpponentStrategy` builds the same obs/mask, runs the model, submits the chosen legal action. Expose alongside heuristic/lookahead. |
 | **Depends on** | AI2.3+ with a schema worth freezing; preferably AI2.4 so quality is measured. |
 | **Files** | Export script under `ai/`; ONNX artifact convention; `backend/.../opponent/` model-backed strategy; match create / coach control wiring. |
@@ -546,7 +546,7 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 Product / curriculum (current)
   → AI2.12 mid-check scenarios (obs landed; prime)
   → AI2.17 blind-spot remediation (17a → 17e → 17b → 17c → 17d)
-  → AI2.6 ONNX regen to schema 22 + smoke
+  → AI2.6 ONNX regen to schema 23 + smoke
   → AI2.5 multi-team
   → AI2.8 / AI2.10 / AI2.11 only if baseline still struggles
   → AI2.18 + AI2.19 with next layout/schema bump

@@ -1,8 +1,9 @@
 """REMOVABLE probe: re-score opening PASS rows after moving the ball to the opposite pitch end.
 
-Eval-only helper for ``TD_RUN`` / ``LOOSE_BALL_RUN``. Does not change training, rewards, or
-legals — only mutates a *copy* of the frozen opening ``policy_obs`` pitch ball channels and
-re-runs join-score diagnostics.
+Eval-only helper for ``TD_RUN`` / ``LOOSE_BALL_RUN``. Does not change training or rewards —
+mutates a *copy* of the frozen opening ``policy_obs`` pitch ball channels **and** packed
+legal-row ``actorHasBall`` / ``targetHasBall`` so the join scorer sees a consistent lie,
+then re-runs diagnostics.
 
 Delete this module + the thin call sites tagged ``# ball_swap_probe`` to remove.
 Scenario allowlist is intentional probe policy (not a catalog mirror for product logic).
@@ -14,11 +15,22 @@ from typing import Any
 
 import numpy as np
 
+from gridiron_ai.actions import (
+    FACTOR_ACTOR_HAS_BALL,
+    FACTOR_SOURCE_X,
+    FACTOR_SOURCE_Y,
+    FACTOR_TARGET_HAS_BALL,
+    FACTOR_TARGET_X,
+    FACTOR_TARGET_Y,
+)
 from gridiron_ai.constants import (
     CELL_CH_CAN_PICKUP,
     CELL_CH_CAN_REACH_BALL,
     CELL_CH_DIST_TO_BALL,
     CELL_CH_HAS_BALL,
+    FACTORS_PER_LEGAL_MOVE,
+    OBS_KEY_LEGAL_MOVE_COUNT,
+    OBS_KEY_LEGAL_MOVES,
     OBS_KEY_PITCH,
     PLAY_HEIGHT,
     PLAY_WIDTH,
@@ -64,11 +76,36 @@ def _opposite_end_yx(y: int, x: int) -> tuple[int, int]:
     return (PLAY_HEIGHT - 1, x)
 
 
+def _pitch_xy_valid(x: int, y: int) -> bool:
+    return 0 <= x < PLAY_WIDTH and 0 <= y < PLAY_HEIGHT
+
+
+def rewrite_legal_row_ball_flags(legal_moves: np.ndarray, *, ball_x: int, ball_y: int, legal_count: int) -> None:
+    """In-place: set ``actorHasBall`` / ``targetHasBall`` from lied ball pitch ``(x, y)``.
+
+    Matches cell ``hasBall`` after relocate — actor flag follows source square, target flag
+    follows dest square (0 when that axis is unused / pad).
+    """
+    rows = np.asarray(legal_moves)
+    if rows.ndim != 2 or rows.shape[1] < FACTORS_PER_LEGAL_MOVE:
+        return
+    n = max(0, min(int(legal_count), int(rows.shape[0])))
+    for i in range(n):
+        row = rows[i]
+        if int(row[FACTOR_SOURCE_X]) < 0:
+            continue
+        sx, sy = int(row[FACTOR_SOURCE_X]), int(row[FACTOR_SOURCE_Y])
+        tx, ty = int(row[FACTOR_TARGET_X]), int(row[FACTOR_TARGET_Y])
+        row[FACTOR_ACTOR_HAS_BALL] = 1 if _pitch_xy_valid(sx, sy) and sx == ball_x and sy == ball_y else 0
+        row[FACTOR_TARGET_HAS_BALL] = 1 if _pitch_xy_valid(tx, ty) and tx == ball_x and ty == ball_y else 0
+
+
 def relocate_ball_opposite_end(policy_obs: dict[str, np.ndarray]) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
-    """Copy obs; move pitch ``hasBall`` to the opposite end; refresh ``distToBall``.
+    """Copy obs; move pitch ``hasBall`` to the opposite end; refresh ``distToBall`` + row ball flags.
 
     Clears ``canPickup`` / ``canReachBall`` on all pitch cells so stale affordances do not
-    still point at the old square (probe is about ball *location* channels).
+    still point at the old square. Rewrites packed ``actorHasBall`` / ``targetHasBall`` so
+    legal-row features match the lied ball square (join-score reads both).
     """
     out = {key: np.asarray(value).copy() for key, value in policy_obs.items()}
     pitch = out[OBS_KEY_PITCH]
@@ -89,6 +126,13 @@ def relocate_ball_opposite_end(policy_obs: dict[str, np.ndarray]) -> tuple[dict[
     for y in range(PLAY_HEIGHT):
         for x in range(PLAY_WIDTH):
             pitch[CELL_CH_DIST_TO_BALL, y, x] = float(max(abs(x - x1), abs(y - y1)))
+
+    legal = out.get(OBS_KEY_LEGAL_MOVES)
+    count_arr = out.get(OBS_KEY_LEGAL_MOVE_COUNT)
+    if legal is not None:
+        legal_count = int(np.asarray(count_arr).reshape(-1)[0]) if count_arr is not None else int(np.asarray(legal).shape[0])
+        rewrite_legal_row_ball_flags(legal, ball_x=x1, ball_y=y1, legal_count=legal_count)
+
     meta = {
         "from": (x0, y0),
         "to": (x1, y1),
@@ -112,9 +156,14 @@ def attach_ball_swap_opening_scores(
     if meta.get("error"):
         summary["opening_ball_swap"] = {"error": meta["error"], **{k: v for k, v in meta.items() if k != "error"}}
         return
+    # Keep snapshot["legal_moves"] (used for labels/ranks) aligned with rewritten obs rows.
+    legal_obs = np.asarray(swapped_obs[OBS_KEY_LEGAL_MOVES], dtype=np.int64)
+    count = int(np.asarray(swapped_obs[OBS_KEY_LEGAL_MOVE_COUNT]).reshape(-1)[0])
+    count = max(0, min(count, int(legal_obs.shape[0])))
     swapped_snapshot = {
         **snapshot,
         "policy_obs": swapped_obs,
+        "legal_moves": legal_obs[:count].copy(),
     }
     diag = diagnose_opening_mispick(policy, swapped_snapshot, all_rows=False)
     scores = diag.get("opening_move_scores") or {}

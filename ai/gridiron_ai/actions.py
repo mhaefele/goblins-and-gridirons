@@ -30,18 +30,22 @@ FACTOR_ATTACHED_BONUS = 5
 FACTOR_FACE0 = 6
 FACTOR_FACE1 = 7
 FACTOR_FACE2 = 8
-# Metadata only (always last): 0-based pitch x/y from Kotlin for from→to geometry.
-# Not legal-choice identity — who = FACTOR_ACTOR.
+# Metadata (pack tail): geometry + ball binding jammed onto the row (not identity).
+# Who = FACTOR_ACTOR; hasBall sense matches cell hasBall (0/1).
 FACTOR_SOURCE_X = 9
 FACTOR_SOURCE_Y = 10
+FACTOR_ACTOR_HAS_BALL = 11
+FACTOR_TARGET_HAS_BALL = 12
 
-# One legal move: eleven ints in canonical slot order (identity…, then metadata).
-EncodedLegalMove: TypeAlias = tuple[int, int, int, int, int, int, int, int, int, int, int]
+# One legal move: thirteen ints in canonical slot order (identity…, then metadata).
+EncodedLegalMove: TypeAlias = tuple[
+    int, int, int, int, int, int, int, int, int, int, int, int, int
+]
 
-# Legal moves this step — shape (n, 3), dtype int64 (from packed HTTP / expert).
+# Legal moves this step — shape (n, FACTORS_PER_LEGAL_MOVE), dtype int64 (from packed HTTP / expert).
 EncodedLegalMoves: TypeAlias = np.ndarray
 
-# pad_legal_moves output — shape (MAX_LEGAL_MOVES, 3); only [:legal_move_count] rows are real.
+# pad_legal_moves output — shape (MAX_LEGAL_MOVES, FACTORS); only [:legal_move_count] rows are real.
 PaddedLegalMoves: TypeAlias = np.ndarray
 
 

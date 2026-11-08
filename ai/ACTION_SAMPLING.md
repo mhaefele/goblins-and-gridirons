@@ -47,10 +47,16 @@ transfer).
 ### Soft-mask preference
 
 **Landed (schema 12; row-level under schema 16).** Gym key `preferred_legal` /
-`soft_mask_legal` parallels `legal_moves` rows (`1` = `expectedScenarioMove`). The
-join-score policy adds `SOFT_MASK_LOGIT_BIAS` (**2.5**) to preferred **row** logits
+`soft_mask_legal` parallels `legal_moves` rows (**stable int8 0/1** =
+`expectedScenarioMove`). The join-score policy adds
+`SOFT_MASK_LOGIT_BIAS × policy.soft_mask_strength` to preferred **row** logits
 before the categorical over the menu. Illegal / pad rows stay hard-masked at 0;
 non-preferred legals stay available (soft tilt, not a hard filter).
+
+**Do not** encode train juice (bottleneck strength, curriculum, debug) into the
+`soft_mask_legal` Box — SB3 pickles `observation_space` into every checkpoint zip.
+Strength is a live `LegalRowActorCriticPolicy.soft_mask_strength` attr (default `1.0`;
+8× bottleneck sets `SOFT_MASK_BOTTLENECK_STRENGTH`).
 
 **Train rollouts** pack preferred-row flags (`soft_mask_bias=True`). **Eval** follows
 `--eval-episode-mode`: `EVAL` (default, curriculum gates) zeros `soft_mask_legal` for
@@ -227,9 +233,9 @@ passing flags), expert `chosenFactors`, and the Discrete/ONNX **row index** shar
 order — no separate remap table. Join-score is seat-invariant (shared row scorer); shuffle
 was removed as non-load-bearing.
 
-Each packed row is **eleven** ints (storage / ONNX legal-matrix input). Python
+Each packed row is **thirteen** ints (storage / ONNX legal-matrix input). Python
 `encode_legal_rows` embeds them the same way board channels are embedded
-(shared `player_index` / challenge / block-face embs + pitch xy)
+(shared `player_index` / challenge / block-face embs + pitch xy + raw ball flags)
 — it does **not** re-pack:
 
 | Slot | Factor | Role | Width | Who uses it |
@@ -243,9 +249,11 @@ Each packed row is **eleven** ints (storage / ONNX legal-matrix input). Python
 | 6..8 | face0..2 | identity | 6 each | Enforcer order pack codes (`0` unused; `1..5` = face) |
 | 9 | sourceX | **metadata** (tail) | 12 | 0-based pitch x from Kotlin (`0..10` + unused) |
 | 10 | sourceY | **metadata** (tail) | 16 | 0-based pitch y from Kotlin (`0..14` + unused) |
+| 11 | actorHasBall | **metadata** (tail) | 2 | `1` if actor holds the ball; `0` if no actor / no ball |
+| 12 | targetHasBall | **metadata** (tail) | 2 | `1` if dest square has ball (loose or carrier); `0` if no dest / no ball |
 
 Harness `legalRows` nest engine `LegalAction` (absolute coords) + AI flags only.
-Kotlin `AiLegalPacker` maps action + perspective → the eleven pack ints; Python only
+Kotlin `AiLegalPacker` maps action + perspective → the thirteen pack ints; Python only
 pads for the gym Dict and embeds. Dest / source x/y in the pack are perspective
 0-based; dugout / no-actor → unused pads. **Who** on a path/throw/block row is
 always roster `actor`, never source coords. Obs `cells[]` still uses linear pitch
@@ -279,13 +287,15 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 | Acting player identity | `playerId` | **Yes** — roster `Actor` | Cell `playerIndex` |
 | Destination square | path end / `targetCoordinate` | **Yes** — `targetX`/`targetY` (0-based pitch) | Pitch terrain / occupants |
 | Source square (actor now) | board position of actor | **Yes** — `sourceX`/`sourceY` **metadata** (not who-id) | Same cell via `playerIndex` |
+| Actor holds ball | `Player.holdsBall()` | **Yes** — `actorHasBall` **metadata** | Cell `hasBall` on actor square |
+| Dest square has ball | loose / carrier on target | **Yes** — `targetHasBall` **metadata** | Cell `hasBall` on dest |
 | Attached geometry bonus (Sprint/…) | `requiredBonusCard` | **Yes** — `attachedBonus` | — |
 | Challenge claim / replace slot | claim/replace actions | **Yes** — `challengeSlot` | Challenges tensor |
 | Enforcer face order | `ChooseBlockFaceOrder` | **Yes** — `face0..2` | `held_check` faces |
 | Soft-mask preferred row | training opening flag | **No** (parallel `soft_mask_legal`) | Logit bias only |
 | Passing / PASS-grade flag | training sidecar | **No** (harness / eval only) | — |
 | Potential challenge claims | `potentialChallengeClaims` | **No** | Player affordance might/certain claim |
-| Ball encounter (pickup/…) | `ballEncounter` on path | **No** | Affordance `canPickupBall`; cell `hasBall` |
+| Ball encounter (pickup/…) | `ballEncounter` on path | **No** (dest binding via `targetHasBall`) | Affordance `canPickupBall`; cell `hasBall` |
 | Full path squares | `path` | **No** (end only as target) | — |
 | Throw range / hand-off | throw DTOs | **No** | — |
 | Available bonus cards (prompt set) | `availableBonusCards` | **No** | Hand tensor |
@@ -303,6 +313,7 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 | attachedBonus | 6 | 5 twins + unused | Exact. |
 | face0..2 | 6 each | unused + 5 `BlockDieFace` | Exact; pad short perms with unused. |
 | sourceX / sourceY | 12 / 16 | Pitch W/H + unused | 0-based pitch metadata (+ pad). |
+| actorHasBall / targetHasBall | 2 each | boolean 0/1 | Same sense as cell `hasBall`; 0 when no actor/dest. |
 
 **playerIndex:** `0` = empty / no free actor; `1..10` = roster slot + 1 (catalog max 10). Same id on the occupied cell (`AiCellPlayerObs.playerIndex`) and on `AiFactor.Actor`. Both teams reuse `1..10`; `teamRel` on the cell separates us/them.
 
@@ -409,7 +420,7 @@ How we map today — candidates to treat as separate buckets in stats.
 
 ### Pad / unused on the wire
 
-Harness always emits **eleven** ints; axes a kind does not use get unused sentinels
+Harness always emits **thirteen** ints; axes a kind does not use get unused sentinels
 (`ATTACHED_BONUS_UNUSED`, `BLOCK_FACE_PACK_UNUSED`, actor `0`, target/source unused, …).
 Soft-mask may further **boost** preferred **rows** (never removes a legal row).
 Actor `0` means “no free actor” (kind-only / target-only free rows).

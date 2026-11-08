@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import cloudpickle
+
 from gridiron_ai.paths import CHECKPOINT_DIR, PICKLE_ALIASES_PATH
 
 STEP_CHECKPOINT_PREFIX = "maskable_ppo_selfplay"
@@ -66,13 +68,23 @@ def _schedule_as_float(value: Any, *, fallback: float) -> float:
         return fallback
 
 
+def _sb3_data_exclude_keys(model: Any) -> set[str]:
+    """Keys SB3 omits from the zip ``data`` blob (still kept on the live model for save)."""
+    exclude = set(model._excluded_save_params()) if hasattr(model, "_excluded_save_params") else set()
+    if hasattr(model, "_get_torch_save_params"):
+        state_names, torch_names = model._get_torch_save_params()
+        for name in list(state_names) + list(torch_names):
+            exclude.add(str(name).split(".", 1)[0])
+    return exclude
+
+
 def atomic_model_save(model: Any, save_stem: str | Path) -> Path:
     """Write model zip via temp file + rename so resume checkpoint never stays truncated.
 
     # DEVIATION: SB3 excludes ``env`` from the zip dict, but instance attrs that close over
-    # ``model`` (verbose ``model.train`` hook, schedule lambdas) still pickle SubprocVecEnv
-    # → ``_thread.lock``. Ctrl-C mid-``remote.recv()`` hits that path. Sanitize for the save
-    # only, then restore.
+    # ``model`` (verbose ``model.train`` hook, schedule lambdas, ep_info payloads, …) still
+    # pickle SubprocVecEnv → ``_thread.lock``. Sanitize known offenders, then drop anything
+    # else in ``__dict__`` that still fails ``cloudpickle`` (restored after save).
     """
     stem = Path(save_stem)
     final_zip = stem.with_suffix(".zip")
@@ -98,6 +110,23 @@ def atomic_model_save(model: Any, save_stem: str | Path) -> Path:
             continue
         held[name] = current
         setattr(model, name, _schedule_as_float(current, fallback=fallback))
+    # Last resort: anything still unpicklable would blow up data_to_json the same way.
+    exclude = _sb3_data_exclude_keys(model)
+    stripped: list[str] = []
+    for key in list(model.__dict__.keys()):
+        if key in exclude or key in held:
+            continue
+        value = model.__dict__[key]
+        try:
+            cloudpickle.dumps(value)
+        except Exception:
+            held[key] = model.__dict__.pop(key)
+            stripped.append(key)
+    if stripped:
+        print(
+            f"[gridiron] checkpoint save: temporarily dropped unpicklable attrs {stripped}",
+            flush=True,
+        )
     try:
         # SB3 appends/replaces to ``.zip`` only when the path is not already ``.zip``.
         model.save(str(tmp_zip))
@@ -109,7 +138,10 @@ def atomic_model_save(model: Any, save_stem: str | Path) -> Path:
         raise
     finally:
         for name, value in held.items():
-            setattr(model, name, value)
+            if name in ("env", "_vec_normalize_env", "learning_rate", "lr_schedule", "clip_range", "clip_range_vf"):
+                setattr(model, name, value)
+            else:
+                model.__dict__[name] = value
         if held_train is not None:
             model.__dict__["train"] = held_train
         if held_hook_flag is not None:

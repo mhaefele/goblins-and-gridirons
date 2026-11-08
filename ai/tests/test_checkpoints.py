@@ -113,10 +113,30 @@ def test_atomic_model_save_strips_verbose_train_hook_closure(tmp_path: Path) -> 
 
             self.train = train_with_evidence
             self.__dict__["_gridiron_evidence_train_hook"] = True
+            # Surprise attr SB3 would pickle into data= (not in exclude list).
+            self._mystery_lock_holder = {"env": self.env}
+
+        def _excluded_save_params(self) -> list[str]:
+            return [
+                "policy",
+                "device",
+                "env",
+                "replay_buffer",
+                "rollout_buffer",
+                "_vec_normalize_env",
+                "_logger",
+                "_custom_logger",
+            ]
+
+        def _get_torch_save_params(self) -> tuple[list[str], list[str]]:
+            return [], []
 
         def save(self, path: str) -> None:
-            if "train" in self.__dict__:
-                cloudpickle.dumps(self.__dict__["train"])
+            exclude = set(self._excluded_save_params())
+            for key, value in self.__dict__.items():
+                if key in exclude:
+                    continue
+                cloudpickle.dumps(value)
             zip_path = Path(path)
             if zip_path.suffix != ".zip":
                 zip_path = zip_path.with_suffix(".zip")
@@ -127,6 +147,7 @@ def test_atomic_model_save_strips_verbose_train_hook_closure(tmp_path: Path) -> 
     checkpoints.atomic_model_save(model, stem)
     assert (tmp_path / "maskable_ppo_selfplay_final.zip").read_bytes() == b"saved"
     assert "train" in model.__dict__
+    assert model._mystery_lock_holder is not None
 
 
 def test_atomic_model_save_does_not_leave_truncated_final(tmp_path: Path) -> None:

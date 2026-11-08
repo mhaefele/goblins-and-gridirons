@@ -217,22 +217,60 @@ def format_failed_drill_block(
     opening_buf_adv: float | None = None,
     last_buf_rew: float | None = None,
     last_buf_adv: float | None = None,
+    expected_moves: str | None = None,
+    opening_soft_mask: bool | None = None,
 ) -> str:
     """One multi-line block for a THEM drill (PPO bits printed once per update separately)."""
     tag = f" [{scenario}]" if scenario else ""
     grade = "passing" if opening_passing else "non-passing"
+    soft_bit = (
+        ", softmask"
+        if opening_soft_mask is True
+        else (", plain" if opening_soft_mask is False else "")
+    )
     open_r = "n/a" if opening_reward is None else f"{opening_reward:+.2f}"
     last_r = "n/a" if last_reward is None else f"{last_reward:+.2f}"
-    return "\n".join(
+    lines = [
+        f"[gridiron] Failed the drill.{tag}",
+        f"  steps: {sequence}",
+    ]
+    if expected_moves:
+        lines.append(f"  expected: {expected_moves}")
+    lines.extend(
         [
-            f"[gridiron] Failed the drill.{tag}",
-            f"  steps: {sequence}",
-            f"  opening: {opening_label} ({grade}) env={open_r} "
+            f"  opening: {opening_label} ({grade}{soft_bit}) env={open_r} "
             f"{_fmt_buf_pair(opening_buf_rew, opening_buf_adv)} "
             f"{_fmt_mass_rank(p_before, p_after, rank_before, rank_after)}",
             f"  last: env={last_r} {_fmt_buf_pair(last_buf_rew, last_buf_adv)}",
         ]
     )
+    return "\n".join(lines)
+
+
+def expected_move_labels_from_snapshot(snapshot: dict[str, Any]) -> str:
+    """Format opening ``passingLegal`` rows for failed-drill evidence."""
+    from gridiron_ai.eval_debug import ScenarioEvalDebug
+
+    passing = list(snapshot.get("passing_legal") or [])
+    meta = list(snapshot.get("legal_row_meta") or [])
+    rewards = snapshot.get("rewards")
+    labels: list[str] = []
+    for index, is_pass in enumerate(passing):
+        if not is_pass:
+            continue
+        action = None
+        if index < len(meta):
+            row = meta[index]
+            action = row.get("action") if isinstance(row, dict) else None
+            if action is None and isinstance(row, dict):
+                action = row
+        if isinstance(action, dict):
+            labels.append(
+                ScenarioEvalDebug.format_action(action, rewards=rewards, expected_move=True)
+            )
+        else:
+            labels.append(f"row{index}*")
+    return " ".join(labels) if labels else "(none)"
 
 
 def format_pass_edge_buffer_line(
@@ -480,6 +518,15 @@ class PpoUpdateEvidenceCallback(BaseCallback):
             last_t = _buf_ts_at(buf_ts, len(raw_seq) - 1 if raw_seq else None)
             first_buf_rew, first_buf_adv = _buf_rew_adv(snapshot, time_idx=first_t, env_idx=env_i)
             last_buf_rew, last_buf_adv = _buf_rew_adv(snapshot, time_idx=last_t, env_idx=env_i)
+            snap = row.get("snapshot") if isinstance(row.get("snapshot"), dict) else {}
+            opening_soft = first.get("soft_mask") if isinstance(first, dict) else None
+            if opening_soft is None and snap:
+                chosen_i = snap.get("chosen_row_index")
+                soft_arr = snap.get("soft_mask_legal")
+                if chosen_i is not None and soft_arr is not None:
+                    soft_list = list(soft_arr)
+                    if 0 <= int(chosen_i) < len(soft_list):
+                        opening_soft = bool(soft_list[int(chosen_i)])
             print(
                 format_failed_drill_block(
                     sequence=sequence,
@@ -496,6 +543,8 @@ class PpoUpdateEvidenceCallback(BaseCallback):
                     opening_buf_adv=first_buf_adv,
                     last_buf_rew=last_buf_rew,
                     last_buf_adv=last_buf_adv,
+                    expected_moves=expected_move_labels_from_snapshot(snap) if snap else None,
+                    opening_soft_mask=bool(opening_soft) if opening_soft is not None else None,
                 ),
                 flush=True,
             )

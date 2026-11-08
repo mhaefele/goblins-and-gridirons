@@ -6,6 +6,7 @@ import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 import com.mhaefele.gridiron.api.ai.dto.AiPitchSquare
 import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.model.MatchState
+import com.mhaefele.gridiron.model.board.BoardSquare
 import com.mhaefele.gridiron.model.board.PlayerStatus
 import com.mhaefele.gridiron.shared.Coordinate
 import com.mhaefele.gridiron.shared.PlayerId
@@ -17,7 +18,7 @@ import org.springframework.stereotype.Component
  *
  * Perspective + 0-based pitch packing stay here (not on the harness wire).
  * Identity: actor, kind, targetX, targetY, challengeSlot, attachedBonus, face0..2;
- * metadata: sourceX, sourceY.
+ * metadata: sourceX, sourceY, actorHasBall, targetHasBall.
  */
 @Component
 class AiLegalPacker(
@@ -38,7 +39,8 @@ class AiLegalPacker(
         val kind = packKind(action)
         val actorId = actorPlayerId(action)
         val actor = actorId?.let { gameState.aiPlayerIndex(it) } ?: AiObsLayout.UNUSED_PLAYER_INDEX
-        val target = destCoordinate(action)?.let { gameState.perspectivePitchXy0(it, perspectiveSeat) }
+        val dest = destCoordinate(action)
+        val target = dest?.let { gameState.perspectivePitchXy0(it, perspectiveSeat) }
         val source = sourcePitch(actorId, state, perspectiveSeat)
         val challengeSlot = when (action) {
             is LegalAction.ClaimChallenge   -> action.slotIndex
@@ -54,6 +56,9 @@ class AiLegalPacker(
                 faces[i] = action.orderedFaces[i].ordinal + 1
             }
         }
+        // Same sense as AiCellObs.hasBall: actor holds / dest square has loose or carrier ball.
+        val actorHasBall = actorId != null && state.board.player(actorId).holdsBall()
+        val targetHasBall = dest != null && squareHasBall(state.board.squareAt(dest), state)
         return listOf(
             actor,
             kind.ordinal,
@@ -66,8 +71,13 @@ class AiLegalPacker(
             faces[2],
             source?.x ?: AiObsLayout.SOURCE_X_UNUSED,
             source?.y ?: AiObsLayout.SOURCE_Y_UNUSED,
+            if (actorHasBall) 1 else 0,
+            if (targetHasBall) 1 else 0,
         )
     }
+
+    private fun squareHasBall(square: BoardSquare, state: MatchState): Boolean =
+        square.looseBallId != null || state.board.playerAt(square.coordinate)?.holdsBall() == true
 
     private fun sourcePitch(
         actorId: PlayerId?,

@@ -249,6 +249,34 @@ class AiStepApiTest : BaseApiTest() {
     }
 
     @Test
+    fun `packed legal rows jam actorHasBall and targetHasBall onto each move`() {
+        lateinit var runner: PlacedPlayer
+        val match = match {
+            runner = addPlayer(5, 6, profile = TestProfiles.withMove(4))
+            addLooseBall(6, 8)
+        }
+        val step = api.aiStep(match)
+        assertThat(step.policy.legalMoves).isNotEmpty()
+        assertThat(step.policy.legalMoves.first()).hasSize(AiObsLayout.ACTION_FACTOR_COUNT)
+
+        val pickup = step.harness.legalRows.first { it.action is LegalAction.Run &&(it.action as LegalAction.Run).targetCoordinate == Coordinate(6, 8) }
+        val empty = step.harness.legalRows.first { it.action is LegalAction.Run &&(it.action as LegalAction.Run).playerId == runner.player.id &&(it.action as LegalAction.Run).targetCoordinate != Coordinate(6, 8) }
+        val pickupPacked = step.policy.legalMoves[step.harness.legalRows.indexOf(pickup)]
+        val emptyPacked = step.policy.legalMoves[step.harness.legalRows.indexOf(empty)]
+        assertThat(pickupPacked[AiObsLayout.FACTOR_ACTOR_HAS_BALL]).isEqualTo(0)
+        assertThat(pickupPacked[AiObsLayout.FACTOR_TARGET_HAS_BALL]).isEqualTo(1)
+        assertThat(emptyPacked[AiObsLayout.FACTOR_ACTOR_HAS_BALL]).isEqualTo(0)
+        assertThat(emptyPacked[AiObsLayout.FACTOR_TARGET_HAS_BALL]).isEqualTo(0)
+
+        val carrierMatch = match { holdingBall(addPlayer(5, 6, profile = TestProfiles.withMove(4))) }
+        val carrierStep = api.aiStep(carrierMatch)
+        val carrierRun = carrierStep.harness.legalRows.first { it.action is LegalAction.Run }
+        val carrierPacked = carrierStep.policy.legalMoves[carrierStep.harness.legalRows.indexOf(carrierRun)]
+        assertThat(carrierPacked[AiObsLayout.FACTOR_ACTOR_HAS_BALL]).isEqualTo(1)
+        assertThat(carrierPacked[AiObsLayout.FACTOR_TARGET_HAS_BALL]).isEqualTo(0)
+    }
+
+    @Test
     fun `AI step JSON nests LegalAction on harness rows`() {
         dice.queueD6(4)
         val match = api.createAndStartMatch(api.defaultCreateMatchRequest())

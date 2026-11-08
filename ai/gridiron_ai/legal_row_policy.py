@@ -68,6 +68,9 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
             features_extractor_class=features_extractor_class,
             **kwargs,
         )
+        # Train-segment knob (e.g. bottleneck ×2). Plain attr — not a buffer/parameter, not in
+        # observation_space (SB3 would pickle a changed Box into the zip and break resume).
+        self.soft_mask_strength = 1.0
         if not self.share_features_extractor:
             raise ValueError(
                 "LegalRowActorCriticPolicy requires share_features_extractor=True "
@@ -184,8 +187,10 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
                 soft = th.as_tensor(soft, device=logits.device)
             else:
                 soft = soft.to(device=logits.device)
-            soft = soft.reshape(batch, n_rows) > 0
-            logits = logits + soft.to(dtype=logits.dtype) * SOFT_MASK_LOGIT_BIAS
+            # Obs flags are 0/1; juice is soft_mask_strength (train knob), not the gym Box.
+            soft = soft.reshape(batch, n_rows).to(dtype=logits.dtype)
+            bias = SOFT_MASK_LOGIT_BIAS * float(self.soft_mask_strength)
+            logits = logits + soft * bias
         return logits
 
     def _masked_distribution(

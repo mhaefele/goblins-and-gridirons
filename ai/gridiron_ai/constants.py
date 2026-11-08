@@ -5,10 +5,11 @@ Owner: ``SCHEMA_VERSION`` + obs / legal-row pack widths shared by ``obs`` / ``ac
 semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
+# v23: legal-row actorHasBall / targetHasBall metadata (0/1; same sense as cell hasBall).
 # v22: cell pitchX / pitchY / distToBall on the wire (was Python feature synth).
 # v21: harness rewards.players + ballCoordinate (absolute); legal rows = LegalAction + flags.
 # Schema 15 is the only dual-path ONNX fork.
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 PLAY_WIDTH = 11
 PLAY_HEIGHT = 15
@@ -53,6 +54,8 @@ ACTION_FACTOR_WIDTHS = [
     BLOCK_FACE_PACK_SIZE,
     PLAY_WIDTH + 1,  # sourceX metadata; who-id = actor
     PLAY_HEIGHT + 1,  # sourceY metadata
+    2,  # actorHasBall metadata (0/1)
+    2,  # targetHasBall metadata (0/1)
 ]
 # Policy / ONNX output width: one score per padded legal-row slot.
 LEGAL_ROW_SCORE_WIDTH = MAX_LEGAL_MOVES
@@ -128,12 +131,16 @@ OBS_KEY_BENCHES = "benches"
 OBS_KEY_LEGAL_MOVES = "legal_moves"
 OBS_KEY_LEGAL_MOVE_COUNT = "legal_move_count"
 # Parallel to legal_moves rows: 1 when server flagged softMaskScenarioMove (soft-mask bias).
+# Stable 0/1 flags only — do not encode train knobs here (SB3 saves observation_space in the zip).
 OBS_KEY_SOFT_MASK_LEGAL = "soft_mask_legal"
 # Parallel to legal_moves rows: 1 when server flagged passingScenarioMove (pass-grade solve; not soft-mask).
 OBS_KEY_PASSING_LEGAL = "passing_legal"
-FACTORS_PER_LEGAL_MOVE = len(ACTION_FACTOR_WIDTHS)  # 11
+FACTORS_PER_LEGAL_MOVE = len(ACTION_FACTOR_WIDTHS)  # 13
 # Logit bonus on preferred legal rows (soft preference, not hard mask).
+# Effective bias = SOFT_MASK_LOGIT_BIAS × policy.soft_mask_strength (train knob; not in obs).
 SOFT_MASK_LOGIT_BIAS = 2.5
+# 8× bottleneck train: policy.soft_mask_strength=2 → effective bias 5.0 (else 1.0).
+SOFT_MASK_BOTTLENECK_STRENGTH = 2.0
 
 # Gym keys the feature extractor reads.
 OBS_KEYS_GAME_STATE = (

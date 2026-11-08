@@ -43,7 +43,12 @@ from gridiron_ai.constants import (
 
 
 def dict_observation_space() -> spaces.Dict:
-    """Same Dict spaces MaskablePPO / clone_expert use — no HTTP required to construct them."""
+    """Same Dict spaces MaskablePPO / clone_expert use — no HTTP required to construct them.
+
+    # DEVIATION / DO NOT: SB3 pickles this entire Dict into every model zip. Treat shapes/dtypes
+    # as a frozen wire schema. Train knobs (soft-mask strength, curriculum scale, debug) belong
+    # on the live policy or env config — never by widening a Box here.
+    """
     cell_low = float(MISSING_OPTIONAL_FIELD)
     return spaces.Dict(
         {
@@ -75,6 +80,9 @@ def dict_observation_space() -> spaces.Dict:
                 dtype=np.int64,
             ),
             OBS_KEY_LEGAL_MOVE_COUNT: spaces.Box(low=0, high=MAX_LEGAL_MOVES, shape=(1,), dtype=np.int32),
+            # Preferred-row flags only (0/1). SB3 pickles this Dict into every checkpoint zip —
+            # never widen dtype/bounds for train juice (strength, curriculum, debug). Put knobs on
+            # the live policy (``LegalRowActorCriticPolicy.soft_mask_strength``), not in this Box.
             OBS_KEY_SOFT_MASK_LEGAL: spaces.Box(low=0, high=1, shape=(MAX_LEGAL_MOVES,), dtype=np.int8),
         }
     )
@@ -151,15 +159,16 @@ def attach_packed_legals(
     """Pad packed legal matrix + soft-mask flags onto a game-state Dict from [obs_flat_to_dict]."""
     if legal_moves is None or len(legal_moves) == 0:
         encoded = np.empty((0, FACTORS_PER_LEGAL_MOVE), dtype=np.int64)
-        soft_mask_src = np.zeros(0, dtype=np.bool_)
+        soft_mask_src = np.zeros(0, dtype=np.int8)
     else:
         encoded = np.asarray(legal_moves, dtype=np.int64).reshape(-1, FACTORS_PER_LEGAL_MOVE)
-        soft_mask_src = np.asarray(soft_mask_legal or [], dtype=np.bool_).reshape(-1)
+        soft_mask_src = np.asarray(soft_mask_legal or [], dtype=np.int8).reshape(-1)
     padded_legal_moves, legal_move_count = pad_legal_moves(encoded)
     soft_mask = np.zeros(MAX_LEGAL_MOVES, dtype=np.int8)
     n_mask = min(legal_move_count, soft_mask_src.size, MAX_LEGAL_MOVES)
     if n_mask:
-        soft_mask[:n_mask] = soft_mask_src[:n_mask].astype(np.int8)
+        # Clamp to 0/1 — train strength must never ride this channel (breaks SB3 space equality).
+        soft_mask[:n_mask] = (soft_mask_src[:n_mask] != 0).astype(np.int8)
     out = dict(game_obs)
     out[OBS_KEY_LEGAL_MOVES] = padded_legal_moves.astype(np.int64)
     out[OBS_KEY_LEGAL_MOVE_COUNT] = np.array([legal_move_count], dtype=np.int32)

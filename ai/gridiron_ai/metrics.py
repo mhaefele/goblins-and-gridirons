@@ -140,12 +140,20 @@ def format_scenario_eval_headline(
     """Readable drill line: ``loose_ball_run  d1  @d1 drill_rate=0% W0/L10/D0 (10 ep) expected: …``.
 
     Shared by live scenario eval stdout and summarize drill boards.
+    When curriculum ``dN`` differs from latest-eval ``@dM``, append ↑ (promoted) or ↓ (demoted).
     """
     games = int(stats.get("episodes") or 0)
     wins = int(stats.get("wins") or 0)
     losses = int(stats.get("losses") or 0)
     draws = int(stats.get("draws") or 0)
     eval_d = eval_difficulty if eval_difficulty is not None else stats.get("scenario_difficulty")
+    move = ""
+    if eval_d is not None:
+        eval_level = int(eval_d)
+        if difficulty > eval_level:
+            move = "↑"
+        elif difficulty < eval_level:
+            move = "↓"
     eval_tag = f"@d{eval_d} " if eval_d is not None else ""
     prior_rate = (
         float(prior["winrate"])
@@ -158,7 +166,7 @@ def format_scenario_eval_headline(
         winrate_history=winrate_history,
     )
     return (
-        f"{short_name}  d{difficulty}  {eval_tag}drill_rate={rate_bit} "
+        f"{short_name}  d{difficulty}{move}  {eval_tag}drill_rate={rate_bit} "
         f"W{wins}/L{losses}/D{draws} ({games} ep)"
         f"{format_opening_score_bits(stats, prior=prior, rank_history=rank_history)}"
     )

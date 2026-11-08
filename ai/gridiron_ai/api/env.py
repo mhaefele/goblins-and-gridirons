@@ -151,7 +151,7 @@ class GridironEnv(gym.Env):
         self.scenario = scenario
         self.scenario_difficulty = scenario_difficulty
         self.episode_mode = episode_mode
-        # Policy +SOFT_MASK_LOGIT_BIAS from obs. Train rollouts True; eval follows episode_mode (TRAIN=on).
+        # Pack 0/1 preferred-row flags into obs when True. Bottleneck strength is policy-side only.
         self.soft_mask_bias = soft_mask_bias
         self.verbose = verbose
         # 1.0 normally; 8× bottleneck train segments pass SCENARIO_BOTTLENECK_CURRICULUM_SCALE.
@@ -377,12 +377,12 @@ class GridironEnv(gym.Env):
         return [bool(row["softMaskLegal"]) for row in self._legal_rows]
 
     @property
-    def _soft_mask_legal(self) -> list[bool]:
-        """Flags packed into obs for policy logit bias. Zeros when ``soft_mask_bias`` is off (eval)."""
+    def _soft_mask_legal(self) -> list[int]:
+        """Obs soft-mask flags (0/1). Strength is ``policy.soft_mask_strength``, never this channel."""
         rows = self._legal_rows
         if not self.soft_mask_bias:
-            return [False] * len(rows)
-        return self._server_soft_mask_legal
+            return [0] * len(rows)
+        return [1 if flag else 0 for flag in self._server_soft_mask_legal]
 
     @property
     def _passing_legal(self) -> list[bool]:
@@ -528,10 +528,15 @@ class GridironEnv(gym.Env):
         scoring = submit_scoring(result)
         self._action_stats.record_ball_gain(observation_before_move, after_obs)
         passing = self._passing_legal
+        soft_flags = self._server_soft_mask_legal
         passing_legal_move = False
+        soft_taken = False
+        row_i = chosen_row_index
         try:
-            row = self._legal_action_ids.index(resolved.legal_action_id)
-            passing_legal_move = row < len(passing) and passing[row]
+            if row_i is None:
+                row_i = self._legal_action_ids.index(resolved.legal_action_id)
+            passing_legal_move = row_i < len(passing) and passing[row_i]
+            soft_taken = row_i < len(soft_flags) and bool(soft_flags[row_i])
         except ValueError:
             pass
         training_outcome_before = self._current_step_dto.get("trainingOutcome")
@@ -581,6 +586,7 @@ class GridironEnv(gym.Env):
                 {
                     "label": move_label,
                     "passing": bool(passing_legal_move),
+                    "soft_mask": soft_taken,
                     "reward": float(reward),
                     "scored_td": bool(scored_td),
                     "pass_edge": bool(pass_edge),

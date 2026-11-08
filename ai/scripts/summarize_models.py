@@ -949,7 +949,8 @@ def _legend() -> str:
             "best PASS ranks (oldest→newest; before+after); n= preferred/legal (latest only); "
             "p= best expected-row softmax; logit_gap= logit(argmax)−logit(best PASS) — not p−first_p",
             "  first_p                mean opening chosen-move p (can exceed expected p when argmax ≠ lesson)",
-            "  d0–d5                 curriculum level (active phase checkpoint)",
+            "  d0–d5                 curriculum level (active phase checkpoint); "
+            "dN↑/↓ when that level differs from latest eval @d (promoted/demoted since)",
             "  (optional)             gatesProgress=false — trained/eval'd, not a curriculum gate (oracle or placement not trusted yet)",
             "  (no scenario eval; tracks X)  difficultyProxy drill — train only; after-eval/gates ride on X",
             "  (waived)               claim hit fail threshold — temporarily excluded from gates "

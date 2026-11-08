@@ -65,6 +65,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv,
 from stable_baselines3.common.vec_env.subproc_vec_env import _stack_obs
 
 from gridiron_ai.api.client import GridironApiError, GridironClient
+from gridiron_ai.constants import SOFT_MASK_BOTTLENECK_STRENGTH
 from gridiron_ai.reward import (
     FULL_GAME_ONNX_OPPONENT_PROFILES,
     PROFILE_SHAPING,
@@ -781,10 +782,27 @@ def _reset_profiles(profile_arg: str) -> None:
 
 def _set_learning_rate(model: MaskablePPO, learning_rate: float) -> None:
     """Apply learning rate on create and resume (zip may still carry an older schedule)."""
-    model.learning_rate = learning_rate
-    model.lr_schedule = lambda _progress: learning_rate
+    # FloatSchedule(constant) — not ``lambda: model.…`` (closes over model → Subproc locks).
+    from stable_baselines3.common.utils import FloatSchedule
+
+    rate = float(learning_rate)
+    model.learning_rate = rate
+    model.lr_schedule = FloatSchedule(rate)
     for group in model.policy.optimizer.param_groups:
-        group["lr"] = learning_rate
+        group["lr"] = rate
+
+
+def _set_soft_mask_strength(model: MaskablePPO, strength: float) -> None:
+    """Train-segment soft-mask juice on the live policy — never via observation_space / env obs."""
+    if strength <= 0.0:
+        raise ValueError(f"soft_mask_strength must be > 0, was {strength}")
+    policy = model.policy
+    if not hasattr(policy, "soft_mask_strength"):
+        raise TypeError(
+            f"policy {type(policy).__name__} has no soft_mask_strength "
+            "(expected LegalRowActorCriticPolicy)"
+        )
+    policy.soft_mask_strength = float(strength)
 
 
 def _set_ent_coef(model: MaskablePPO) -> None:
@@ -799,8 +817,10 @@ def _set_vf_coef(model: MaskablePPO) -> None:
 
 def _set_ppo_stability(model: MaskablePPO) -> None:
     """Apply PPO epoch/clip/KL knobs on create and resume (zip may carry factor-era values)."""
+    from stable_baselines3.common.utils import FloatSchedule
+
     model.n_epochs = N_EPOCHS
-    model.clip_range = lambda _progress: CLIP_RANGE
+    model.clip_range = FloatSchedule(float(CLIP_RANGE))
     model.target_kl = TARGET_KL
 
 
@@ -1405,13 +1425,17 @@ def _train_scenarios_segment(
         bottleneck = units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
         lr = _BOTTLENECK_LEARNING_RATE if bottleneck else _DEFAULT_LEARNING_RATE
         curriculum_scale = SCENARIO_BOTTLENECK_CURRICULUM_SCALE if bottleneck else 1.0
+        soft_strength = SOFT_MASK_BOTTLENECK_STRENGTH if bottleneck else 1.0
         if do_eval:
             train_detail = f"{timesteps} ts lr={lr:g}"
         else:
             proxy = require_catalog().curriculum_key(scenario)
             train_detail = f"{timesteps} ts lr={lr:g}; no eval — tracks {proxy}"
         if bottleneck:
-            train_detail = f"{train_detail} curriculum×{curriculum_scale:g}"
+            train_detail = (
+                f"{train_detail} curriculum×{curriculum_scale:g} "
+                f"softmask×{soft_strength:g}"
+            )
         _scenario_phase_banner(
             f"training starting — {tag} ({train_detail})",
             blank_before=fresh_before,
@@ -1420,6 +1444,7 @@ def _train_scenarios_segment(
         phase_t0 = time.perf_counter()
         if bottleneck:
             _set_learning_rate(model, _BOTTLENECK_LEARNING_RATE)
+            _set_soft_mask_strength(model, soft_strength)
         try:
             stats = _train_segment(
                 model,
@@ -1443,6 +1468,7 @@ def _train_scenarios_segment(
         finally:
             if bottleneck:
                 _set_learning_rate(model, _DEFAULT_LEARNING_RATE)
+                _set_soft_mask_strength(model, 1.0)
         did_train = True
         row.update(_cycle_stats_fields(f"train_scenario_{slug}", stats))
         drill_stats = record_train_cycles(drill_stats, scenario, units=units)

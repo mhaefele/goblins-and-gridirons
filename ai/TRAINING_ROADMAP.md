@@ -240,7 +240,7 @@ Apply on create **and** resume via `_set_learning_rate` / `_set_ent_coef` / `_se
 | `learning_rate` / `n_epochs` / `clip_range` / `target_kl` | stock SB3 | See table above |
 | `ent_coef` `0.005` / `vf_coef` `0.5` | shared all profiles | Create **and** resume; no profile overrides |
 | VecNormalize `norm_reward` | scenario + full-game train; `{stem}_vecnormalize.pkl` | Obs not normalized; raw-scenario trial reverted |
-| Soft-mask bias `2.5` | `constants.SOFT_MASK_LOGIT_BIAS` | Train rollouts on; eval/gates off unless `--eval-episode-mode TRAIN` — [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference) |
+| Soft-mask bias `2.5` (8× strength `2` → effective `5.0`) | `SOFT_MASK_LOGIT_BIAS` × `policy.soft_mask_strength` | Obs flags stay int8 0/1; bottleneck sets live policy strength (not the gym Box / zip schema) — [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference) |
 | Scenario PASS +0.5 / window loss −0.5 | `reward.SCENARIO_TERMINAL_*` | +0.5 on `trainingOutcome` → US edge; −0.5 on ended+THEM |
 | Scenario passing-move +1.0 (d0–d2) / +0.25 (d3+) | `reward.SCENARIO_PASSING_MOVE_BONUS_D0_D2` / `SCENARIO_PASSING_MOVE_BONUS` | When submitted row was `passingLegal`; mid-episode OK |
 | Scenario opening non-passing −2.5 (d0–d2) / −1.0 (d3+) | `reward.SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2` / `SCENARIO_OPENING_NON_PASSING_PENALTY` | First TRAIN scenario submit when a passing row was available and they took something else |

@@ -68,12 +68,15 @@ def test_failed_drill_block_includes_opening_and_last() -> None:
         opening_buf_adv=-0.20,
         last_buf_rew=-0.30,
         last_buf_adv=-0.50,
+        expected_moves="run(5,8->5,9)*",
+        opening_soft_mask=True,
     )
     lines = block.splitlines()
     assert lines[0].startswith("[gridiron] Failed the drill.")
-    assert "env=+0.00" in lines[2]
-    assert "env=-0.50" in lines[3]
-    assert "non-passing" in lines[2]
+    assert lines[2] == "  expected: run(5,8->5,9)*"
+    assert "env=+0.00" in lines[3]
+    assert "env=-0.50" in lines[4]
+    assert "non-passing, softmask" in lines[3]
 
 
 def test_ppo_update_line_once_per_update() -> None:
