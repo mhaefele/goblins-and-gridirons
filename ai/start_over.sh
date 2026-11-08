@@ -21,10 +21,14 @@
 #   ./start_over.sh --phase dump
 #   ./start_over.sh --phase seed --profile general
 #   ./start_over.sh --phase scenario_a
+#   ./start_over.sh --phase scenario_a --from-scratch   # random PPO; keeps expert seed zip
 #   ./start_over.sh --phase scenario_b
 #   ./start_over.sh --phase checkpoint --profile td
 #   ./start_over.sh --phase pack --cycles 3
 #   ./start_over.sh --undo
+#
+# --from-scratch (scenario_a only): wipe scenario_a onward, then train from a fresh
+# MaskablePPO instead of copying maskable_ppo_seed.zip. Never deletes the clone.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,7 +39,7 @@ PHASE=""
 UNDO=false
 
 usage() {
-  sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
   echo ""
   echo "Train flags after wipe (same as ./train.sh — see ./train.sh --help):"
   exit 0
@@ -50,7 +54,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help) usage ;;
     --undo) UNDO=true; shift ;;
     --phase) PHASE="${2:?}"; shift 2 ;;
-    --profile|--scenario|--cycles|--train-heuristic|--train-lookahead|--eval-heuristic|--eval-lookahead|--train-scenario-learning|--train-scenario-mastered|--force-promote|--skip-scenarios)
+    --profile|--scenario|--cycles|--train-heuristic|--train-lookahead|--eval-heuristic|--eval-lookahead|--train-scenario-learning|--train-scenario-mastered|--force-promote|--skip-scenarios|--from-scratch|--verbose|--super-verbose)
       break
       ;;
     --)
@@ -75,7 +79,21 @@ TRAIN_PROFILE="$TRAIN_CLI_PROFILE"
 
 profile_names "$TRAIN_PROFILE" >/dev/null
 
+_from_scratch=false
+for _arg in ${TRAIN_CLI_FORWARD[@]+"${TRAIN_CLI_FORWARD[@]}"}; do
+  if [[ "$_arg" == "--from-scratch" ]]; then
+    _from_scratch=true
+    break
+  fi
+done
+if [[ "$_from_scratch" == true && "$PHASE" != "scenario_a" ]]; then
+  die "--from-scratch requires --phase scenario_a (keeps expert seed; only skips copying it into scenario_a)"
+fi
+
 echo "start_over: root=$ROOT phase=$PHASE profile=$TRAIN_PROFILE"
+if [[ "$_from_scratch" == true ]]; then
+  echo "start_over: --from-scratch → fresh MaskablePPO for scenario_a (seed zip kept)"
+fi
 printf 'Wipe from phase=%s (profile=%s) and retrain? [y/N] ' "$PHASE" "$TRAIN_PROFILE"
 read -r _confirm
 case "$_confirm" in

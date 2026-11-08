@@ -140,6 +140,7 @@ from gridiron_ai.scenario_curriculum import (
 from gridiron_ai.api.scenarios import refresh_catalog, require_catalog, resolve_scenario_pin
 from gridiron_ai.ppo_update_evidence import PpoUpdateEvidenceCallback
 from gridiron_ai.tb_callback import GridironMetricsCallback, PeriodicFinalSaveCallback
+from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
 from gridiron_ai.training_phases import (
     EVAL_PHASE_CHOICES,
     PhaseName,
@@ -155,6 +156,7 @@ from gridiron_ai.training_phases import (
     resolve_targets,
     runs_dir,
     PHASE_PROFILES,
+    PHASE_SCENARIO_A,
 )
 from gridiron_ai.pipeline_state import load_pipeline, rewind_pipeline
 
@@ -697,6 +699,12 @@ def parse_args() -> argparse.Namespace:
         help="Eval-only: pin drill difficulty 0–5 (requires --scenario; ignores curriculum JSON; never writes levels)",
     )
     p.add_argument("--force-promote", action="store_true", help="Persist next phase gate without live curriculum (at profiles: sticky full-game unlock); fail if checkpoint missing")
+    p.add_argument(
+        "--from-scratch",
+        action="store_true",
+        help="scenario_a only: init a fresh MaskablePPO (no expert clone weights). Does not delete "
+        "output/expert/maskable_ppo_seed.zip — wipe scenario_a first (./start_over.sh --phase scenario_a --from-scratch)",
+    )
     p.add_argument("--continue-on-submit-error", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--reset-long-running", action="store_true", help="Delete long-running checkpoints and TensorBoard logs for the selected profile(s), then exit (start_over.sh)")
     args = p.parse_args()
@@ -1914,6 +1922,37 @@ def _eval_phase_zip(args: argparse.Namespace) -> Path | None:
     return zip_path
 
 
+def _write_fresh_scenario_a_zip(
+    dest_stem: Path,
+    *,
+    bootstrap: DummyVecEnv,
+    tensorboard_log: str,
+) -> Path:
+    """Random-init MaskablePPO at ``dest_stem`` (scenario_a from-scratch; leaves expert seed alone)."""
+    dest_stem.parent.mkdir(parents=True, exist_ok=True)
+    model = MaskablePPO(
+        LegalRowActorCriticPolicy,
+        bootstrap,
+        learning_rate=_DEFAULT_LEARNING_RATE,
+        n_steps=DEFAULT_N_STEPS,
+        batch_size=DEFAULT_BATCH_SIZE,
+        n_epochs=N_EPOCHS,
+        clip_range=CLIP_RANGE,
+        target_kl=TARGET_KL,
+        ent_coef=DEFAULT_ENT_COEF,
+        vf_coef=DEFAULT_VF_COEF,
+        verbose=1,
+        device=DEFAULT_DEVICE,
+        tensorboard_log=tensorboard_log,
+    )
+    _set_ppo_stability(model)
+    written = atomic_model_save(model, dest_stem)
+    print(f"  seeded {written} ← fresh MaskablePPO (no expert clone)", flush=True)
+    model.env = None  # type: ignore[assignment]
+    del model
+    return written
+
+
 def _load_or_create_model(
     args: argparse.Namespace,
     *,
@@ -1957,8 +1996,30 @@ def _load_or_create_model(
         _set_ppo_stability(model)
         return model, save_stem, save_dir, name_prefix, True, session_log
 
-    # Fork from prior phase (expert → scenario_a → scenario_b → profile) when missing.
-    ensure_checkpoint_from_prior(checkpoint_key, phase)
+    from_scratch = bool(getattr(args, "from_scratch", False))
+    if from_scratch:
+        if phase != PHASE_SCENARIO_A:
+            raise SystemExit(
+                "--from-scratch only applies when forking scenario_a "
+                "(./start_over.sh --phase scenario_a --from-scratch …)"
+            )
+        zip_path = long_running_zip(checkpoint_key)
+        if zip_path.is_file():
+            raise SystemExit(
+                f"--from-scratch but {zip_path} already exists — wipe first: "
+                "./start_over.sh --phase scenario_a --from-scratch … "
+                "(leaves output/expert/maskable_ppo_seed.zip alone)"
+            )
+        save_stem = long_running_stem(checkpoint_key)
+        bootstrap = _bootstrap_env()
+        try:
+            _write_fresh_scenario_a_zip(save_stem, bootstrap=bootstrap, tensorboard_log=str(tb_runs))
+        finally:
+            bootstrap.close()
+    else:
+        # Fork from prior phase (expert → scenario_a → scenario_b → profile) when missing.
+        ensure_checkpoint_from_prior(checkpoint_key, phase)
+
     save_stem = long_running_stem(checkpoint_key)
     name_prefix = STEP_CHECKPOINT_PREFIX
     save_dir = checkpoint_dir
@@ -1966,7 +2027,13 @@ def _load_or_create_model(
     zip_path = long_running_zip(checkpoint_key)
     continued = zip_path.is_file()
     if continued:
-        print(f"Continuing {checkpoint_key} ({phase}/{reward_profile}) from {zip_path}")
+        if from_scratch:
+            print(
+                f"Starting {checkpoint_key} ({phase}/{reward_profile}) from scratch "
+                f"(no expert clone) at {zip_path}"
+            )
+        else:
+            print(f"Continuing {checkpoint_key} ({phase}/{reward_profile}) from {zip_path}")
         if needs_train:
             bootstrap = _bootstrap_env()
             model = MaskablePPO.load(

@@ -49,7 +49,8 @@ Advanced (other scripts):
 ```bash
 ./start_over.sh --phase dump                      # wipe dump…checkpoint, then train all
 ./start_over.sh --phase seed --profile general    # wipe seed + scenario phases + general checkpoint
-./start_over.sh --phase scenario_a                # wipe scenario_a onward
+./start_over.sh --phase scenario_a                # wipe scenario_a onward (re-fork from expert seed)
+./start_over.sh --phase scenario_a --from-scratch # same wipe; random PPO (keeps maskable_ppo_seed.zip)
 ./start_over.sh --phase scenario_b                # wipe scenario_b + profiles
 ./start_over.sh --phase checkpoint --profile td   # wipe td only, then train td
 ./start_over.sh --phase pack --cycles 3           # wipe pack onward, then train with same flags as train.sh
