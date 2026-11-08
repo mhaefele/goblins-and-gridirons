@@ -4,6 +4,7 @@ Owner: one score per packed legal row = ``f(board_latent, encode(row))``.
 Row features use the same emb/coord style as the board trunk
 (``GridironFeaturesExtractor.encode_legal_rows``). Gym action is
 ``Discrete(MAX_LEGAL_MOVES)``. Soft-mask adds a logit bias on preferred rows.
+Encode+score truncates to this batch's max ``legal_move_count`` (pad tail → ``-1e8``).
 
 MaskablePPO → ``forward`` (rollouts) / ``evaluate_actions`` (PPO + clone);
 pick via stock ``MaskableCategoricalDistribution.get_actions``.
@@ -147,6 +148,12 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         return values, logits
 
     def _score_legal_rows(self, latent_pi: th.Tensor, obs: PyTorchObs) -> th.Tensor:
+        """Join-score legal rows; return width ``LEGAL_ROW_SCORE_WIDTH``.
+
+        Obs still pads to ``MAX_LEGAL_MOVES``, but encode+score only run through this
+        batch's busiest menu (``legal_move_count.max()``). Tail logits stay ``-1e8`` —
+        same end state as scoring pads then masking, without paying for empty slots.
+        """
         if not (isinstance(obs, dict) or hasattr(obs, "keys")):
             raise TypeError(f"Expected Dict observation with legal moves, got {type(obs)}")
         legal_moves = obs[OBS_KEY_LEGAL_MOVES]
@@ -173,24 +180,35 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
 
         fe = self.features_extractor
         assert isinstance(fe, GridironFeaturesExtractor)
-        row_emb = fe.encode_legal_rows(legal_moves, challenges.float())
-        batch, n_rows, _ = row_emb.shape
-        lat = latent_pi.unsqueeze(1).expand(batch, n_rows, -1)
-        logits = self.row_scorer(th.cat([lat, row_emb], dim=-1)).squeeze(-1)
+        batch = int(latent_pi.shape[0])
+        pad_rows = int(legal_moves.shape[1])
+        logits = latent_pi.new_full((batch, LEGAL_ROW_SCORE_WIDTH), -1.0e8)
+        if batch == 0 or pad_rows == 0:
+            return logits
+        max_count = int(legal_count.max().item()) if legal_count.numel() else 0
+        max_count = max(0, min(max_count, pad_rows, LEGAL_ROW_SCORE_WIDTH))
+        if max_count == 0:
+            return logits
 
-        row_ids = th.arange(n_rows, device=logits.device).unsqueeze(0)
-        valid = row_ids < legal_count.unsqueeze(1)
-        logits = logits.masked_fill(~valid, -1.0e8)
+        live_moves = legal_moves[:, :max_count]
+        row_emb = fe.encode_legal_rows(live_moves, challenges.float())
+        lat = latent_pi.unsqueeze(1).expand(batch, max_count, -1)
+        live_logits = self.row_scorer(th.cat([lat, row_emb], dim=-1)).squeeze(-1)
 
         if soft is not None:
             if not isinstance(soft, th.Tensor):
-                soft = th.as_tensor(soft, device=logits.device)
+                soft = th.as_tensor(soft, device=live_logits.device)
             else:
-                soft = soft.to(device=logits.device)
+                soft = soft.to(device=live_logits.device)
             # Obs flags are 0/1; juice is soft_mask_strength (train knob), not the gym Box.
-            soft = soft.reshape(batch, n_rows).to(dtype=logits.dtype)
+            soft = soft.reshape(batch, -1)[:, :max_count].to(dtype=live_logits.dtype)
             bias = SOFT_MASK_LOGIT_BIAS * float(self.soft_mask_strength)
-            logits = logits + soft * bias
+            live_logits = live_logits + soft * bias
+
+        row_ids = th.arange(max_count, device=live_logits.device).unsqueeze(0)
+        valid = row_ids < legal_count.unsqueeze(1)
+        live_logits = live_logits.masked_fill(~valid, -1.0e8)
+        logits[:, :max_count] = live_logits
         return logits
 
     def _masked_distribution(
