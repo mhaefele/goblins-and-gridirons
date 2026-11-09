@@ -964,7 +964,8 @@ def _legend() -> str:
             "  policy_entropy         −train/entropy_loss — high = exploratory, low = peaked policy",
             "  entropy                entropy_loss plus trend over the train window",
             "  approx_kl              PPO policy change per update "
-            "(<1e-4 STUCK!; 1e-4…1e-3 watch; too large = thrashing)"
+            "(profile board: TB series; drill rows: last train-segment update before after-eval; "
+            "<1e-4 STUCK!; 1e-4…1e-3 watch; too large = thrashing)"
             "  explained_variance     critic: value-head prediction fit (−1..1; higher = better)",
             "  value_loss             critic: raw return-prediction training loss (lower = better)",
             "  clip_fraction          fraction of PPO updates clipped (high = trust-region limited)",

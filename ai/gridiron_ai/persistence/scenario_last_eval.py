@@ -30,6 +30,8 @@ LAST_EVAL_METRIC_KEYS = (
     # ball_swap_probe (eval_ball_swap_probe.py) — optional; None when unused
     "opening_ball_swap_expected_p_best_mean",
     "opening_ball_swap_expected_rank_best_mean",
+    # Last PPO update health from the train segment before this after-eval (None on before-eval).
+    "approx_kl",
 )
 
 
@@ -46,6 +48,7 @@ class LastEvalMetricsDict(TypedDict):
     opening_expected_logit_gap_mean: float | None
     opening_ball_swap_expected_p_best_mean: float | None
     opening_ball_swap_expected_rank_best_mean: float | None
+    approx_kl: float | None
 
 
 class LastEvalEntryDict(TypedDict):
@@ -81,6 +84,7 @@ def _empty_slim() -> LastEvalMetricsDict:
         "opening_expected_logit_gap_mean": None,
         "opening_ball_swap_expected_p_best_mean": None,
         "opening_ball_swap_expected_rank_best_mean": None,
+        "approx_kl": None,
     }
 
 

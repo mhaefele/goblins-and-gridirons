@@ -239,11 +239,13 @@ def test_last_eval_round_trip(tmp_path) -> None:
         "opening_expected_p_best_mean": 0.77,
         "opening_chosen_p_mean": 0.77,
         "opening_expected_rank_best_mean": 1.0,
+        "approx_kl": 0.00005,
         "episodes": 10,
     }
     save_last_eval(path, record_last_eval(loaded, "TD_RUN", 1, second))
     loaded = load_last_eval(path)
     assert last_eval_metrics(loaded, "TD_RUN", 1)["opening_expected_p_mean"] == 0.77
+    assert last_eval_metrics(loaded, "TD_RUN", 1)["approx_kl"] == 0.00005
     assert last_eval_prior_metrics(loaded, "TD_RUN", 1)["winrate"] == 0.3
     assert last_eval_rank_history(loaded, "TD_RUN", 1) == [12.0, 1.0]
 

@@ -141,6 +141,7 @@ def format_scenario_eval_headline(
 
     Shared by live scenario eval stdout and summarize drill boards.
     When curriculum ``dN`` differs from latest-eval ``@dM``, append ↑ (promoted) or ↓ (demoted).
+    Appends ``approx_kl=…`` when present on ``stats`` (train-segment last update → after-eval).
     """
     games = int(stats.get("episodes") or 0)
     wins = int(stats.get("wins") or 0)
@@ -165,11 +166,34 @@ def format_scenario_eval_headline(
         prior_rate,
         winrate_history=winrate_history,
     )
+    kl_bit = _approx_kl_bit(stats, prior=prior)
     return (
         f"{short_name}  d{difficulty}{move}  {eval_tag}drill_rate={rate_bit} "
         f"W{wins}/L{losses}/D{draws} ({games} ep)"
         f"{format_opening_score_bits(stats, prior=prior, rank_history=rank_history)}"
+        f"{kl_bit}"
     )
+
+
+def _approx_kl_bit(stats: dict[str, Any], *, prior: dict[str, Any] | None = None) -> str:
+    """`` approx_kl=0.0012`` / `` approx_kl=0.0012→0.00005`` from last-eval slim field."""
+    after = stats.get("approx_kl")
+    if after is None:
+        return ""
+    try:
+        after_f = float(after)
+    except (TypeError, ValueError):
+        return ""
+    before_f = None
+    if prior is not None and prior.get("approx_kl") is not None:
+        try:
+            before_f = float(prior["approx_kl"])
+        except (TypeError, ValueError):
+            before_f = None
+    rendered = fmt_metric_delta(before_f, after_f, digits=5)
+    if rendered is None:
+        return ""
+    return f" approx_kl={rendered}"
 
 
 def format_metrics_extras_line(stats: dict[str, Any]) -> str:

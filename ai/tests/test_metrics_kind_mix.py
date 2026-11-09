@@ -203,6 +203,21 @@ def test_format_metrics_line_winrate_delta_vs_prior() -> None:
         winrate_history=[0.40, 0.34, 0.30, 0.28],
     )
     assert "drill_rate=40%→34%→30%→28%" in trail
+    kl_line = format_scenario_eval_headline(
+        short_name="loose_ball_run",
+        difficulty=0,
+        stats={
+            **stats,
+            "scenario_difficulty": 0,
+            "episodes": 100,
+            "wins": 10,
+            "losses": 90,
+            "draws": 0,
+            "approx_kl": 5e-5,
+        },
+        prior={"approx_kl": 1.2e-3, "winrate": 0.08},
+    )
+    assert "approx_kl=0.00120→0.00005" in kl_line
     extras = format_metrics_extras_line(stats)
     assert "score=" in extras
     assert "kinds[" in extras

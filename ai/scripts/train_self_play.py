@@ -234,6 +234,22 @@ def _remember_scenario_eval(
     save_last_eval(path, record_last_eval(load_last_eval(path), scenario, difficulty, stats))
 
 
+def _ppo_train_health(model: MaskablePPO) -> dict[str, float]:
+    """Last-update PPO scalars from SB3 logger (empty when learn has not logged yet)."""
+    logger = getattr(model, "logger", None)
+    values = getattr(logger, "name_to_value", None) if logger is not None else None
+    if not isinstance(values, dict):
+        return {}
+    out: dict[str, float] = {}
+    raw = values.get("train/approx_kl")
+    if raw is not None:
+        try:
+            out["approx_kl"] = float(raw)
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
 def _note_kind_mix(
     runs_key: str,
     label: str,
@@ -1191,6 +1207,7 @@ def _eval_one_scenario(
     scenario: str,
     difficulty: int,
     games: int = SCENARIO_EVAL_GAMES,
+    train_health: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Deterministic eval for one drill at its current curriculum difficulty.
 
@@ -1198,6 +1215,7 @@ def _eval_one_scenario(
     else ``{stem}.scenario_last_eval.json``). Persists only while training — ``--eval-only``
     never writes the cache or sidecar. ``games`` is 100 for 8× train units, else 10.
     Before-eval and after-eval both append to the rolling last-eval history.
+    ``train_health`` (e.g. ``approx_kl`` from the preceding learn) merges into stats + last-eval.
     """
     prior = _prior_scenario_eval(scenario, difficulty, save_stem)
     stored = load_last_eval(path_for_last_eval(save_stem))
@@ -1225,6 +1243,7 @@ def _eval_one_scenario(
         rank_history_before=stored_ranks,
         winrate_history_before=stored_rates,
         ball_swap_rank_history_before=stored_ball_swap_ranks,
+        train_health=train_health,
     )
     if not args.eval_only:
         _remember_scenario_eval(scenario, difficulty, stats, save_stem)
@@ -1478,6 +1497,7 @@ def _train_scenarios_segment(
                     _set_soft_mask_strength(model, 1.0)
             did_train = True
             row.update(_cycle_stats_fields(f"train_scenario_{slug}", stats))
+            train_health = _ppo_train_health(model)
             drill_stats = record_train_cycles(drill_stats, scenario, units=units)
             save_drill_stats(drill_stats_path, drill_stats)
             _scenario_phase_banner(
@@ -1506,6 +1526,7 @@ def _train_scenarios_segment(
                 scenario=scenario,
                 difficulty=difficulty,
                 games=eval_games,
+                train_health=train_health or None,
             )
             row.update(_cycle_stats_fields(f"eval_scenario_{slug}_after", after))
             _print_scenario_learn_line(
@@ -1708,6 +1729,7 @@ def _eval_segment(
     rank_history_before: list[float] | None = None,
     winrate_history_before: list[float] | None = None,
     ball_swap_rank_history_before: list[float] | None = None,
+    train_health: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Deterministic games; shaping off. Soft-mask bias follows ``eval_episode_mode`` (TRAIN=on).
 
@@ -1715,6 +1737,7 @@ def _eval_segment(
     ``before→after`` drift (``_eval_one_scenario`` supplies the last eval this process).
     ``rank_history_before`` / ``winrate_history_before``: stored trails; current appended.
     ``ball_swap_rank_history_before``: removable probe trail (``eval_ball_swap_probe``).
+    ``train_health``: optional PPO logger scalars (``approx_kl``) from the preceding train segment.
     """
     workers = min(games, DEFAULT_N_ENVS)
     opp_label = opponent_metrics_label(computer_opponent, onnx_profile)
@@ -1796,6 +1819,8 @@ def _eval_segment(
 
     stats = aggregate_episodes(episodes)
     stats.update(_episode_success_rates(episodes))
+    if train_health:
+        stats.update(train_health)
     if scenario is not None:
         stats["scenario_difficulty"] = scenario_difficulty
         stats.update(aggregate_opening_move_scores(episodes))
