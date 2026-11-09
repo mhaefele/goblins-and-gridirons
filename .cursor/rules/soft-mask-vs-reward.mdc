@@ -1,0 +1,15 @@
+---
+description: Soft-mask is look-at/sample; reward is good/bad — never conflate
+alwaysApply: true
+---
+
+# Soft-mask vs reward
+
+Soft-mask = **look at / sample these rows** (train logit bias). It is **not** a good/bad label and does **not** mean “this pays.”
+
+| Knob | Job | Not |
+|------|-----|-----|
+| Soft-mask (`softMaskLegal` / `soft_mask_legal`) | Attention / exposure — “consider these” (PASS **and** intentional fail distractors) | A reward, a grade, or “preferred = correct” |
+| Reward (env ±, curriculum slap/bonus) | Good/bad after the look — “you looked; that was wrong/right” | A substitute for soft-mask exposure |
+
+LOOSE_BALL_RUN TRAIN openings soft-mask pickup **plus** a few empty-EZ fails on purpose: force the look, then grade with reward. Do not argue that fail soft-masks “teach the net empty-EZ is good” — that confuses sampling tilt with reward. Critique fail soft-masks only as a **sampling/exposure** design choice, never as if they were the grade signal.

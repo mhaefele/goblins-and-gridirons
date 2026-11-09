@@ -14,6 +14,7 @@ Keep this pointer tiny — **do not** inline DESIGN/BACKLOG here.
 |------|------|--------|
 | **Tasks** | [`ai/BACKLOG.md`](../../BACKLOG.md) | Re-litigate shipped rows |
 | **Contract / why** | [`ai/DESIGN.md`](../../DESIGN.md) + Kotlin `backend/.../api/ai/dto/` | GUI `MatchSnapshot` / `frontend/` for obs or legals |
+| **Soft-mask vs reward** | Soft-mask = look-at/sample; reward = good/bad ([`ACTION_SAMPLING.md`](../../ACTION_SAMPLING.md) § soft-mask; repo rule `soft-mask-vs-reward`) | Treat fail soft-masks as “teaches this pays” |
 | **How to run** | [`ai/README.md`](../../README.md) | Invent CLI flags |
 | **Train/eval CLI** | Phase / profile / scenario concepts; edit source for one-offs | Model file paths, before/after duals, speculative knobs — asks are always phase-relative |
 | **Harness code** | `ai/gridiron_ai/`, `ai/scripts/` | Treat GUI submit/SSE as the train loop |

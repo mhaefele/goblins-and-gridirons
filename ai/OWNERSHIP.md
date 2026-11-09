@@ -31,7 +31,7 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 | HTTP create / step / submit / scenarios list | Kotlin `/api/ai/...` + `gridiron_ai/api/client.py` | Open `/events` from the harness |
 | Gym env (reset/step/reward call) | `gridiron_ai/api/env.py` | Own drill grading |
 | Harness wire TypedDicts / closed wire enums | `gridiron_ai/api/harness_wire.py` | Mirror scenario catalog membership |
-| Reward margin / terminal / profile shaping / scenario coach-window ± | `gridiron_ai/reward.py` (LegalAction + `rewards.players` / `ballCoordinate`) | Per-move expected-move slap/bonus (soft-mask owns that); packed-row business logic |
+| Reward margin / terminal / profile shaping / scenario coach-window ± | `gridiron_ai/reward.py` (LegalAction + `rewards.players` / `ballCoordinate`) | Soft-mask sampling tilt (look-at, not grade); packed-row business logic |
 | Episode metrics / TB aggregates / eval·learn stdout lines | `gridiron_ai/metrics.py`, `tb_callback.py` (opening bits → `eval_opening_diag`) | Re-format winrate/opening deltas in `train_self_play` |
 | Verbose PPO update evidence (Passed/Failed / buf adv) | `gridiron_ai/ppo_update_evidence.py` (sidecar; `--verbose` only) | Stuff evidence into `tb_callback` / core train loop |
 | Removable ball-opp opening probe (TD_RUN / LOOSE_BALL_RUN eval) | `gridiron_ai/eval_ball_swap_probe.py` (call sites tagged `ball_swap_probe`) | Bake into `eval_opening_diag` / reward / training |

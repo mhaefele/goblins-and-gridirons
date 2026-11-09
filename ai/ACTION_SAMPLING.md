@@ -46,12 +46,17 @@ transfer).
 
 ### Soft-mask preference
 
+**Soft-mask ≠ reward.** Soft-mask only means **look at / sample these rows**
+(logit bias). Good/bad is entirely the reward (curriculum slap/bonus, terminal, …).
+Fail distractors on the soft-mask set are intentional exposure (“consider this”),
+then reward grades the look — not “soft-mask = this pays.”
+
 **Landed (schema 12; row-level under schema 16).** Gym key `preferred_legal` /
-`soft_mask_legal` parallels `legal_moves` rows (**stable int8 0/1** =
-`expectedScenarioMove`). The join-score policy adds
-`SOFT_MASK_LOGIT_BIAS × policy.soft_mask_strength` to preferred **row** logits
-before the categorical over the menu. Illegal / pad rows stay hard-masked at 0;
-non-preferred legals stay available (soft tilt, not a hard filter).
+`soft_mask_legal` parallels `legal_moves` rows (**stable int8 0/1**). The
+join-score policy adds `SOFT_MASK_LOGIT_BIAS × policy.soft_mask_strength` to
+flagged **row** logits before the categorical over the menu. Illegal / pad rows
+stay hard-masked at 0; non-flagged legals stay available (soft tilt, not a hard
+filter).
 
 **Do not** encode train juice (bottleneck strength, curriculum, debug) into the
 `soft_mask_legal` Box — SB3 pickles `observation_space` into every checkpoint zip.

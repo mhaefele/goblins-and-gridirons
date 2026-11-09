@@ -71,8 +71,8 @@ def test_probe_only_td_run_and_loose_ball() -> None:
 
 def test_relocate_ball_mirrors_row_and_clears_pickup() -> None:
     obs, meta = relocate_ball_opposite_end(_pitch_with_ball(2, 4))
-    assert meta["from"] == (4, 2)
-    assert meta["to"] == (4, PLAY_HEIGHT - 1 - 2)
+    assert meta["from"] == (5, 3)  # pitch (4,2) → absolute 1-based
+    assert meta["to"] == (5, PLAY_HEIGHT - 2)  # pitch y mirrored, then +1
     pitch = obs[OBS_KEY_PITCH]
     assert float(pitch[CELL_CH_HAS_BALL, 2, 4]) == 0.0
     ty = PLAY_HEIGHT - 1 - 2
@@ -88,8 +88,8 @@ def test_relocate_midfield_ball_snaps_to_far_endzone() -> None:
     assert PLAY_HEIGHT - 1 - mid_y == mid_y
     obs, meta = relocate_ball_opposite_end(_pitch_with_ball(mid_y, 3))
     assert "error" not in meta
-    assert meta["from"] == (3, mid_y)
-    assert meta["to"] == (3, PLAY_HEIGHT - 1)
+    assert meta["from"] == (4, mid_y + 1)
+    assert meta["to"] == (4, PLAY_HEIGHT)
     pitch = obs[OBS_KEY_PITCH]
     assert float(pitch[CELL_CH_HAS_BALL, mid_y, 3]) == 0.0
     assert float(pitch[CELL_CH_HAS_BALL, PLAY_HEIGHT - 1, 3]) == 1.0
@@ -106,7 +106,7 @@ def test_relocate_rewrites_legal_row_ball_flags() -> None:
         _row(sx=1, sy=1, tx=x0, ty=y1, actor_ball=0, target_ball=0),  # dest = new ball square
     ]
     obs, meta = relocate_ball_opposite_end(_pitch_with_ball(y0, x0, legal_rows=rows))
-    assert meta["to"] == (x0, y1)
+    assert meta["to"] == (x0 + 1, y1 + 1)
     legal = obs[OBS_KEY_LEGAL_MOVES]
     assert int(legal[0, FACTOR_ACTOR_HAS_BALL]) == 0
     assert int(legal[0, FACTOR_TARGET_HAS_BALL]) == 0

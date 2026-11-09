@@ -117,7 +117,7 @@ def relocate_ball_opposite_end(policy_obs: dict[str, np.ndarray]) -> tuple[dict[
     y0, x0 = found
     y1, x1 = _opposite_end_yx(y0, x0)
     if (y1, x1) == (y0, x0):
-        return out, {"error": "ball_unmoved", "from": (x0, y0), "to": (x1, y1)}
+        return out, {"error": "ball_unmoved", "from": (x0 + 1, y0 + 1), "to": (x1 + 1, y1 + 1)}
 
     pitch[CELL_CH_HAS_BALL].fill(0.0)
     pitch[CELL_CH_HAS_BALL, y1, x1] = 1.0
@@ -133,9 +133,10 @@ def relocate_ball_opposite_end(policy_obs: dict[str, np.ndarray]) -> tuple[dict[
         legal_count = int(np.asarray(count_arr).reshape(-1)[0]) if count_arr is not None else int(np.asarray(legal).shape[0])
         rewrite_legal_row_ball_flags(legal, ball_x=x1, ball_y=y1, legal_count=legal_count)
 
+    # Absolute 1-based — same labels as turn1 ``ball=`` / ``run(x,y->…)`` (HOME drills).
     meta = {
-        "from": (x0, y0),
-        "to": (x1, y1),
+        "from": (x0 + 1, y0 + 1),
+        "to": (x1 + 1, y1 + 1),
         "dist_absent": _DIST_ABSENT,
     }
     return out, meta
