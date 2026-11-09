@@ -33,7 +33,8 @@ from gridiron_ai.constants import (
 )
 from gridiron_ai.features import LEGAL_ROW_FEATURE_DIM, GridironFeaturesExtractor
 
-_SCORE_HIDDEN = 128
+# Join MLP width — 256 so ball/spatial row bits have more room than the old 128 bottleneck.
+_SCORE_HIDDEN = 256
 
 
 class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
