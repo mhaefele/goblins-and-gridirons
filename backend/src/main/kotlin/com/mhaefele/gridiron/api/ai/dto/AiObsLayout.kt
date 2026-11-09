@@ -61,7 +61,9 @@ object AiObsLayout {
      * v22: [AiCellObs.pitchX]/[pitchY]/[distToBall] ints on the cell; reach bbox 0-based;
      * feature extractor stops inventing / renormalizing board geometry.
      * v23: legal-row pack appends actorHasBall / targetHasBall metadata (0/1; same sense as
-     * [AiCellObs.hasBall]) so the join scorer does not rediscover ball binding from pitch soup.
+     * [AiCellObs.hasBall]); bonus column = full [BonusPlay] vocab (hand codes) for any
+     * [com.mhaefele.gridiron.api.dto.response.LegalAction.requiredBonusCard] (geometry twins
+     * and Play* / Do-Over); per-play [AiLegalKind]s unchanged — folded before any dump used 23.
      */
     const val SCHEMA_VERSION = 23
 
@@ -95,9 +97,13 @@ object AiObsLayout {
     const val ACTION_FACTOR_COUNT = 13
 
     const val ACTIVE_CHALLENGE_SLOTS = 3
-    /** Geometry AttachedBonus indices `0..4`; pad = [ATTACHED_BONUS_UNUSED]. */
-    const val ATTACHED_BONUS_COUNT = 5
-    const val ATTACHED_BONUS_UNUSED = ATTACHED_BONUS_COUNT
+    /** [com.mhaefele.gridiron.model.catalog.BonusPlay.entries] — hand + legal-row bonus column. */
+    const val BONUS_PLAY_COUNT = 20
+    /**
+     * Legal-row bonus column / hand share codes: [ATTACHED_BONUS_UNUSED]=0 none;
+     * `1..BONUS_PLAY_COUNT` = ordinal+1 ([AttachedBonusEncoding]).
+     */
+    const val ATTACHED_BONUS_UNUSED = 0
     /** Face pack: `0` unused; `1..BlockDieFace.entries` = ordinal+1. */
     const val BLOCK_FACE_PACK_UNUSED = 0
     /** Boolean pack vocab (`0`/`1`) — same codes as [AiObsEncoding] `Boolean.toObsCode()`. */
@@ -117,7 +123,7 @@ object AiObsLayout {
     const val SOURCE_Y_UNUSED: Int = PLAY_HEIGHT
     /** Challenge slots + pad (unused axis). */
     val CHALLENGE_SLOT_PACK_WIDTH: Int = ACTIVE_CHALLENGE_SLOTS + 1
-    val ATTACHED_BONUS_PACK_WIDTH: Int = ATTACHED_BONUS_UNUSED + 1
+    val ATTACHED_BONUS_PACK_WIDTH: Int = BONUS_PLAY_COUNT + 1
     /** `0` unused + one code per [com.mhaefele.gridiron.game.dice.dto.BlockDieFace]. */
     val BLOCK_FACE_PACK_SIZE: Int = 1 + 5
     /** Column vocab widths on each legal row — must match `ai/gridiron_ai/constants.py` ACTION_FACTOR_WIDTHS. Not MultiDiscrete heads. */

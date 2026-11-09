@@ -77,15 +77,17 @@ import io.swagger.v3.oas.annotations.media.Schema
 sealed interface LegalAction {
     val actionType: ActionType
     /**
-     * When non-null, this **geometry** action spends [requiredBonusCard] on submit
-     * (Sprint/Weave/Press/Ice Cold/… tagged onto Run/Mark/Throw/…). Encoded into [id];
-     * [com.mhaefele.gridiron.game.action.pending.regular.RegularPlayerActionResolver] auto-plays it
-     * for the active coach when beginning the open action.
+     * Bonus card this choice spends, if any.
      *
-     * Mid-action [PlayBonusCard] / Do-Over adjust pauses do **not** use this field — the Play*
-     * (or Adjust*) kind *is* the spend, and the spending coach is often not the active one
-     * (Brace, Slip Away, Cut Off, Stick Close, …). Resolvers call [com.mhaefele.gridiron.game.turn.MatchMutator.playBonusCard]
-     * with the right seat.
+     * - **Geometry** (Run/Mark/Throw/…): Sprint/Weave/Press/Ice Cold/Hail Mary tagged onto the
+     *   path/throw; encoded into [id] as `_BONUS_…`;
+     *   [com.mhaefele.gridiron.game.action.pending.regular.RegularPlayerActionResolver] auto-plays
+     *   it for the active coach when beginning the open action.
+     * - **[BonusCardChoice]** (Play* pause / Do-Over adjust): same field as [BonusCardChoice.bonusPlay]
+     *   so callers / AI pack read one place; [id] stays the ActionType token alone (subtype already
+     *   unique). Per-play kinds stay distinct; the pack bonus column carries this card (hand codes).
+     *   Spending coach may not be the active one (Brace, Slip Away, …) — resolvers call
+     *   [com.mhaefele.gridiron.game.turn.MatchMutator.playBonusCard] with the right seat.
      */
     val requiredBonusCard: BonusPlay?
         get() = null
@@ -401,18 +403,18 @@ sealed interface LegalAction {
      * Play a bonus card from hand during a bonus-offer pause (phase / interrupt / before-throw /
      * mid-block — not Do-Over held-dice). Each card that opens a pause has its own subtype; the
      * server picks a matching hand card. The throw/mark/block (etc.) was already chosen — this is
-     * the second ask to spend or [DeclineBonus]. Spend via [bonusPlay] in the owning resolver
-     * (not [requiredBonusCard]; that tags geometry actions only).
+     * the second ask to spend or [DeclineBonus]. [requiredBonusCard] / [bonusPlay] name the card;
+     * resolvers still branch on the Play* subtype (or [bonusPlay]) for effect.
      */
     sealed interface PlayBonusCard : BonusCardChoice
 
     /**
-     * Coach spends a bonus card from hand ([PlayBonusCard] or a Do-Over adjust) — carries the card
-     * text for the prompt. Kind + [bonusPlay] *are* the spend; see [requiredBonusCard] for why that
-     * field stays null here.
+     * Coach spends a bonus card from hand ([PlayBonusCard] or a Do-Over adjust) — [bonusPlay] /
+     * [requiredBonusCard] carry the card for prompts, harness rows, and the AI bonus pack column.
      */
     sealed interface BonusCardChoice : FollowUpAction {
         val bonusPlay: BonusPlay
+        override val requiredBonusCard: BonusPlay get() = bonusPlay
         val description: String get() = bonusPlay.description
     }
 
@@ -564,7 +566,9 @@ private fun LegalAction.getLegalActionIdString(): String {
         }
     }
     val geometry = parts.joinToString("_")
+    // Geometry twins only — BonusCardChoice ids are already unique by ActionType / subtype.
     val bonus = requiredBonusCard ?: return geometry
+    if (this is LegalAction.BonusCardChoice) return geometry
     return geometry + "_BONUS_" + token(bonus.name)
 }
 

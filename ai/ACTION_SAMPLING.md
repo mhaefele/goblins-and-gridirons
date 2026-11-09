@@ -116,7 +116,7 @@ kinds / factors are the learning contract. Wording like “head” below is **hi
 MultiDiscrete** naming from when that item landed.
 
 - [x] **Pitch-only `boardTarget` pack column.** Landed (schema 8): target width `PITCH_SQUARE_COUNT+1` (**166**); actor was pitch+bench (**186**) until schema 10.
-- [x] **Bonus plays: encode identity once; drop `HandSlot`.** Landed (schema 8, option **A**): per-play `AiLegalKind`s; empty factors on play-bonus rows; hand MultiDiscrete axis removed.
+- [x] **Bonus plays: encode identity once; drop `HandSlot`.** Landed (schema 8, option **A**): per-play `AiLegalKind`s; empty factors on play-bonus rows; hand MultiDiscrete axis removed. **Schema 23 (pre-regen):** same per-play kinds; bonus pack column carries any `requiredBonusCard` (hand codes) so geometry twins and Play*/Do-Over share one card channel with the hand emb.
 - [x] **Factors = free choices only; mark sugar; match on free factors.** Landed (schema 9): `AiLegalChoiceDto.factors` = free only; `sugarFactors` = pending-fixed (not MultiDiscrete-matched). `resolve_action` matches free factors → submit full `legalActionId` (sugar stays in the id).
 - [x] **`declineOffer` coarse kind.** Landed (schema 9); **undone schema 16** — distinct `skip` / `declineBonus` / `continueBlock` / `keepOffer` again (join-score rows don’t need the MultiDiscrete merge).
 - [x] **Exclude `cancelThrowTeammate` from the policy.** Landed (schema 9); **restored schema 16** — cancel is a legal-row kind again.
@@ -141,7 +141,7 @@ Optional representation shrinks — pick after Measure first (and after Yes-do w
 **Won’t do under join-score:** resurrecting MultiDiscrete remask, sequential factor
 heads, or “kind-conditioned target logits” as separate policy axes.
 
-- [ ] **Bonus-play identity: kind vs factor (XOR).** Schema 8 chose **A** (per-play kinds, no hand/BonusPlay factor). Revisit only if we want **B** (one `playBonus` + `BonusPlay` pack column) instead — still XOR, not both.
+- [ ] **Bonus-play identity: collapse kinds (optional).** Schema 8 **A** kinds kept; schema 23 also packs `requiredBonusCard` on the bonus column (hand codes) without collapsing Play* kinds — accepted dual for “one card channel” + kind↔LegalAction alignment. Revisit **B** (one `playBonus` kind) only if kind vocab shrink is worth the reunification cost.
 - [ ] **Combine similar path / “move” kinds (`run` / `sidestep` / `mark`).** Same `[Actor, BoardTarget]` shape; engine already partitions by board (marked → sidestep, open → run, end adjacent enemy → mark). One `move` (or `path`) kind would shrink the kind vocab; verb becomes eligibility / obs rather than a packed class. Tradeoff: less direct “I want to mark” signal on the kind embedding — policy must recover intent from obs + destination. Extend only carefully to other near-synonyms (don’t merge throw/block).
 - [ ] **Throw vs `quickReleaseThrow`.** Free factors differ: **throw** = actor + target; **quickReleaseThrow** = target only (actor sugar). Don’t merge. Quick Release is also an interrupt window — obs `phase` is only coarse `TurnPhase`, not `BlockStage.HANDLE_QUICK_RELEASE`.
 - [x] **Actor by player id / roster slot instead of board index.** Landed (schema 10): `1..10` + `0` unused; cell `playerIndex` binds id↔square.
@@ -293,7 +293,7 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 | Source square (actor now) | board position of actor | **Yes** — `sourceX`/`sourceY` **metadata** (not who-id) | Same cell via `playerIndex` |
 | Actor holds ball | `Player.holdsBall()` | **Yes** — `actorHasBall` **metadata** | Cell `hasBall` on actor square |
 | Dest square has ball | loose / carrier on target | **Yes** — `targetHasBall` **metadata** | Cell `hasBall` on dest |
-| Attached geometry bonus (Sprint/…) | `requiredBonusCard` | **Yes** — `attachedBonus` | — |
+| Bonus spent (geometry twin **or** Play*/Do-Over) | `requiredBonusCard` | **Yes** — bonus column (hand codes) | Hand tensor (same codes / emb) |
 | Challenge claim / replace slot | claim/replace actions | **Yes** — `challengeSlot` | Challenges tensor |
 | Enforcer face order | `ChooseBlockFaceOrder` | **Yes** — `face0..2` | `held_check` faces |
 | Soft-mask preferred row | training opening flag | **No** (parallel `soft_mask_legal`) | Logit bias only |
@@ -314,7 +314,7 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 | kind | 41 | `AiLegalKind.entries` | Exact. |
 | targetX / targetY | 12 / 16 | Pitch W/H + unused | 0-based pitch dest (+ pad). |
 | challengeSlot | 4 | 3 active challenges + unused | Exact. |
-| attachedBonus | 6 | 5 twins + unused | Exact. |
+| attachedBonus | 21 | `BonusPlay` + none (hand codes) | Exact (schema 23). |
 | face0..2 | 6 each | unused + 5 `BlockDieFace` | Exact; pad short perms with unused. |
 | sourceX / sourceY | 12 / 16 | Pitch W/H + unused | 0-based pitch metadata (+ pad). |
 | actorHasBall / targetHasBall | 2 each | boolean 0/1 | Same sense as cell `hasBall`; 0 when no actor/dest. |
@@ -425,6 +425,6 @@ How we map today — candidates to treat as separate buckets in stats.
 ### Pad / unused on the wire
 
 Harness always emits **thirteen** ints; axes a kind does not use get unused sentinels
-(`ATTACHED_BONUS_UNUSED`, `BLOCK_FACE_PACK_UNUSED`, actor `0`, target/source unused, …).
+(bonus/face `0`, actor `0`, target/source unused = pitch W/H, …).
 Soft-mask may further **boost** preferred **rows** (never removes a legal row).
 Actor `0` means “no free actor” (kind-only / target-only free rows).

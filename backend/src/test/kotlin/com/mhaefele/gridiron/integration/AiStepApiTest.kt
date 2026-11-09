@@ -1,5 +1,6 @@
 package com.mhaefele.gridiron.integration
 
+import com.mhaefele.gridiron.api.ai.dto.AiLegalKind
 import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 import com.mhaefele.gridiron.api.ai.dto.AiTeamRel
 import com.mhaefele.gridiron.api.ai.dto.AiTerrain
@@ -201,12 +202,12 @@ class AiStepApiTest : BaseApiTest() {
         assertThat(weaveChoice.action.requiredBonusCard).isEqualTo(BonusPlay.Weave)
         val sprintPacked = step.policy.legalMoves[step.harness.legalRows.indexOf(sprintChoice)]
         val weavePacked = step.policy.legalMoves[step.harness.legalRows.indexOf(weaveChoice)]
-        assertThat(sprintPacked[5]).isEqualTo(0) // attachedBonus Sprint
-        assertThat(weavePacked[5]).isEqualTo(1) // Weave
+        assertThat(sprintPacked[5]).isEqualTo(BonusPlay.Sprint.ordinal + 1)
+        assertThat(weavePacked[5]).isEqualTo(BonusPlay.Weave.ordinal + 1)
     }
 
     @Test
-    fun `Back on Your Feet play row wraps PlayBackOnYourFeet`() {
+    fun `Back on Your Feet play row wraps PlayBackOnYourFeet with requiredBonusCard`() {
         lateinit var prone: PlacedPlayer
         val match = match {
             homeBonus(BonusPlay.`Back on Your Feet`)
@@ -214,8 +215,13 @@ class AiStepApiTest : BaseApiTest() {
             prone = addPlayer(5, 6, status = PlayerStatus.PRONE)
         }
         match.play(match.legalActions<LegalAction.StandUp>().single { it.playerId == prone.player.id })
-        val choice = api.aiStep(match).harness.legalRows.single { it.action is LegalAction.PlayBackOnYourFeet }
+        val step = api.aiStep(match)
+        val choice = step.harness.legalRows.single { it.action is LegalAction.PlayBackOnYourFeet }
         assertThat(choice.action).isInstanceOf(LegalAction.PlayBackOnYourFeet::class.java)
+        assertThat(choice.action.requiredBonusCard).isEqualTo(BonusPlay.`Back on Your Feet`)
+        val packed = step.policy.legalMoves[step.harness.legalRows.indexOf(choice)]
+        assertThat(packed[1]).isEqualTo(AiLegalKind.playBackOnYourFeet.ordinal)
+        assertThat(packed[5]).isEqualTo(BonusPlay.`Back on Your Feet`.ordinal + 1)
     }
 
     @Test

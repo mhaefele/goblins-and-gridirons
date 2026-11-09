@@ -22,11 +22,9 @@ from gridiron_ai.constants import (
     AI_HELD_CHECK_KIND_VOCAB,
     AI_TEAM_REL_VOCAB,
     AI_TERRAIN_VOCAB,
-    ATTACHED_BONUS_UNUSED,
     BENCH_SLOTS,
     BLOCK_DIE_FACE_VOCAB,
     BLOCK_FACE_PACK_SIZE,
-    BLOCK_FACE_PACK_UNUSED,
     BONUS_HAND_SLOTS,
     BONUS_PLAY_VOCAB,
     LEGAL_ACTION_KIND_COUNT,
@@ -123,9 +121,8 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         self.bonus_emb = nn.Embedding(BONUS_PLAY_VOCAB, EMBED_DIM)
         self.held_kind_emb = nn.Embedding(AI_HELD_CHECK_KIND_VOCAB, EMBED_DIM)
         self.block_face_emb = nn.Embedding(BLOCK_DIE_FACE_VOCAB, EMBED_DIM)
-        # Action-menu kind / attached-bonus index — same emb width as board enums.
+        # Action-menu kind — same emb width as board enums. Bonus column shares bonus_emb with hand.
         self.kind_emb = nn.Embedding(LEGAL_ACTION_KIND_COUNT, EMBED_DIM)
-        self.attached_bonus_emb = nn.Embedding(ATTACHED_BONUS_UNUSED + 1, EMBED_DIM)
 
         self.proj = nn.Linear(_concat_width(), features_dim)
         self.proj_act = nn.ReLU()
@@ -197,12 +194,12 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         gate_c = has_challenge.to(dtype=cond_e.dtype).unsqueeze(-1)
         challenge_feat = th.cat([cond_e, points], dim=-1) * gate_c
 
-        has_bonus = (bonuses >= 0) & (bonuses < ATTACHED_BONUS_UNUSED)
-        bonus_e = self.attached_bonus_emb(bonuses.clamp(min=0, max=ATTACHED_BONUS_UNUSED))
+        has_bonus = (bonuses > 0) & (bonuses < BONUS_PLAY_VOCAB)
+        bonus_e = self.bonus_emb(bonuses.clamp(min=0, max=BONUS_PLAY_VOCAB - 1))
         bonus_feat = bonus_e * has_bonus.to(dtype=bonus_e.dtype).unsqueeze(-1)
 
         # Face pack codes: 0 unused; 1..5 → block_face_emb rows (same vocab as held-check faces).
-        has_face = (faces > BLOCK_FACE_PACK_UNUSED) & (faces < BLOCK_FACE_PACK_SIZE)
+        has_face = (faces > 0) & (faces < BLOCK_FACE_PACK_SIZE)
         face_codes = faces.clamp(min=0, max=BLOCK_DIE_FACE_VOCAB - 1)
         face_e = self.block_face_emb(face_codes) * has_face.to(dtype=bonus_e.dtype).unsqueeze(-1)
         face_feat = face_e.flatten(-2, -1)

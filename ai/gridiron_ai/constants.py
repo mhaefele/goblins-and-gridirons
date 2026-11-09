@@ -5,7 +5,9 @@ Owner: ``SCHEMA_VERSION`` + obs / legal-row pack widths shared by ``obs`` / ``ac
 semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
-# v23: legal-row actorHasBall / targetHasBall metadata (0/1; same sense as cell hasBall).
+# v23: legal-row actorHasBall / targetHasBall metadata; bonus column = full BonusPlay vocab
+# (hand codes) for requiredBonusCard (geometry + Play*/Do-Over); per-play kinds unchanged.
+# (No dump/regen used prior 23 shapes — fold bonus widen into 23, do not bump.)
 # v22: cell pitchX / pitchY / distToBall on the wire (was Python feature synth).
 # v21: harness rewards.players + ballCoordinate (absolute); legal rows = LegalAction + flags.
 # Schema 15 is the only dual-path ONNX fork.
@@ -16,17 +18,11 @@ PLAY_HEIGHT = 15
 PITCH_SQUARE_COUNT = PLAY_WIDTH * PLAY_HEIGHT  # 165
 MAX_PLAYERS_PER_TEAM = 10  # catalog max roster; actor / cell playerIndex upper bound
 BENCH_SLOTS = MAX_PLAYERS_PER_TEAM
-HOME_BENCH_START = PITCH_SQUARE_COUNT  # 165
 BOARD_SLOT_COUNT = PITCH_SQUARE_COUNT + 2 * BENCH_SLOTS  # 185
-TARGET_X_UNUSED = PLAY_WIDTH  # pad when no pitch dest
-TARGET_Y_UNUSED = PLAY_HEIGHT
-SOURCE_X_UNUSED = PLAY_WIDTH  # pad when no pitch source
-SOURCE_Y_UNUSED = PLAY_HEIGHT
 
 ACTIVE_CHALLENGE_SLOTS = 3
-ATTACHED_BONUS_COUNT = 5
-ATTACHED_BONUS_UNUSED = ATTACHED_BONUS_COUNT
-BLOCK_FACE_PACK_UNUSED = 0
+# Legal-row / hand BonusPlay codes: 0 = none; 1..BONUS_PLAY_COUNT = ordinal+1.
+BONUS_PLAY_COUNT = 20
 BLOCK_FACE_PACK_SIZE = 1 + 5  # unused + BlockDieFace.entries
 # Mid-turn max: ≤3 after EOT trim + up to 3 claims (Clean Sweep); pad unused with null.
 BONUS_HAND_SLOTS = 6
@@ -48,7 +44,7 @@ ACTION_FACTOR_WIDTHS = [
     PLAY_WIDTH + 1,  # targetX identity (0-based + unused)
     PLAY_HEIGHT + 1,  # targetY identity
     ACTIVE_CHALLENGE_SLOTS + 1,
-    ATTACHED_BONUS_UNUSED + 1,
+    BONUS_PLAY_COUNT + 1,  # same vocab as hand / BONUS_PLAY_VOCAB
     BLOCK_FACE_PACK_SIZE,
     BLOCK_FACE_PACK_SIZE,
     BLOCK_FACE_PACK_SIZE,
@@ -113,7 +109,7 @@ AI_TERRAIN_VOCAB = 6 + 1
 AI_TEAM_REL_VOCAB = 2 + 1
 PLAYER_STATUS_VOCAB = 3 + 1
 CHALLENGE_CONDITION_VOCAB = 15 + 1
-BONUS_PLAY_VOCAB = 20 + 1
+BONUS_PLAY_VOCAB = BONUS_PLAY_COUNT + 1
 PLAYER_ABILITY_VOCAB = 31 + 1
 # playerIndex 0..MAX (0 = empty); embedding rows match ACTOR_PLAYER_INDEX_COUNT.
 PLAYER_INDEX_VOCAB = ACTOR_PLAYER_INDEX_COUNT

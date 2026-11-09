@@ -1,23 +1,19 @@
 package com.mhaefele.gridiron.api.ai.mapping
 
+import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 import com.mhaefele.gridiron.model.catalog.BonusPlay
 
 /**
- * Pack column index for geometry-attached bonuses.
+ * Pack column codes for [com.mhaefele.gridiron.api.dto.response.LegalAction.requiredBonusCard]
+ * (geometry twins **and** [com.mhaefele.gridiron.api.dto.response.LegalAction.BonusCardChoice]).
  *
- * Only geometry-attached bonuses ([ActionAttachedBonuses.expandFromHand]) set
- * [com.mhaefele.gridiron.api.dto.response.LegalAction.requiredBonusCard] on path/throw actions.
- * Packed on each legal row (schema 16+) so Sprint/Weave twins to the same dest stay distinct.
+ * Same codes as the hand tensor: [AiObsLayout.ATTACHED_BONUS_UNUSED]=0 none;
+ * `1..BONUS_PLAY_COUNT` = [BonusPlay.ordinal]+1.
  */
 internal object AttachedBonusEncoding {
-    private val INDEX_BY_BONUS = mapOf(
-        BonusPlay.Sprint to 0,
-        BonusPlay.Weave to 1,
-        BonusPlay.Press to 2,
-        BonusPlay.`Ice Cold` to 3,
-        BonusPlay.`Hail Mary Pass` to 4,
-    )
+    init {
+        check(BonusPlay.entries.size == AiObsLayout.BONUS_PLAY_COUNT) { "BonusPlay.entries=${BonusPlay.entries.size} != AiObsLayout.BONUS_PLAY_COUNT=${AiObsLayout.BONUS_PLAY_COUNT}" }
+    }
 
-    fun indexFor(bonus: BonusPlay): Int =
-        INDEX_BY_BONUS[bonus] ?: error("Bonus $bonus is not encoded as AttachedBonus")
+    fun indexFor(bonus: BonusPlay): Int = bonus.ordinal + 1
 }

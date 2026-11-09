@@ -17,7 +17,7 @@ Root [`BACKLOG.md`](../BACKLOG.md) defers AI2 work to the checklist.
 | Training loop | HTTP against the Kotlin/Spring server. |
 | Harness | Python under [`ai/`](.) — Stable-Baselines3 (Maskable PPO). |
 | API | Dedicated `/api/ai/...` — obs/actions for learning, not GUI DTOs. |
-| Obs wire | **Kotlin packs** (`AiObsPacker` / `…/step/packed`): `obs` float vector + legal matrix. Python **slices** into the gym Dict. Nested `…/step` for curl/tests only. Binary/UDS transport = [won't do 2026-11](../archive/BACKLOG-done.md#ai2--headless-binary-harness-transport-wont-do-2026-11). |
+| Obs wire | **Kotlin packs** (`AiObsPacker` / `…/step/packed`): `obs` float vector + legal matrix. Python **slices** into the gym Dict. Nested `…/step` for curl/tests only. Optional binary bodies on those HTTP routes = [AI2.30](BACKLOG.md#ai230--binary-http-packed-step--submit). Headless UDS train host = [won't do 2026-11](../archive/BACKLOG-done.md#ai2--headless-binary-harness-transport-wont-do-2026-11). |
 | Python processing | Thin on facts — no invented eligibility. Gym Dict: slice packed obs; extractor embeds enums + pitch coords; policy join-scores packed legal rows. `schemaVersion` versions packing + gym + action together. |
 | Submit | Policy join-scores packed legal rows → Discrete index → `LegalActionId` sidecar ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md); MultiDiscrete factor heads superseded — [AI2.9](BACKLOG.md#ai29--conditional-action-heads-follow-up)). |
 | Reward | Harness: Δ score margin + terminal W/L/D from consecutive game-state / scoring delta. Profile shaping = [AI2.7](BACKLOG.md#ai27--optional-reward-shaping-day-2). Phases: [TRAINING_ROADMAP.md](TRAINING_ROADMAP.md). |
