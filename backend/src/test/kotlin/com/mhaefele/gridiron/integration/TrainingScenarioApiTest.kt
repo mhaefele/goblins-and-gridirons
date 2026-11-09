@@ -147,6 +147,8 @@ class TrainingScenarioApiTest : BaseApiTest() {
             assertThat(loadMatch(response.matchId).trainingEpisode!!.drillStatus).isEqualTo(TrainingDrillStatus.PASS)
             assertThat(afterPickup.next.harness.trainingEpisodeEnded).isTrue()
             assertThat(afterPickup.next.harness.trainingOutcome).isEqualTo(AiTrainingOutcome.US)
+            // Match may still be mid RUN_CONTINUE; harness packs empty legals (export must stop the same way).
+            assertThat(afterPickup.next.harness.legalRows).isEmpty()
         }
     }
 

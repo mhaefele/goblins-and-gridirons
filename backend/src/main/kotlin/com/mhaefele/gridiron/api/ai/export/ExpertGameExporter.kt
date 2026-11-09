@@ -2,6 +2,7 @@ package com.mhaefele.gridiron.api.ai.export
 
 import com.mhaefele.gridiron.api.MatchGame
 import com.mhaefele.gridiron.api.ai.dto.packed.ExpertStepRecord
+import com.mhaefele.gridiron.api.ai.training.TrainingEpisodeEnd
 import com.mhaefele.gridiron.api.ai.training.TrainingScenarios
 import com.mhaefele.gridiron.api.ai.training.scenarioCoachTurnWindow
 import com.mhaefele.gridiron.game.legalmoves.LegalMovesGenerator
@@ -43,7 +44,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * stay fixed when regulars change; ~6–7 steps/drill, ~150–200 steps/full game). Each scenario type
  * gets the same drill count per block. Scale `--games` with [exportGamesPreservingLegacyBoardCoverage]
  * when the enum grows so board-drill totals match a pre-claim dump.
- * Scenario games truncate after [scenarioCoachTurnWindow] coach turns (same window as PPO training).
+ * Scenario games truncate after [scenarioCoachTurnWindow] coach turns (same window as PPO training),
+ * or earlier when [TrainingEpisodeEnd.trainingEpisodeEnded] (e.g. LOOSE_BALL_RUN d0–d1 after the
+ * first opening action — match may still have RUN_CONTINUE legals; HTTP empties them, export must stop).
  * Slots with [AbstractTrainingScenario.lookaheadSolveEval] true retry until Lookahead grades
  * [TrainingDrillStatus.PASS] ([MAX_SCENARIO_PLAY_ATTEMPTS] attempts); exhausting retries fails the export.
  * Exposure-only slots (`lookaheadSolveEval=false`) write one Lookahead play regardless of drill grade
@@ -336,6 +339,9 @@ class ExpertGameExporter(
         val records = ArrayList<T>(64)
         var actions = 0
         while (!current.isGameEnded() && actions < maxActions) {
+            // Same terminal set as AiMatchController.harnessEpisodeOver — do not pack a live menu
+            // after LOOSE d0–d1 one-shot (PASS leaves RUN_CONTINUE legals; checkLiveAiLegals would fire).
+            if (slot != null && TrainingEpisodeEnd.trainingEpisodeEnded(current)) break
             // TODO(pending): export loop assumes pending always non-null between submits — same settle
             // contract as LookaheadSearch; should share one "must have coach-facing pending" helper.
             check(current.currentTurnState.pendingDecision != null) { "expected a pending decision after the last submit matchId=${current.id.value}" }
@@ -350,9 +356,15 @@ class ExpertGameExporter(
             current = outcome.newState
             actions++
             if (slot != null && current.trainingEpisode?.drillStatus == TrainingDrillStatus.DISTRACTED) break
+            if (slot != null && TrainingEpisodeEnd.trainingEpisodeEnded(current)) break
             if (truncateAfterTurn != null && current.progress.turnNumber >= truncateAfterTurn) break
         }
-        if (!current.isGameEnded() && (truncateAfterTurn == null || current.progress.turnNumber < truncateAfterTurn)) {
+        val episodeOver = slot != null && TrainingEpisodeEnd.trainingEpisodeEnded(current)
+        if (
+            !current.isGameEnded() &&
+            !episodeOver &&
+            (truncateAfterTurn == null || current.progress.turnNumber < truncateAfterTurn)
+        ) {
             log.warn(
                 "expert-export truncated after {} actions {} {}",
                 maxActions,
