@@ -58,10 +58,9 @@ flagged **row** logits before the categorical over the menu. Illegal / pad rows
 stay hard-masked at 0; non-flagged legals stay available (soft tilt, not a hard
 filter).
 
-**Do not** encode train juice (bottleneck strength, curriculum, debug) into the
+**Do not** encode train juice (strength, curriculum, debug) into the
 `soft_mask_legal` Box — SB3 pickles `observation_space` into every checkpoint zip.
-Strength is a live `LegalRowActorCriticPolicy.soft_mask_strength` attr (default `1.0`;
-8× bottleneck sets `SOFT_MASK_BOTTLENECK_STRENGTH`).
+Strength is a live `LegalRowActorCriticPolicy.soft_mask_strength` attr (default `1.0`).
 
 **Train rollouts** pack preferred-row flags (`soft_mask_bias=True`). **Eval** follows
 `--eval-episode-mode`: `EVAL` (default, curriculum gates) zeros `soft_mask_legal` for

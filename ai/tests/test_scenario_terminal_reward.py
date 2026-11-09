@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from gridiron_ai.reward import (
-    SCENARIO_BOTTLENECK_CURRICULUM_SCALE,
     SCENARIO_OPENING_NON_PASSING_PENALTY,
     SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2,
     SCENARIO_PASSING_MOVE_BONUS,
@@ -199,10 +198,11 @@ def test_opening_non_passing_stacks_with_window_loss() -> None:
     )
 
 
-def test_bottleneck_curriculum_scale_juices_opening_and_grade() -> None:
+def test_curriculum_scale_multiplies_opening_and_grade() -> None:
+    """Optional env scale still multiplies curriculum ± (train leaves scale at 1.0)."""
     before = _rewards()
     after = _rewards()
-    scale = SCENARIO_BOTTLENECK_CURRICULUM_SCALE
+    scale = 4.0
     assert _reward(
         before=before,
         after=after,

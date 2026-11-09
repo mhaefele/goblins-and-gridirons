@@ -139,8 +139,6 @@ FACTORS_PER_LEGAL_MOVE = len(ACTION_FACTOR_WIDTHS)  # 13
 # Logit bonus on preferred legal rows (soft preference, not hard mask).
 # Effective bias = SOFT_MASK_LOGIT_BIAS × policy.soft_mask_strength (train knob; not in obs).
 SOFT_MASK_LOGIT_BIAS = 2.5
-# 8× bottleneck train: policy.soft_mask_strength=2 → effective bias 5.0 (else 1.0).
-SOFT_MASK_BOTTLENECK_STRENGTH = 2.0
 
 # Gym keys the feature extractor reads.
 OBS_KEYS_GAME_STATE = (

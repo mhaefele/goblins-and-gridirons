@@ -151,10 +151,10 @@ class GridironEnv(gym.Env):
         self.scenario = scenario
         self.scenario_difficulty = scenario_difficulty
         self.episode_mode = episode_mode
-        # Pack 0/1 preferred-row flags into obs when True. Bottleneck strength is policy-side only.
+        # Pack 0/1 preferred-row flags into obs when True. Strength is policy-side only.
         self.soft_mask_bias = soft_mask_bias
         self.verbose = verbose
-        # 1.0 normally; 8× bottleneck train segments pass SCENARIO_BOTTLENECK_CURRICULUM_SCALE.
+        # Optional curriculum ± multiplier (train leaves 1.0).
         self.scenario_curriculum_scale = scenario_curriculum_scale
 
         self.observation_space = dict_observation_space()

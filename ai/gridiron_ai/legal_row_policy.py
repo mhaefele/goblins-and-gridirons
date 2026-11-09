@@ -70,7 +70,7 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
             features_extractor_class=features_extractor_class,
             **kwargs,
         )
-        # Train-segment knob (e.g. bottleneck ×2). Plain attr — not a buffer/parameter, not in
+        # Live train knob (default 1.0). Plain attr — not a buffer/parameter, not in
         # observation_space (SB3 would pickle a changed Box into the zip and break resume).
         self.soft_mask_strength = 1.0
         if not self.share_features_extractor:

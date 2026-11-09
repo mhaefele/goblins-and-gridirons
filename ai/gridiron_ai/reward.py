@@ -69,8 +69,6 @@ SCENARIO_PASSING_MOVE_BONUS_D0_D2 = 1.0
 # First submit when a passing row was on the menu and they took something else (env gates opening).
 SCENARIO_OPENING_NON_PASSING_PENALTY = 1.0
 SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2 = 2.5
-# 8× bottleneck train segments only (env ``scenario_curriculum_scale``) — eval stays 1.0.
-SCENARIO_BOTTLENECK_CURRICULUM_SCALE = 4.0
 
 
 def scenario_passing_move_bonus(difficulty: int | None) -> float:
@@ -639,8 +637,8 @@ def step_reward(
     ``scenario_opening_non_passing`` is env-gated (first TRAIN scenario step, passing
     available, non-passing chosen) → −[scenario_opening_non_passing_penalty].
     ``scenario_difficulty`` selects d0–d2 vs milder d3+ opening knobs.
-    ``scenario_curriculum_scale`` multiplies curriculum ± (opening + PASS/THEM grade); 8×
-    bottleneck train segments pass [SCENARIO_BOTTLENECK_CURRICULUM_SCALE], eval stays 1.0.
+    ``scenario_curriculum_scale`` multiplies curriculum ± (opening + PASS/THEM grade);
+    train/eval leave this at ``1.0`` unless a caller opts in.
     ``training_outcome_before`` / ``training_outcome`` edge-detect PASS → +0.5 once.
     """
     shaping_cfg = shaping or RewardShaping()

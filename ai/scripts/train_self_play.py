@@ -65,12 +65,10 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv,
 from stable_baselines3.common.vec_env.subproc_vec_env import _stack_obs
 
 from gridiron_ai.api.client import GridironApiError, GridironClient
-from gridiron_ai.constants import SOFT_MASK_BOTTLENECK_STRENGTH
 from gridiron_ai.reward import (
     FULL_GAME_ONNX_OPPONENT_PROFILES,
     PROFILE_SHAPING,
     REWARD_PROFILES,
-    SCENARIO_BOTTLENECK_CURRICULUM_SCALE,
     SHAPED_PROFILES,
     RewardProfileName,
     RewardShaping,
@@ -169,8 +167,6 @@ _LONG_RUNNING_STEM = "maskable_ppo_selfplay_final"
 _SESSION_LONG = "train_sessions_long.tsv"
 # PPO knobs: stock SB3 unless noted in TRAINING_ROADMAP.md § "PPO vs SB3 stock".
 _DEFAULT_LEARNING_RATE = 3e-4
-# ~3.3× stock — only while training 8× (bottleneck) scenario drills; restored after the segment.
-_BOTTLENECK_LEARNING_RATE = 1e-3
 DEFAULT_MAX_EPISODE_STEPS = 500
 DEFAULT_POLICY_SEAT = "HOME"
 DEFAULT_DEVICE = "cpu"
@@ -809,19 +805,6 @@ def _set_learning_rate(model: MaskablePPO, learning_rate: float) -> None:
         group["lr"] = rate
 
 
-def _set_soft_mask_strength(model: MaskablePPO, strength: float) -> None:
-    """Train-segment soft-mask juice on the live policy — never via observation_space / env obs."""
-    if strength <= 0.0:
-        raise ValueError(f"soft_mask_strength must be > 0, was {strength}")
-    policy = model.policy
-    if not hasattr(policy, "soft_mask_strength"):
-        raise TypeError(
-            f"policy {type(policy).__name__} has no soft_mask_strength "
-            "(expected LegalRowActorCriticPolicy)"
-        )
-    policy.soft_mask_strength = float(strength)
-
-
 def _set_ent_coef(model: MaskablePPO) -> None:
     """Apply ent_coef on create and resume (zip may still carry an older 0.0)."""
     model.ent_coef = DEFAULT_ENT_COEF
@@ -1447,20 +1430,12 @@ def _train_scenarios_segment(
                 if prior is not None:
                     before = prior
 
-            bottleneck = units >= SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER
-            lr = _BOTTLENECK_LEARNING_RATE if bottleneck else _DEFAULT_LEARNING_RATE
-            curriculum_scale = SCENARIO_BOTTLENECK_CURRICULUM_SCALE if bottleneck else 1.0
-            soft_strength = SOFT_MASK_BOTTLENECK_STRENGTH if bottleneck else 1.0
+            # 8× = more timesteps (+ 100-game after-eval); LR / soft-mask / curriculum stay stock.
             if do_eval:
-                train_detail = f"{timesteps} ts lr={lr:g}"
+                train_detail = f"{timesteps} ts lr={_DEFAULT_LEARNING_RATE:g}"
             else:
                 proxy = require_catalog().curriculum_key(scenario)
-                train_detail = f"{timesteps} ts lr={lr:g}; no eval — tracks {proxy}"
-            if bottleneck:
-                train_detail = (
-                    f"{train_detail} curriculum×{curriculum_scale:g} "
-                    f"softmask×{soft_strength:g}"
-                )
+                train_detail = f"{timesteps} ts lr={_DEFAULT_LEARNING_RATE:g}; no eval — tracks {proxy}"
             write_focus(focus_path, scenario=scenario, difficulty=difficulty, phase="train")
             _scenario_phase_banner(
                 f"training starting — {tag} ({train_detail})",
@@ -1468,33 +1443,24 @@ def _train_scenarios_segment(
             )
 
             phase_t0 = time.perf_counter()
-            if bottleneck:
-                _set_learning_rate(model, _BOTTLENECK_LEARNING_RATE)
-                _set_soft_mask_strength(model, soft_strength)
-            try:
-                stats = _train_segment(
-                    model,
-                    args=args,
-                    pool=pool,
-                    timesteps=timesteps,
-                    opponent_mode=OPPONENT_COMPUTER,
-                    computer_opponent="LOOKAHEAD",
-                    onnx_profile=None,
-                    save_stem=save_stem,
-                    save_dir=save_dir,
-                    name_prefix=name_prefix,
-                    reset_num_timesteps=reset_num_timesteps and not did_train,
-                    reward_shaping=reward_shaping,
-                    profile=profile,
-                    runs_key=runs_key,
-                    scenario=scenario,
-                    scenario_difficulty=difficulty,
-                    scenario_curriculum_scale=curriculum_scale,
-                )
-            finally:
-                if bottleneck:
-                    _set_learning_rate(model, _DEFAULT_LEARNING_RATE)
-                    _set_soft_mask_strength(model, 1.0)
+            stats = _train_segment(
+                model,
+                args=args,
+                pool=pool,
+                timesteps=timesteps,
+                opponent_mode=OPPONENT_COMPUTER,
+                computer_opponent="LOOKAHEAD",
+                onnx_profile=None,
+                save_stem=save_stem,
+                save_dir=save_dir,
+                name_prefix=name_prefix,
+                reset_num_timesteps=reset_num_timesteps and not did_train,
+                reward_shaping=reward_shaping,
+                profile=profile,
+                runs_key=runs_key,
+                scenario=scenario,
+                scenario_difficulty=difficulty,
+            )
             did_train = True
             row.update(_cycle_stats_fields(f"train_scenario_{slug}", stats))
             train_health = _ppo_train_health(model)
