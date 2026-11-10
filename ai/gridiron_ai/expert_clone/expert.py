@@ -143,14 +143,21 @@ def records_to_arrays(jsonl_path: Path) -> tuple[dict[str, np.ndarray], dict[str
             wire_kind_from_action_id(record.get("chosenLegalActionId")),
             bucket=bucket_for_episode_family(record.get("episodeFamily")),
         )
-        if (index + 1) % 500 == 0:
-            logger.info("packed %s expert steps", index + 1)
+        if (index + 1) % 50_000 == 0:
+            logger.info("packed %s / %s expert steps", index + 1, n_steps)
     if row_cursor != n_rows:
         raise RuntimeError(f"legal row count drifted: filled {row_cursor} vs counted {n_rows}")
     arrays[NPZ_KEY_LEGAL_MOVES_FLAT] = legal_flat
     arrays[NPZ_KEY_LEGAL_ROW_OFFSET] = offsets
     arrays[NPZ_KEY_ACTION] = actions
     arrays[NPZ_KEY_SCHEMA_VERSION] = np.int32(SCHEMA_VERSION)
+    nbytes = sum(int(arr.nbytes) for arr in arrays.values())
+    logger.info(
+        "fill done: %s steps, %s legal rows, ~%.1f GiB arrays (next: np.savez_compressed)",
+        n_steps,
+        n_rows,
+        nbytes / (1024**3),
+    )
     return arrays, kind_breakdown
 
 
@@ -161,6 +168,7 @@ def jsonl_to_npz(jsonl_path: Path, npz_path: Path) -> dict[str, np.ndarray]:
     """
     arrays, kind_breakdown = records_to_arrays(jsonl_path)
     npz_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.info("writing compressed npz → %s (can be slow / RAM-heavy)", npz_path)
     np.savez_compressed(npz_path, **arrays)
     n = int(arrays[NPZ_KEY_ACTION].shape[0])
     pitch = arrays[OBS_KEY_PITCH].shape

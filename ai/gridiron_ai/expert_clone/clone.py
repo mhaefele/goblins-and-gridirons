@@ -362,7 +362,9 @@ def fit_behavioral_clone(
                     _format_duration(now - clone_started),
                 )
                 progress_logged_at = now
+        prev_mean = last_mean
         last_mean = total / max(batches, 1)
+        delta_s = "—" if np.isnan(prev_mean) else f"{last_mean - prev_mean:+.4f}"
         epoch_s = time.perf_counter() - epoch_started
         epoch_durations.append(epoch_s)
         elapsed_s = time.perf_counter() - clone_started
@@ -371,10 +373,11 @@ def fit_behavioral_clone(
         mean_epoch_s = sum(epoch_durations) / len(epoch_durations)
         eta_s = mean_epoch_s * remaining_epochs
         logger.info(
-            "clone epoch %s/%s done  mean_loss=%.4f  epoch=%s  %.0f steps/s  elapsed=%s  eta~%s (if no early-stop)",
+            "clone epoch %s/%s done  mean_loss=%.4f (%s)  epoch=%s  %.0f steps/s  elapsed=%s  eta~%s (if no early-stop)",
             epoch + 1,
             MAX_CLONE_EPOCHS,
             last_mean,
+            delta_s,
             _format_duration(epoch_s),
             steps_per_s,
             _format_duration(elapsed_s),
