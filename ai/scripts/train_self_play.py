@@ -1884,6 +1884,8 @@ def _maybe_probe_expert_scenario_floors(
     Writes ``.scenario_difficulty.json`` beside the scenario_a stem (and the expert seed
     stem when present) so training starts at the first failing difficulty. Skipped when
     the sidecar already exists, on ``--from-scratch``, or during ``--eval-only``.
+    ``./start_over.sh --phase scenario_a`` parks the seed sidecar so the next train
+    re-probes instead of forking stale floors.
     """
     if phase != PHASE_SCENARIO_A or args.eval_only or bool(getattr(args, "from_scratch", False)):
         return

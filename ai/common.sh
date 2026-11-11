@@ -5,7 +5,8 @@
 #   dump       expert/lookahead.jsonl.gz, expert/export-*.log
 #   pack       expert/lookahead.npz
 #   seed       expert/maskable_ppo_seed.zip (+ optional .scenario_difficulty.json floor probe)
-#   scenario_a checkpoints/scenario_a/, runs/scenario_a/
+#   scenario_a checkpoints/scenario_a/, runs/scenario_a/ (incl. that tree’s difficulty sidecar)
+#              + expert seed .scenario_difficulty.json (only extra — otherwise fork reuses floors)
 #              (first train: expert climb-until-fail floors if difficulty sidecar missing)
 #   scenario_b checkpoints/scenario_b/, runs/scenario_b/
 #              + shared scenario artifacts: scenario_catalog.json,
@@ -27,6 +28,8 @@ EXPERT_DIR="$OUTPUT_DIR/expert"
 JSONL="$EXPERT_DIR/lookahead.jsonl.gz"
 NPZ="$EXPERT_DIR/lookahead.npz"
 SEED_ZIP="$EXPERT_DIR/maskable_ppo_seed.zip"
+# Floor-probe sidecar written next to the seed stem (same basename as SEED_ZIP without .zip).
+SEED_SCENARIO_DIFFICULTY="${SEED_ZIP%.zip}.scenario_difficulty.json"
 CHECKPOINT_DIR="$OUTPUT_DIR/checkpoints"
 RUNS_DIR="$OUTPUT_DIR/runs"
 EVAL_DIR="$OUTPUT_DIR/evals"
@@ -358,6 +361,7 @@ wipe_pack() {
 
 wipe_seed() {
   _park_path "$SEED_ZIP"
+  _rm_file "$SEED_SCENARIO_DIFFICULTY"
 }
 
 _rm_tree() {
@@ -388,6 +392,8 @@ wipe_scenario_training_shared() {
 
 wipe_scenario_a() {
   wipe_phase_dir scenario_a
+  # Seed zip stays; park floors so fork does not copy stale levels and skip the probe.
+  _rm_file "$SEED_SCENARIO_DIFFICULTY"
 }
 
 wipe_scenario_b() {

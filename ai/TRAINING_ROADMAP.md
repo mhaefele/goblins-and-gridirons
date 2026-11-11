@@ -110,7 +110,8 @@ deleting board drills from the catalog.
 - **First train only:** if `.scenario_difficulty.json` is missing, probe the expert-clone
   zip — eval each catalog drill at d0→d5 until the batch fails; leave the level at that
   frontier, then start training (`--from-scratch` skips). Sidecar also written beside the
-  seed zip so a later scenario_a wipe reuses floors.
+  seed zip; `./start_over.sh --phase scenario_a` parks that seed sidecar (and the
+  scenario_a tree) so the next train re-probes floors.
 - Train/eval **board scenarios only** (catalog `family=BOARD`)
 - Defer all `CLAIM_*` drills until every board drill reaches
   `CLAIM_UNLOCK_BOARD_DIFFICULTY` (**4**)
