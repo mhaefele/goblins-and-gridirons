@@ -55,7 +55,7 @@ from gridiron_ai.checkpoints import (
     trim_step_checkpoints,
 )
 from gridiron_ai.dev_stack import DEFAULT_BASE_URL, require_backend
-from gridiron_ai.paths import CHECKPOINT_DIR, CYCLE_LOG_PATH, EVAL_DIR, RUNS_DIR
+from gridiron_ai.paths import CHECKPOINT_DIR, CYCLE_LOG_PATH, EVAL_DIR, EXPERT_SEED_ZIP, RUNS_DIR
 
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
@@ -103,10 +103,13 @@ from gridiron_ai.scenario_curriculum import (
     MAX_DIFFICULTY,
     apply_after_eval_curriculum,
     claims_unlocked,
+    climb_until_fail_levels,
+    eval_pass_min_wins,
     full_game_train_timesteps,
     gate_failure_count,
     gating_scenarios_mastered,
     get_difficulty,
+    probe_catalog_scenario_keys,
     LAST_EVAL_HISTORY_MAX,
     last_eval_history,
     last_eval_metrics,
@@ -1885,6 +1888,76 @@ def _eval_segment(
     return stats
 
 
+def _maybe_probe_expert_scenario_floors(
+    model: MaskablePPO,
+    *,
+    args: argparse.Namespace,
+    pool: WorkerPool,
+    profile: RewardProfileName,
+    runs_key: str,
+    save_stem: Path,
+    phase: PhaseName,
+) -> None:
+    """Once before scenario_a train: climb each drill on the expert clone until fail.
+
+    Writes ``.scenario_difficulty.json`` beside the scenario_a stem (and the expert seed
+    stem when present) so training starts at the first failing difficulty. Skipped when
+    the sidecar already exists, on ``--from-scratch``, or during ``--eval-only``.
+    """
+    if phase != PHASE_SCENARIO_A or args.eval_only or bool(getattr(args, "from_scratch", False)):
+        return
+    curriculum_path = path_for_stem(save_stem)
+    if curriculum_path.is_file():
+        return
+    scenarios = probe_catalog_scenario_keys()
+    if not scenarios:
+        print("Expert scenario floor probe: catalog empty — skip", flush=True)
+        return
+    print(
+        f"Expert scenario floor probe ({len(scenarios)} drills, "
+        f"{SCENARIO_EVAL_GAMES} games/level, climb until fail)…",
+        flush=True,
+    )
+    focus_path = path_for_focus(save_stem)
+
+    def _eval_at(scenario: str, difficulty: int) -> dict[str, Any]:
+        write_focus(focus_path, scenario=scenario, difficulty=difficulty, phase="eval")
+        stats = _eval_one_scenario(
+            model,
+            args=args,
+            pool=pool,
+            profile=profile,
+            runs_key=runs_key,
+            save_stem=save_stem,
+            scenario=scenario,
+            difficulty=difficulty,
+            games=SCENARIO_EVAL_GAMES,
+        )
+        wins = int(stats.get("wins") or 0)
+        episodes = int(stats.get("episodes") or 0)
+        passed = episodes >= SCENARIO_EVAL_GAMES and wins >= eval_pass_min_wins(SCENARIO_EVAL_GAMES)
+        mark = "pass" if passed else "FAIL"
+        print(
+            f"  floor {scenario} d{difficulty}: {wins}/{episodes} US wins → {mark}",
+            flush=True,
+        )
+        return stats
+
+    try:
+        levels = climb_until_fail_levels(scenarios, _eval_at, expected_games=SCENARIO_EVAL_GAMES)
+    finally:
+        clear_focus(focus_path)
+    save_levels(curriculum_path, levels)
+    seed_curriculum = path_for_stem(EXPERT_SEED_ZIP.with_suffix(""))
+    if EXPERT_SEED_ZIP.is_file():
+        save_levels(seed_curriculum, levels)
+        print(f"  wrote expert floors → {curriculum_path.name} + {seed_curriculum.name}", flush=True)
+    else:
+        print(f"  wrote expert floors → {curriculum_path.name}", flush=True)
+    summary = ", ".join(f"{name}=d{level}" for name, level in sorted(levels.items()))
+    print(f"  floors: {summary}", flush=True)
+
+
 def _eval_scenarios_segment(
     model: MaskablePPO,
     *,
@@ -2623,6 +2696,16 @@ def main() -> None:
 
             assert model is not None and save_stem is not None and save_dir is not None
             assert name_prefix is not None and session_log is not None
+
+            _maybe_probe_expert_scenario_floors(
+                model,
+                args=args,
+                pool=pool,
+                profile=target.reward_profile,
+                runs_key=target.checkpoint_key,
+                save_stem=save_stem,
+                phase=target.phase,
+            )
 
             row = _run_one_cycle(
                 model,

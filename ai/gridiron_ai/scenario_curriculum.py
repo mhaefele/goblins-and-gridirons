@@ -41,7 +41,7 @@ Coach-window end / US|THEM grading: Kotlin. Scenario budgets: DEFAULT_SCENARIO_T
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from gridiron_ai.api.harness_wire import ScenarioName
 from gridiron_ai.persistence.scenario_difficulty import (  # noqa: F401 — re-export
@@ -938,6 +938,53 @@ def maybe_bump_after_perfect_eval(
     updated = dict(levels)
     updated[curriculum_key(scenario)] = current + 1
     return updated, True
+
+
+def probe_catalog_scenario_keys() -> list[str]:
+    """Deduped curriculum keys for an expert floor probe (skip proxy sources)."""
+    catalog = require_catalog()
+    proxies = catalog.proxy_sources()
+    keys: list[str] = []
+    seen: set[str] = set()
+    for name in catalog.names():
+        if name in proxies:
+            continue
+        key = curriculum_key(name)
+        if key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+    return keys
+
+
+def climb_until_fail_levels(
+    scenarios: list[str],
+    eval_at: Callable[[str, int], dict[str, Any]],
+    *,
+    expected_games: int = SCENARIO_EVAL_GAMES,
+) -> dict[str, int]:
+    """Eval each drill at d0, d1, … until the batch fails (or d5 passes).
+
+    Leaves the stored level at the **first failing** difficulty (frontier for train),
+    or ``MAX_DIFFICULTY`` when every level passes. ``eval_at(scenario, difficulty)`` must
+    return stats with ``episodes`` / ``wins`` like a normal after-eval.
+    """
+    levels: dict[str, int] = {}
+    for scenario in scenarios:
+        key = curriculum_key(scenario)
+        if key in levels:
+            continue
+        difficulty = 0
+        while True:
+            stats = eval_at(key, difficulty)
+            if not _eval_passes(stats, expected_games=expected_games):
+                levels[key] = difficulty
+                break
+            if difficulty >= MAX_DIFFICULTY:
+                levels[key] = MAX_DIFFICULTY
+                break
+            difficulty += 1
+    return levels
 
 
 def maybe_demote_after_failed_max_eval(

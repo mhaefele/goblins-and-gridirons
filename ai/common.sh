@@ -4,8 +4,9 @@
 # Artifact chain (each phase owns everything listed; start_over --phase X wipes X onward):
 #   dump       expert/lookahead.jsonl.gz, expert/export-*.log
 #   pack       expert/lookahead.npz
-#   seed       expert/maskable_ppo_seed.zip
+#   seed       expert/maskable_ppo_seed.zip (+ optional .scenario_difficulty.json floor probe)
 #   scenario_a checkpoints/scenario_a/, runs/scenario_a/
+#              (first train: expert climb-until-fail floors if difficulty sidecar missing)
 #   scenario_b checkpoints/scenario_b/, runs/scenario_b/
 #              + shared scenario artifacts: scenario_catalog.json,
 #                runs/train_eval_cycles.tsv, evals/baseline/ (pre-split + post-split baseline evals)
