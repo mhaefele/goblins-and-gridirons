@@ -2,15 +2,16 @@
 """Train / eval MaskablePPO on the live AI API — one entrypoint.
 
 Owner: orchestration only (PPO, vec-env, cycle segments, CLI). Phase/curriculum *policy*
-lives in ``training_phases`` / ``scenario_curriculum`` — do not grow gates here.
+lives in ``training_phases`` / ``scenario_curriculum``; mix amounts + cadence in
+``TrainMix`` — do not grow gates/budget arithmetic here.
 See ``ai/OWNERSHIP.md`` (why this file is large → BACKLOG AI2.14).
 
 Day-to-day: ``./train.sh`` / ``./eval.sh``. Phases: scenario_a → scenario_b → shaped
-profiles (``training_phases``). Mix knobs: ``TRAINING_ROADMAP.md`` + curriculum constants.
+profiles (``training_phases``). Mix knobs: ``train_mix.TrainMix`` + ``TRAINING_ROADMAP.md``.
 
 Per cycle: game phase → full-game train/eval first, scenario eval + straggler/soft-d5 train;
 climbing → scenario train → after-eval → full-game (usually 0 until unlock), plus healthy
-d5 drift-eval every ``HEALTHY_D5_EVAL_EVERY_CYCLES`` on scenario_a / scenario_b.
+d5 drift-eval every ``TrainMix.healthy_d5_eval_every`` on scenario_a / scenario_b.
 ``--profile all`` rotates baseline (unshaped control on scenario_b) plus
 ``profiles_for_all(\"train\")`` shaped names (today: ``general``, ``spread``, ``defense``;
 pin ``td`` explicitly).
@@ -105,7 +106,6 @@ from gridiron_ai.scenario_curriculum import (
     claims_unlocked,
     climb_until_fail_levels,
     eval_pass_min_wins,
-    full_game_train_timesteps,
     gate_failure_count,
     gating_scenarios_mastered,
     get_difficulty,
@@ -137,9 +137,17 @@ from gridiron_ai.scenario_curriculum import (
     scenario_eval_games,
     format_train_multiplier_lines,
     train_multiplier_drill_label,
-    train_multiplier_groups,
-    train_timesteps_for_difficulty,
-    train_timesteps_for_scenario,
+)
+from gridiron_ai.train_mix import (
+    DEFAULT_EVAL_HEURISTIC,
+    DEFAULT_EVAL_LOOKAHEAD,
+    DEFAULT_EVAL_ONNX,
+    DEFAULT_TRAIN_HEURISTIC,
+    DEFAULT_TRAIN_LOOKAHEAD,
+    DEFAULT_TRAIN_ONNX,
+    FULL_GAME_EVAL_EVERY_CYCLES,
+    HEALTHY_D5_EVAL_EVERY_CYCLES,
+    TrainMix,
 )
 from gridiron_ai.api.scenarios import refresh_catalog, require_catalog, resolve_scenario_pin
 from gridiron_ai.persistence.scenario_focus import clear_focus, path_for_focus, write_focus
@@ -162,7 +170,6 @@ from gridiron_ai.training_phases import (
     runs_dir,
     PHASE_PROFILES,
     PHASE_SCENARIO_A,
-    PHASE_SCENARIO_B,
 )
 from gridiron_ai.pipeline_state import load_pipeline, rewind_pipeline
 
@@ -184,22 +191,9 @@ N_EPOCHS = 10
 CLIP_RANGE = 0.2
 TARGET_KL: float | None = None
 
-# --- Training cycle defaults (canonical — change here when the mix should change) ---
+# Mix knobs / cadence: ``gridiron_ai.train_mix.TrainMix`` (defaults imported above).
 # Per-scenario drill timesteps (learning / mastered) live in scenario_curriculum.py.
 # Full-game heuristic/lookahead/ONNX are off until every drill is at MAX_DIFFICULTY (scenario_b gate).
-# Equal parts: HEURISTIC + LOOKAHEAD + each FULL_GAME_ONNX_OPPONENT_PROFILES seat (today: general, defense).
-DEFAULT_TRAIN_HEURISTIC = 20_000
-DEFAULT_TRAIN_LOOKAHEAD = 20_000
-DEFAULT_TRAIN_ONNX = 20_000
-DEFAULT_EVAL_HEURISTIC = 200
-DEFAULT_EVAL_LOOKAHEAD = 200
-DEFAULT_EVAL_ONNX = 200
-# Full-game eval every N visits per profile (rotation round). eval-only always runs.
-# With --profile all, global cycle%N would only ever hit targets[0] (baseline).
-FULL_GAME_EVAL_EVERY_CYCLES = 4
-# Climbing (scenario_a / scenario_b): healthy d5 drift-eval every N cycles while others train.
-# Game phase already evals all drills each cycle.
-HEALTHY_D5_EVAL_EVERY_CYCLES = 2
 DEFAULT_N_ENVS = 30
 DEFAULT_N_STEPS = 128
 DEFAULT_BATCH_SIZE = 256
@@ -1041,11 +1035,6 @@ def _episode_success_rates(episodes: list[dict[str, Any]]) -> dict[str, float]:
     return {"td_rate": td_rate, "win_by_4_rate": win_by_4_rate}
 
 
-def _reward_config_for_profile(profile: RewardProfileName) -> RewardConfig:
-    """Profile preset only — no CLI overrides (keeps the reward stack inspectable)."""
-    return RewardConfig.for_profile(profile)
-
-
 def _save_step_checkpoint(model: MaskablePPO, save_dir: Path, *, name_prefix: str, timesteps: int) -> None:
     """Keep a ``*_steps.zip`` snapshot when this segment crossed a ``STEP_CHECKPOINT_FREQ`` boundary.
 
@@ -1297,6 +1286,7 @@ def _train_scenarios_segment(
     model: MaskablePPO,
     *,
     args: argparse.Namespace,
+    mix: TrainMix,
     pool: WorkerPool,
     save_stem: Path,
     save_dir: Path,
@@ -1327,11 +1317,12 @@ def _train_scenarios_segment(
         row = _eval_scenarios_segment(
             model,
             args=args,
+            mix=mix,
             pool=pool,
             profile=profile,
             runs_key=runs_key,
             save_stem=save_stem,
-            update_curriculum=not args.eval_only,
+            update_curriculum=mix.update_curriculum,
         )
         levels = load_levels(curriculum_path)
         gate_failures = load_gate_failures(gate_failures_path)
@@ -1341,12 +1332,10 @@ def _train_scenarios_segment(
     plan: list[tuple[str, int, int]] = []
     for scenario in active:
         difficulty = get_difficulty(levels, scenario)
-        timesteps = train_timesteps_for_scenario(
+        timesteps = mix.scenario_train_timesteps(
             scenario,
             levels,
             scenarios,
-            learning=args.train_scenario_learning,
-            mastered=args.train_scenario_mastered,
             game_phase=game_phase,
             gate_failures=gate_failures,
             drill_stats=cumulative_drill_stats,
@@ -1366,12 +1355,7 @@ def _train_scenarios_segment(
     by_units: dict[int, list[str]] = {}
     plan_units: list[tuple[str, int, int, int]] = []
     for scenario, difficulty, timesteps in plan:
-        base_ts = train_timesteps_for_difficulty(
-            difficulty,
-            learning=args.train_scenario_learning,
-            mastered=args.train_scenario_mastered,
-            game_phase=game_phase,
-        )
+        base_ts = mix.scenario_train_base_timesteps(difficulty, game_phase=game_phase)
         units = max(1, timesteps // base_ts) if base_ts > 0 else 1
         plan_units.append((scenario, difficulty, timesteps, units))
         by_units.setdefault(units, []).append(
@@ -1959,22 +1943,23 @@ def _eval_scenarios_segment(
     model: MaskablePPO,
     *,
     args: argparse.Namespace,
+    mix: TrainMix,
     pool: WorkerPool,
     profile: RewardProfileName,
     runs_key: str,
     save_stem: Path,
-    update_curriculum: bool = True,
+    update_curriculum: bool | None = None,
     healthy_d5_only: bool = False,
 ) -> dict[str, Any]:
     """Scenario eval pass (no train). Curriculum updates only when ``update_curriculum``.
 
-    Train sandwiches own bump/demote/gate fails. ``--eval-only`` passes
-    ``update_curriculum=False`` so a standalone eval does not mutate levels, and skips
-    writing eval JSON under ``output/evals/``.
-    Game-phase cycles (scenario train skipped) keep ``True`` so d5 demote / recover
-    still run on the eval pass. ``healthy_d5_only`` is the climbing drift check
-    (scenario_a / scenario_b every ``HEALTHY_D5_EVAL_EVERY_CYCLES`` cycles).
+    Train sandwiches own bump/demote/gate fails. Default ``update_curriculum`` follows
+    ``mix.update_curriculum`` (False under ``--eval-only``). Game-phase cycles keep
+    curriculum on so d5 demote / recover still run. ``healthy_d5_only`` is the climbing
+    drift check (scenario_a / scenario_b every ``mix.healthy_d5_eval_every`` cycles).
     """
+    if update_curriculum is None:
+        update_curriculum = mix.update_curriculum
     scenarios = _scenario_names(pin=args.scenario)
     if not scenarios:
         print("Eval scenarios: catalog empty — skip", flush=True)
@@ -2195,11 +2180,6 @@ def _load_or_create_model(
     return model, save_stem, save_dir, name_prefix, continued, session_log
 
 
-def _skip_scenario_eval(args: argparse.Namespace) -> bool:
-    """``--skip-scenarios`` always skips train; also skips eval in ``--eval-only`` (``./eval.sh``)."""
-    return bool(args.skip_scenarios and args.eval_only)
-
-
 def _filter_seatable_opponent_jobs(
     jobs: list[tuple[int, str, str, RewardProfileName | None, str]],
     seatable: set[tuple[str, str | None]],
@@ -2228,6 +2208,7 @@ def _run_one_cycle(
     model: MaskablePPO,
     args: argparse.Namespace,
     *,
+    mix: TrainMix,
     pool: WorkerPool,
     cycle_index: int,
     n_targets: int,
@@ -2252,14 +2233,14 @@ def _run_one_cycle(
     gate_failures = load_gate_failures(path_for_gate_failures(save_stem))
     scenarios = _scenario_names(pin=args.scenario)
     game_phase = game_phase_unlocked(target.checkpoint_key)
-    heuristic_timesteps = full_game_train_timesteps(
-        args.train_heuristic, levels, scenarios, gate_failures, game_phase_unlocked=game_phase
+    heuristic_timesteps = mix.effective_full_game_train(
+        mix.train_heuristic, levels, scenarios, gate_failures, game_phase=game_phase
     )
-    lookahead_timesteps = full_game_train_timesteps(
-        args.train_lookahead, levels, scenarios, gate_failures, game_phase_unlocked=game_phase
+    lookahead_timesteps = mix.effective_full_game_train(
+        mix.train_lookahead, levels, scenarios, gate_failures, game_phase=game_phase
     )
-    onnx_timesteps = full_game_train_timesteps(
-        args.train_onnx, levels, scenarios, gate_failures, game_phase_unlocked=game_phase
+    onnx_timesteps = mix.effective_full_game_train(
+        mix.train_onnx, levels, scenarios, gate_failures, game_phase=game_phase
     )
     onnx_mix = ",".join(FULL_GAME_ONNX_OPPONENT_PROFILES)
     if scenarios and not claims_unlocked(levels, scenarios, gate_failures):
@@ -2279,8 +2260,8 @@ def _run_one_cycle(
             f"Full-game train: effective heuristic={heuristic_timesteps} "
             f"lookahead={lookahead_timesteps} onnx={onnx_timesteps}×[{onnx_mix}] "
             f"(gated until claims unlocked and every gating drill reaches d{MAX_DIFFICULTY}; "
-            f"config heuristic={args.train_heuristic} lookahead={args.train_lookahead} "
-            f"onnx={args.train_onnx})",
+            f"config heuristic={mix.train_heuristic} lookahead={mix.train_lookahead} "
+            f"onnx={mix.train_onnx})",
             flush=True,
         )
     elif heuristic_timesteps > 0 or lookahead_timesteps > 0 or onnx_timesteps > 0:
@@ -2299,23 +2280,22 @@ def _run_one_cycle(
         train_jobs.append(
             (onnx_timesteps, OPPONENT_COMPUTER, COMPUTER_KIND_ONNX, onnx_name, f"train_onnx_{onnx_name}")
         )
-    visit_round = (cycle_index - 1) // max(n_targets, 1)
-    run_full_game_eval = args.eval_only or (visit_round % FULL_GAME_EVAL_EVERY_CYCLES == 0)
-    run_healthy_d5_eval = (
-        not game_phase
-        and target.phase in (PHASE_SCENARIO_A, PHASE_SCENARIO_B)
-        and visit_round % HEALTHY_D5_EVAL_EVERY_CYCLES == 0
+    run_full_game_eval = mix.run_full_game_eval(cycle_index=cycle_index, n_targets=n_targets)
+    run_healthy_d5_eval = mix.run_healthy_d5_eval(
+        game_phase=game_phase,
+        phase=target.phase,
+        cycle_index=cycle_index,
+        n_targets=n_targets,
     )
-    eval_lookahead = args.eval_lookahead if run_full_game_eval else 0
-    eval_heuristic = args.eval_heuristic if run_full_game_eval else 0
-    eval_onnx = args.eval_onnx if run_full_game_eval else 0
+    eval_heuristic, eval_lookahead, eval_onnx = mix.full_game_eval_games(
+        cycle_index=cycle_index, n_targets=n_targets
+    )
     if not run_full_game_eval and (
-        args.eval_lookahead > 0 or args.eval_heuristic > 0 or args.eval_onnx > 0
+        mix.eval_lookahead > 0 or mix.eval_heuristic > 0 or mix.eval_onnx > 0
     ):
-        next_round = visit_round + (FULL_GAME_EVAL_EVERY_CYCLES - visit_round % FULL_GAME_EVAL_EVERY_CYCLES)
-        next_eval = next_round * max(n_targets, 1) + 1
+        next_eval = mix.next_full_game_eval_cycle(cycle_index=cycle_index, n_targets=n_targets)
         print(
-            f"  full-game eval skipped (every {FULL_GAME_EVAL_EVERY_CYCLES} visits/profile; "
+            f"  full-game eval skipped (every {mix.full_game_eval_every} visits/profile; "
             f"next eval round starts cycle {next_eval})",
             flush=True,
         )
@@ -2336,24 +2316,24 @@ def _run_one_cycle(
 
     def _run_scenarios() -> None:
         nonlocal trained_scenarios, did_train
-        skip_train = args.train_scenario_learning <= 0 and args.train_scenario_mastered <= 0
-        if skip_train:
-            if game_phase and not _skip_scenario_eval(args):
+        if mix.skip_scenario_train():
+            if game_phase and not mix.skip_scenario_eval():
                 row.update(
                     _eval_scenarios_segment(
                         model,
                         args=args,
+                        mix=mix,
                         pool=pool,
                         profile=profile,
                         runs_key=runs_key,
                         save_stem=save_stem,
-                        update_curriculum=not args.eval_only,
                     )
                 )
             return
         scenario_row = _train_scenarios_segment(
             model,
             args=args,
+            mix=mix,
             pool=pool,
             save_stem=save_stem,
             save_dir=save_dir,
@@ -2419,18 +2399,18 @@ def _run_one_cycle(
     else:
         _run_scenarios()
         _run_games()
-        if _skip_scenario_eval(args):
+        if mix.skip_scenario_eval():
             pass
         elif not trained_scenarios:
             row.update(
                 _eval_scenarios_segment(
                     model,
                     args=args,
+                    mix=mix,
                     pool=pool,
                     profile=profile,
                     runs_key=runs_key,
                     save_stem=save_stem,
-                    update_curriculum=not args.eval_only,
                 )
             )
         elif run_healthy_d5_eval:
@@ -2438,21 +2418,20 @@ def _run_one_cycle(
                 _eval_scenarios_segment(
                     model,
                     args=args,
+                    mix=mix,
                     pool=pool,
                     profile=profile,
                     runs_key=runs_key,
                     save_stem=save_stem,
-                    update_curriculum=not args.eval_only,
                     healthy_d5_only=True,
                 )
             )
         elif scenarios_for_healthy_d5_eval(levels, scenarios, gate_failures):
-            next_round = visit_round + (
-                HEALTHY_D5_EVAL_EVERY_CYCLES - visit_round % HEALTHY_D5_EVAL_EVERY_CYCLES
+            next_eval = mix.next_healthy_d5_eval_cycle(
+                cycle_index=cycle_index, n_targets=n_targets
             )
-            next_eval = next_round * max(n_targets, 1) + 1
             print(
-                f"  healthy d5 drift-eval skipped (every {HEALTHY_D5_EVAL_EVERY_CYCLES} cycles; "
+                f"  healthy d5 drift-eval skipped (every {mix.healthy_d5_eval_every} cycles; "
                 f"next at cycle {next_eval})",
                 flush=True,
             )
@@ -2462,7 +2441,7 @@ def _run_one_cycle(
         print(f"  cycle checkpoint save: {_fmt_wall_s(time.perf_counter() - t0)}", flush=True)
     else:
         print(f"  skip checkpoint save (--phase {args.phase} read-only eval)", flush=True)
-    if not args.eval_only:
+    if mix.update_curriculum:
         advanced = advance_pipeline(target)
         if advanced:
             print(advanced, flush=True)
@@ -2472,6 +2451,7 @@ def _run_one_cycle(
 
 def _print_startup_train_plan(
     args: argparse.Namespace,
+    mix: TrainMix,
     *,
     targets: list[TrainTarget],
     forever: bool,
@@ -2480,16 +2460,16 @@ def _print_startup_train_plan(
     print(
         f"Cycles={'∞' if forever else args.cycles} profile={args.profile} lr={_DEFAULT_LEARNING_RATE} "
         f"n_envs={DEFAULT_N_ENVS} "
-        f"train_scenario_learning={args.train_scenario_learning} "
-        f"train_scenario_mastered={args.train_scenario_mastered} "
+        f"train_scenario_learning={mix.scenario_learning} "
+        f"train_scenario_mastered={mix.scenario_mastered} "
         f"train_scenario_maintenance={DEFAULT_SCENARIO_TRAIN_MAINTENANCE} "
-        f"train_heuristic_config={args.train_heuristic} "
-        f"train_lookahead_config={args.train_lookahead} "
-        f"train_onnx_config={args.train_onnx}×[{','.join(FULL_GAME_ONNX_OPPONENT_PROFILES)}] "
-        f"eval_lookahead={args.eval_lookahead} eval_heuristic={args.eval_heuristic} "
-        f"eval_onnx={args.eval_onnx} "
-        f"full_game_eval_every={FULL_GAME_EVAL_EVERY_CYCLES} "
-        f"healthy_d5_eval_every={HEALTHY_D5_EVAL_EVERY_CYCLES}",
+        f"train_heuristic_config={mix.train_heuristic} "
+        f"train_lookahead_config={mix.train_lookahead} "
+        f"train_onnx_config={mix.train_onnx}×[{','.join(FULL_GAME_ONNX_OPPONENT_PROFILES)}] "
+        f"eval_lookahead={mix.eval_lookahead} eval_heuristic={mix.eval_heuristic} "
+        f"eval_onnx={mix.eval_onnx} "
+        f"full_game_eval_every={mix.full_game_eval_every} "
+        f"healthy_d5_eval_every={mix.healthy_d5_eval_every}",
         flush=True,
     )
     try:
@@ -2503,24 +2483,22 @@ def _print_startup_train_plan(
         stem_note = target.curriculum_path().name
         game_phase = game_phase_unlocked(target.checkpoint_key) if scenarios else False
         gating_mastered = gating_scenarios_mastered(levels, scenarios, gate_failures) if scenarios else False
-        heuristic = full_game_train_timesteps(
-            args.train_heuristic, levels, scenarios, gate_failures, game_phase_unlocked=game_phase
+        heuristic = mix.effective_full_game_train(
+            mix.train_heuristic, levels, scenarios, gate_failures, game_phase=game_phase
         )
-        lookahead = full_game_train_timesteps(
-            args.train_lookahead, levels, scenarios, gate_failures, game_phase_unlocked=game_phase
+        lookahead = mix.effective_full_game_train(
+            mix.train_lookahead, levels, scenarios, gate_failures, game_phase=game_phase
         )
-        onnx_ts = full_game_train_timesteps(
-            args.train_onnx, levels, scenarios, gate_failures, game_phase_unlocked=game_phase
+        onnx_ts = mix.effective_full_game_train(
+            mix.train_onnx, levels, scenarios, gate_failures, game_phase=game_phase
         )
         drill_stats = load_drill_stats_cumulative(target.checkpoint_key) if scenarios else {}
         by_units = (
-            train_multiplier_groups(
+            mix.scenario_train_multiplier_groups(
                 levels,
                 scenarios,
                 gate_failures,
                 drill_stats,
-                learning=args.train_scenario_learning,
-                mastered=args.train_scenario_mastered,
                 game_phase=game_phase,
             )
             if scenarios
@@ -2537,7 +2515,7 @@ def _print_startup_train_plan(
             )
             if n_scenario_train:
                 gate += f"; scenario train: {n_scenario_train}"
-            elif _skip_scenario_eval(args):
+            elif mix.skip_scenario_eval():
                 gate += "; full-game eval only"
             else:
                 gate += "; scenario eval only (no soft-d5)"
@@ -2567,39 +2545,11 @@ def main() -> None:
     if args.force_promote:
         promoted = force_promote()
         print(f"Forced promote → {', '.join(promoted)}", flush=True)
-    if args.scenario is not None:
-        args.train_heuristic = 0
-        args.train_lookahead = 0
-        args.train_onnx = 0
-        args.eval_heuristic = 0
-        args.eval_lookahead = 0
-        args.eval_onnx = 0
-    if args.skip_scenarios:
-        args.train_scenario_learning = 0
-        args.train_scenario_mastered = 0
-    if args.eval_only:
-        args.train_scenario_learning = 0
-        args.train_scenario_mastered = 0
-        args.train_lookahead = 0
-        args.train_heuristic = 0
-        args.train_onnx = 0
+    mix = TrainMix.from_args(args)
     if args.cycles < 0:
         raise SystemExit("--cycles must be >= 0 (0 = forever)")
 
-    any_work = any(
-        n > 0
-        for n in (
-            args.train_scenario_learning,
-            args.train_scenario_mastered,
-            args.train_lookahead,
-            args.train_heuristic,
-            args.train_onnx,
-            args.eval_lookahead,
-            args.eval_heuristic,
-            args.eval_onnx,
-        )
-    ) or args.eval_only
-    if not any_work:
+    if not mix.has_work():
         raise SystemExit("Nothing to do — set at least one --train-* or --eval-* > 0 (or use --eval-only)")
 
     require_backend(args.base_url)
@@ -2632,11 +2582,11 @@ def main() -> None:
     needs_train = any(
         n > 0
         for n in (
-            args.train_scenario_learning,
-            args.train_scenario_mastered,
-            args.train_lookahead,
-            args.train_heuristic,
-            args.train_onnx,
+            mix.scenario_learning,
+            mix.scenario_mastered,
+            mix.train_lookahead,
+            mix.train_heuristic,
+            mix.train_onnx,
         )
     )
     forever = args.cycles == 0
@@ -2644,7 +2594,7 @@ def main() -> None:
     cycle_log = CYCLE_LOG_PATH
 
     # Resolve once for startup plan / eval-only cycle count; forever re-resolves each cycle.
-    startup_targets = resolve_targets(args.profile, eval_only=args.eval_only)
+    startup_targets = resolve_targets(args.profile, eval_only=mix.eval_only)
     if args.phase is not None:
         _eval_phase_zip(args)  # fail fast if missing
         # One zip → one pass (ignore profile rotation / forever).
@@ -2656,7 +2606,7 @@ def main() -> None:
             f"(live key={startup_targets[0].checkpoint_key})",
             flush=True,
         )
-    if args.eval_only:
+    if mix.eval_only:
         # Default --cycles 0 means forever; for a quick eval pass, run each target once.
         if args.cycles == 0:
             args.cycles = len(startup_targets)
@@ -2684,20 +2634,20 @@ def main() -> None:
     first_train_resets = True
     continued_any = False
 
-    _print_startup_train_plan(args, targets=startup_targets, forever=forever)
+    _print_startup_train_plan(args, mix, targets=startup_targets, forever=forever)
 
     pool = WorkerPool(args)
     try:
         while forever or cycle_index < args.cycles:
             cycle_index += 1
             _scenario_perfect_summaries.clear()
-            targets = resolve_targets(args.profile, eval_only=args.eval_only)
+            targets = resolve_targets(args.profile, eval_only=mix.eval_only)
             target = targets[(cycle_index - 1) % len(targets)]
             keep_model = len(targets) == 1
             if target.deferral_note:
                 print(target.deferral_note, flush=True)
 
-            reward_config = _reward_config_for_profile(target.reward_profile)
+            reward_config = RewardConfig.for_profile(target.reward_profile)
             start = _utc_now()
             t0 = time.perf_counter()
             print(
@@ -2746,6 +2696,7 @@ def main() -> None:
             row = _run_one_cycle(
                 model,
                 args,
+                mix=mix,
                 pool=pool,
                 cycle_index=cycle_index,
                 n_targets=len(targets),

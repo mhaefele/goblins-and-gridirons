@@ -32,6 +32,7 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 | Gym env (reset/step/reward call) | `gridiron_ai/api/env.py` | Own drill grading |
 | Harness wire TypedDicts / closed wire enums | `gridiron_ai/api/harness_wire.py` | Mirror scenario catalog membership |
 | Reward margin / terminal / profile shaping / scenario coach-window ± | `gridiron_ai/reward.py` — `RewardConfig` + `step_reward` (LegalAction + `rewards.players` / `ballCoordinate`) | Soft-mask sampling tilt (look-at, not grade); packed-row business logic |
+| Train/eval mix knobs + cadence (do we run X / how many?) | `gridiron_ai/train_mix.py` — `TrainMix.from_args` | Re-read CLI amounts / cadence in `train_self_play` call sites; curriculum *policy* stays in `scenario_curriculum` |
 | Episode metrics / TB aggregates / eval·learn stdout lines | `gridiron_ai/metrics.py`, `tb_callback.py` (opening bits → `eval_opening_diag`) | Re-format winrate/opening deltas in `train_self_play` |
 | Verbose PPO update evidence (Passed/Failed / buf adv) | `gridiron_ai/ppo_update_evidence.py` (sidecar; `--verbose` only) | Stuff evidence into `tb_callback` / core train loop |
 | Removable ball-opp opening probe (TD_RUN / LOOSE_BALL_RUN eval) | `gridiron_ai/eval_ball_swap_probe.py` (call sites tagged `ball_swap_probe`) | Bake into `eval_opening_diag` / reward / training |
@@ -88,6 +89,7 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `legal_row_policy.py` | Join-score legal rows (+ soft-mask bias on preferred rows) |
 | `features.py` | Embeddings → MLP vector; `encode_legal_rows` reuses board embs (does not re-pack) |
 | `reward.py` | `RewardConfig` / `RewardShaping` + `step_reward` + profile presets |
+| `train_mix.py` | `TrainMix` — CLI train/eval amounts + cadence (`from_args`); answers how much to run |
 | `persistence/` | JSON load/save — one module per on-disk file (see package docstring) |
 | `scenario_curriculum.py` | Per-stem difficulty + cycle filters (I/O via `persistence/`) |
 | `training_phases.py` | scenario_a / b / profiles routing; `active_targets` / `resolve_targets` (post-split train/eval `all` via `reward.profiles_for_all` — baseline + general + spread + defense; summary `all` includes td) |

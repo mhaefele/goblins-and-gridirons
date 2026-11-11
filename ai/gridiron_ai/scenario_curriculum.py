@@ -37,8 +37,8 @@ training if that matters).
 Coach-window end / US|THEM grading: Kotlin. Scenario budgets: DEFAULT_SCENARIO_TRAIN_* below
 (learning below MAX; healthy d5 skip train; soft-d5 maintenance). Climbing
 (scenario_a / scenario_b): healthy d5 drift-eval every
-``HEALTHY_D5_EVAL_EVERY_CYCLES`` cycles in ``scripts/train_self_play.py``; game phase
-evals all drills each cycle. Full-game defaults live in that script too.
+``TrainMix.healthy_d5_eval_every`` (``gridiron_ai/train_mix.py``); game phase
+evals all drills each cycle. Full-game CLI defaults live in ``train_mix`` too.
 """
 
 from __future__ import annotations
@@ -127,7 +127,7 @@ DEFAULT_SCENARIO_TRAIN_LEARNING = _SCENARIO_ROLLOUT_TIMESTEPS  # level < MAX: on
 # Healthy d5: no train (0). Soft-d5 uses DEFAULT_SCENARIO_TRAIN_MAINTENANCE instead.
 DEFAULT_SCENARIO_TRAIN_MASTERED = 0
 # Soft d5 (imperfect after-eval at MAX): one rollout; healthy d5 skip train (drift-eval
-# cadence is owned by train_self_play.HEALTHY_D5_EVAL_EVERY_CYCLES on scenario_a/b).
+# cadence is owned by train_mix.HEALTHY_D5_EVAL_EVERY_CYCLES on scenario_a/b).
 DEFAULT_SCENARIO_TRAIN_MAINTENANCE = _SCENARIO_ROLLOUT_TIMESTEPS
 
 

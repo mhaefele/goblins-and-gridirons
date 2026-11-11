@@ -250,6 +250,10 @@ class RewardConfig:
 
     Profile shaping lives here with curriculum/terminal gates so callers pass one
     object — not parallel one-off floats/bools on the env.
+
+    Same frozen-config pattern as ``TrainMix`` (CLI train/eval amounts): build once via
+    a classmethod factory (``for_profile`` here; ``TrainMix.from_args`` there), then
+    thread the object — do not re-derive knobs at each call site.
     """
 
     shaping: RewardShaping = field(default_factory=RewardShaping)
@@ -266,6 +270,7 @@ class RewardConfig:
 
     @classmethod
     def for_profile(cls, profile: RewardProfileName) -> RewardConfig:
+        """Factory from a reward-profile name (sibling of ``TrainMix.from_args``)."""
         return cls(shaping=PROFILE_SHAPING[profile])
 
 
