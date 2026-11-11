@@ -20,7 +20,7 @@ from gridiron_ai.api.scenarios import refresh_catalog
 from gridiron_ai.checkpoints import atomic_model_save
 from gridiron_ai.dev_stack import DEFAULT_BASE_URL, url_reachable
 from gridiron_ai.paths import EXPERT_SEED_ZIP
-from gridiron_ai.reward import RewardShaping
+from gridiron_ai.reward import RewardConfig
 from scripts.train_self_play import (
     DEFAULT_MAX_EPISODE_STEPS,
     _set_ent_coef,
@@ -72,7 +72,7 @@ def test_live_train_harness_boots_steps_and_learns_once(
         DEFAULT_MAX_EPISODE_STEPS,
         n_envs=1,
         continue_on_submit_error=True,
-        reward_shaping=RewardShaping(),
+        reward_config=RewardConfig(),
         scenario=scenario,
         scenario_difficulty=0,
         episode_mode="TRAIN",

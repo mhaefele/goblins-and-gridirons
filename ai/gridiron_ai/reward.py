@@ -23,7 +23,8 @@ from the wire (submitter perspective after the move).
 
 Scenario episodes use this same stack. ``passingLegal`` marks PASS-grade curriculum moves
 (and the passing-move bonus above); ``softMaskLegal`` biases sampling only. Drill US/THEM
-grades curriculum/winrate.
+grades curriculum/winrate. Difficulty-proxy drills use [RewardConfig.score_only] — score-margin (+ profile
+shaping) only.
 
 Eval runs with profile shaping off.
 
@@ -38,7 +39,7 @@ GridironEnv after each legal-action submit.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from gridiron_ai.constants import PLAY_HEIGHT, PLAY_WIDTH
@@ -241,6 +242,31 @@ PROFILE_SHAPING: dict[RewardProfileName, RewardShaping] = {
         empty_scoring_endzone_penalty=_SHARED_EMPTY_SCORING_ENDZONE,
     ),
 }
+
+
+@dataclass(frozen=True)
+class RewardConfig:
+    """Everything ``step_reward`` consults beyond wire snapshots.
+
+    Profile shaping lives here with curriculum/terminal gates so callers pass one
+    object — not parallel one-off floats/bools on the env.
+    """
+
+    shaping: RewardShaping = field(default_factory=RewardShaping)
+    curriculum_scale: float = 1.0
+    include_terminal: bool = True
+
+    def __post_init__(self) -> None:
+        if self.curriculum_scale < 0.0:
+            raise ValueError(f"curriculum_scale must be >= 0, was {self.curriculum_scale}")
+
+    def score_only(self) -> RewardConfig:
+        """Proxy drills: margin (+ shaping) only — no curriculum ± / terminals."""
+        return replace(self, curriculum_scale=0.0, include_terminal=False)
+
+    @classmethod
+    def for_profile(cls, profile: RewardProfileName) -> RewardConfig:
+        return cls(shaping=PROFILE_SHAPING[profile])
 
 
 def score_margin(rewards: HarnessRewardSnapshotDict) -> float:
@@ -610,6 +636,9 @@ def _is_them_winner_rel(winner_rel: TeamRel | None) -> bool:
     return winner_rel == TeamRel.THEM
 
 
+# TODO: too many params — extract step-context structs (likely already have pieces unused
+# as wholes: SubmitTerminalMetaDict, HarnessRewardSnapshotDict, AiScoringDeltaDict,
+# ResolvedAction / LegalActionDict). Callers should pass those instead of flat fields.
 def step_reward(
         *,
         rewards_before: HarnessRewardSnapshotDict,
@@ -620,14 +649,13 @@ def step_reward(
         training_outcome: TrainingOutcome | None = None,
         training_outcome_before: TrainingOutcome | None = None,
         turn_start_score_us: int = 0,
-        shaping: RewardShaping | None = None,
+        config: RewardConfig | None = None,
         scoring: AiScoringDeltaDict | None = None,
         legal_choice: LegalActionDict | None = None,
         perspective_seat: TeamSide = TeamSide.HOME,
         passing_legal_move: bool = False,
         scenario_opening_non_passing: bool = False,
         scenario_difficulty: int | None = None,
-        scenario_curriculum_scale: float = 1.0,
 ) -> float:
     """Reward for the seat that just moved.
 
@@ -637,18 +665,18 @@ def step_reward(
     ``scenario_opening_non_passing`` is env-gated (first TRAIN scenario step, passing
     available, non-passing chosen) → −[scenario_opening_non_passing_penalty].
     ``scenario_difficulty`` selects d0–d2 vs milder d3+ opening knobs.
-    ``scenario_curriculum_scale`` multiplies curriculum ± (opening + PASS/THEM grade);
-    train/eval leave this at ``1.0`` unless a caller opts in.
+    ``config`` owns shaping + curriculum scale + terminal gates ([RewardConfig]);
+    proxy drills use [RewardConfig.score_only].
     ``training_outcome_before`` / ``training_outcome`` edge-detect PASS → +0.5 once.
     """
-    shaping_cfg = shaping or RewardShaping()
-    scale = scenario_curriculum_scale if scenario_curriculum_scale > 0.0 else 1.0
+    cfg = config or RewardConfig()
+    scale = float(cfg.curriculum_scale)
     reward = score_margin(rewards_after) - score_margin(rewards_before)
     reward += shaping_reward(
         rewards_before=rewards_before,
         rewards_after=rewards_after,
         turn_start_score_us=turn_start_score_us,
-        shaping=shaping_cfg,
+        shaping=cfg.shaping,
         scoring=scoring,
         legal_choice=legal_choice,
         perspective_seat=perspective_seat,
@@ -658,21 +686,27 @@ def step_reward(
     if scenario_opening_non_passing:
         reward -= scenario_opening_non_passing_penalty(scenario_difficulty) * scale
     # PASS may land mid coach-window; credit here so chaff after the lesson is not the carrier.
-    if _is_us_winner_rel(training_outcome) and not _is_us_winner_rel(training_outcome_before):
+    if (
+        cfg.include_terminal
+        and _is_us_winner_rel(training_outcome)
+        and not _is_us_winner_rel(training_outcome_before)
+    ):
         reward += SCENARIO_TERMINAL_WIN * scale
     if result_kind is not None:
-        if _is_us_winner_rel(result_winner_rel):
-            reward += TERMINAL_WIN
-        elif _is_them_winner_rel(result_winner_rel):
-            reward += TERMINAL_LOSS
-        else:
-            reward += TERMINAL_DRAW
+        if cfg.include_terminal:
+            if _is_us_winner_rel(result_winner_rel):
+                reward += TERMINAL_WIN
+            elif _is_them_winner_rel(result_winner_rel):
+                reward += TERMINAL_LOSS
+            else:
+                reward += TERMINAL_DRAW
         return float(reward)
     if training_episode_ended:
         if _is_us_winner_rel(training_outcome):
             pass  # +0.5 already applied on the PASS edge (possibly this same submit)
         elif _is_them_winner_rel(training_outcome):
-            reward += SCENARIO_TERMINAL_LOSS * scale
+            if cfg.include_terminal:
+                reward += SCENARIO_TERMINAL_LOSS * scale
         elif not _is_distracted_training_outcome(training_outcome):
             raise ValueError(f"unknown trainingOutcome on coach-window end: {training_outcome!r}")
     return float(reward)

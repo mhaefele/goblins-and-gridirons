@@ -10,6 +10,7 @@ from gridiron_ai.reward import (
     SCENARIO_TERMINAL_LOSS,
     SCENARIO_TERMINAL_WIN,
     TERMINAL_WIN,
+    RewardConfig,
     step_reward,
 )
 
@@ -24,7 +25,8 @@ def _rewards(*, score_us: int = 0, score_them: int = 0) -> dict:
     }
 
 
-def _reward(*, before: dict, after: dict, **terminal: object) -> float:
+def _reward(*, before: dict, after: dict, config: RewardConfig | None = None, **terminal: object) -> float:
+    # TODO: flatten kwargs mirror step_reward — collapse when step_reward takes structs.
     return step_reward(
         rewards_before=before,
         rewards_after=after,
@@ -36,7 +38,7 @@ def _reward(*, before: dict, after: dict, **terminal: object) -> float:
         passing_legal_move=bool(terminal.get("passing_legal_move")),
         scenario_opening_non_passing=bool(terminal.get("scenario_opening_non_passing")),
         scenario_difficulty=terminal.get("scenario_difficulty"),  # type: ignore[arg-type]
-        scenario_curriculum_scale=float(terminal.get("scenario_curriculum_scale") or 1.0),
+        config=config,
     )
 
 
@@ -203,6 +205,7 @@ def test_curriculum_scale_multiplies_opening_and_grade() -> None:
     before = _rewards()
     after = _rewards()
     scale = 4.0
+    cfg = RewardConfig(curriculum_scale=scale)
     assert _reward(
         before=before,
         after=after,
@@ -210,7 +213,7 @@ def test_curriculum_scale_multiplies_opening_and_grade() -> None:
         trainingOutcome="US",
         training_outcome_before=None,
         scenario_difficulty=0,
-        scenario_curriculum_scale=scale,
+        config=cfg,
     ) == (SCENARIO_PASSING_MOVE_BONUS_D0_D2 + SCENARIO_TERMINAL_WIN) * scale
     assert _reward(
         before=before,
@@ -219,5 +222,32 @@ def test_curriculum_scale_multiplies_opening_and_grade() -> None:
         trainingEpisodeEnded=True,
         trainingOutcome="THEM",
         scenario_difficulty=0,
-        scenario_curriculum_scale=scale,
+        config=cfg,
     ) == (-SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2 + SCENARIO_TERMINAL_LOSS) * scale
+
+
+def test_proxy_score_only_zeros_curriculum_and_terminals() -> None:
+    """Difficulty-proxy train: RewardConfig.score_only → score-margin (+ shaping) only."""
+    before = _rewards(score_us=0, score_them=0)
+    after = _rewards(score_us=1, score_them=0)
+    cfg = RewardConfig().score_only()
+    assert _reward(
+        before=before,
+        after=after,
+        passing_legal_move=True,
+        trainingOutcome="US",
+        training_outcome_before=None,
+        scenario_difficulty=0,
+        config=cfg,
+        resultKind="COMPLETED",
+        resultWinnerRel="US",
+    ) == 1.0
+    assert _reward(
+        before=_rewards(),
+        after=_rewards(),
+        scenario_opening_non_passing=True,
+        trainingEpisodeEnded=True,
+        trainingOutcome="THEM",
+        scenario_difficulty=0,
+        config=cfg,
+    ) == 0.0

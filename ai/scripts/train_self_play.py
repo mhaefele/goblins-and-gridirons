@@ -67,11 +67,10 @@ from stable_baselines3.common.vec_env.subproc_vec_env import _stack_obs
 from gridiron_ai.api.client import GridironApiError, GridironClient
 from gridiron_ai.reward import (
     FULL_GAME_ONNX_OPPONENT_PROFILES,
-    PROFILE_SHAPING,
     REWARD_PROFILES,
     SHAPED_PROFILES,
+    RewardConfig,
     RewardProfileName,
-    RewardShaping,
     profiles_for_all,
 )
 from gridiron_ai.api.env import (
@@ -437,13 +436,12 @@ class SegmentEnvConfig:
     computer_opponent: str
     onnx_profile: RewardProfileName | None
     policy_seat: str
-    reward_shaping: RewardShaping
+    reward_config: RewardConfig
     scenario: str | None
     scenario_difficulty: int
     episode_mode: str
     soft_mask_bias: bool
     verbose: bool
-    scenario_curriculum_scale: float
 
 
 class WorkerPool:
@@ -462,13 +460,12 @@ class WorkerPool:
             computer_opponent="LOOKAHEAD",
             onnx_profile=None,
             policy_seat=DEFAULT_POLICY_SEAT,
-            reward_shaping=RewardShaping(),
+            reward_config=RewardConfig(),
             scenario=None,
             scenario_difficulty=0,
             episode_mode="TRAIN",
             soft_mask_bias=True,
             verbose=bool(args.verbose),
-            scenario_curriculum_scale=1.0,
         )
         self._active_view = ActiveSubprocVecEnv(self._subproc, n_envs)
         self._last_config: SegmentEnvConfig | None = None
@@ -481,26 +478,24 @@ class WorkerPool:
         computer_opponent: str,
         onnx_profile: RewardProfileName | None,
         policy_seat: str,
-        reward_shaping: RewardShaping,
+        reward_config: RewardConfig,
         scenario: str | None,
         scenario_difficulty: int,
         episode_mode: str,
         soft_mask_bias: bool,
         verbose: bool = False,
-        scenario_curriculum_scale: float = 1.0,
     ) -> None:
         config = SegmentEnvConfig(
             opponent_mode=opponent_mode,
             computer_opponent=computer_opponent,
             onnx_profile=onnx_profile,
             policy_seat=policy_seat,
-            reward_shaping=reward_shaping,
+            reward_config=reward_config,
             scenario=scenario,
             scenario_difficulty=scenario_difficulty,
             episode_mode=episode_mode,
             soft_mask_bias=soft_mask_bias,
             verbose=verbose,
-            scenario_curriculum_scale=scenario_curriculum_scale,
         )
         if config == self._last_config:
             return
@@ -510,13 +505,12 @@ class WorkerPool:
             computer_opponent=computer_opponent,
             onnx_profile=onnx_profile,
             policy_seat=policy_seat,
-            reward_shaping=reward_shaping,
+            reward_config=reward_config,
             scenario=scenario,
             scenario_difficulty=scenario_difficulty,
             episode_mode=episode_mode,
             soft_mask_bias=soft_mask_bias,
             verbose=verbose,
-            scenario_curriculum_scale=scenario_curriculum_scale,
         )
         self._last_config = config
 
@@ -541,13 +535,12 @@ def make_env(
     computer_opponent: str = "LOOKAHEAD",
     onnx_profile: RewardProfileName | None = None,
     policy_seat: str = "HOME",
-    reward_shaping: RewardShaping | None = None,
+    reward_config: RewardConfig | None = None,
     scenario: str | None = None,
     scenario_difficulty: int = 0,
     episode_mode: str = "TRAIN",
     soft_mask_bias: bool = True,
     verbose: bool = False,
-    scenario_curriculum_scale: float = 1.0,
 ) -> _PoolWorkerRoot:
     return _PoolWorkerRoot(
         ActionMasker(
@@ -560,13 +553,12 @@ def make_env(
                     computer_opponent=computer_opponent,
                     onnx_profile=onnx_profile,
                     policy_seat=policy_seat,
-                    reward_shaping=reward_shaping,
+                    reward_config=reward_config,
                     scenario=scenario,
                     scenario_difficulty=scenario_difficulty,
                     episode_mode=episode_mode,
                     soft_mask_bias=soft_mask_bias,
                     verbose=verbose,
-                    scenario_curriculum_scale=scenario_curriculum_scale,
                 )
             ),
             _mask_fn,
@@ -582,14 +574,13 @@ def _env_thunk(
     computer_opponent: str,
     onnx_profile: RewardProfileName | None,
     policy_seat: str,
-    reward_shaping: RewardShaping | None,
+    reward_config: RewardConfig | None,
     scenario: str | None,
     scenario_difficulty: int,
     episode_mode: str,
     soft_mask_bias: bool,
     *,
     verbose: bool = False,
-    scenario_curriculum_scale: float = 1.0,
 ) -> Callable[[], _PoolWorkerRoot]:
     def _init() -> _PoolWorkerRoot:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", force=True)
@@ -601,13 +592,12 @@ def _env_thunk(
             computer_opponent=computer_opponent,
             onnx_profile=onnx_profile,
             policy_seat=policy_seat,
-            reward_shaping=reward_shaping,
+            reward_config=reward_config,
             scenario=scenario,
             scenario_difficulty=scenario_difficulty,
             episode_mode=episode_mode,
             soft_mask_bias=soft_mask_bias,
             verbose=verbose,
-            scenario_curriculum_scale=scenario_curriculum_scale,
         )
 
     return _init
@@ -617,7 +607,7 @@ def make_bootstrap_vec_env(
     *,
     base_url: str,
     continue_on_submit_error: bool = False,
-    reward_shaping: RewardShaping | None = None,
+    reward_config: RewardConfig | None = None,
     n_envs: int = DEFAULT_N_ENVS,
     verbose: bool = False,
 ) -> DummyVecEnv:
@@ -625,7 +615,7 @@ def make_bootstrap_vec_env(
 
     Kept as a named helper so tests can smoke the same path ``_load_or_create_model`` uses.
     """
-    shaping = reward_shaping or RewardShaping()
+    config = reward_config or RewardConfig()
     return DummyVecEnv(
         [
             _env_thunk(
@@ -636,7 +626,7 @@ def make_bootstrap_vec_env(
                 "LOOKAHEAD",
                 None,
                 DEFAULT_POLICY_SEAT,
-                shaping,
+                config,
                 None,
                 0,
                 "TRAIN",
@@ -658,13 +648,12 @@ def make_vec_env(
     computer_opponent: str = "LOOKAHEAD",
     onnx_profile: RewardProfileName | None = None,
     policy_seat: str = "HOME",
-    reward_shaping: RewardShaping | None = None,
+    reward_config: RewardConfig | None = None,
     scenario: str | None = None,
     scenario_difficulty: int = 0,
     episode_mode: str = "TRAIN",
     soft_mask_bias: bool = True,
     verbose: bool = False,
-    scenario_curriculum_scale: float = 1.0,
 ) -> SubprocVecEnv:
     # spawn: N fresh Python interpreters; each imports torch/sb3/gym and builds GridironEnv
     # (HTTP client only — backend matches start on first reset(), not during spawn).
@@ -678,13 +667,12 @@ def make_vec_env(
                 computer_opponent,
                 onnx_profile,
                 policy_seat,
-                reward_shaping,
+                reward_config,
                 scenario,
                 scenario_difficulty,
                 episode_mode,
                 soft_mask_bias,
                 verbose=verbose,
-                scenario_curriculum_scale=scenario_curriculum_scale,
             )
             for _ in range(n_envs)
         ],
@@ -1047,9 +1035,9 @@ def _episode_success_rates(episodes: list[dict[str, Any]]) -> dict[str, float]:
     return {"td_rate": td_rate, "win_by_4_rate": win_by_4_rate}
 
 
-def _reward_shaping_for_profile(profile: RewardProfileName) -> RewardShaping:
+def _reward_config_for_profile(profile: RewardProfileName) -> RewardConfig:
     """Profile preset only — no CLI overrides (keeps the reward stack inspectable)."""
-    return PROFILE_SHAPING[profile]
+    return RewardConfig.for_profile(profile)
 
 
 def _save_step_checkpoint(model: MaskablePPO, save_dir: Path, *, name_prefix: str, timesteps: int) -> None:
@@ -1079,12 +1067,11 @@ def _train_segment(
     save_dir: Path,
     name_prefix: str,
     reset_num_timesteps: bool,
-    reward_shaping: RewardShaping,
+    reward_config: RewardConfig,
     profile: RewardProfileName,
     runs_key: str,
     scenario: str | None = None,
     scenario_difficulty: int = 0,
-    scenario_curriculum_scale: float = 1.0,
 ) -> dict[str, Any]:
     """One ``learn()`` block; swaps vec-env to the requested opponent mode."""
     opp_label = opponent_metrics_label(computer_opponent, onnx_profile)
@@ -1107,13 +1094,12 @@ def _train_segment(
         computer_opponent=computer_opponent,
         onnx_profile=onnx_profile,
         policy_seat=DEFAULT_POLICY_SEAT,
-        reward_shaping=reward_shaping,
+        reward_config=reward_config,
         scenario=scenario,
         scenario_difficulty=scenario_difficulty,
         episode_mode="TRAIN",
         soft_mask_bias=True,
         verbose=bool(args.verbose),
-        scenario_curriculum_scale=scenario_curriculum_scale,
     )
     clk.lap("configure workers", indent=lap_indent)
     env = _wrap_vecnormalize(pool.vec_env(DEFAULT_N_ENVS), save_stem, training=True)
@@ -1310,7 +1296,7 @@ def _train_scenarios_segment(
     save_dir: Path,
     name_prefix: str,
     reset_num_timesteps: bool,
-    reward_shaping: RewardShaping,
+    reward_config: RewardConfig,
     profile: RewardProfileName,
     runs_key: str,
     game_phase: bool,
@@ -1433,12 +1419,17 @@ def _train_scenarios_segment(
                 if prior is not None:
                     before = prior
 
-            # 8× = more timesteps (+ 100-game after-eval); LR / soft-mask / curriculum stay stock.
+            # 8× = more timesteps (+ 100-game after-eval); LR / soft-mask stay stock.
+            # Proxies: score-margin (+ shaping) only — no curriculum ± / terminals.
+            is_proxy = scenario in proxy_sources
             if do_eval:
                 train_detail = f"{timesteps} ts lr={_DEFAULT_LEARNING_RATE:g}"
             else:
                 proxy = require_catalog().curriculum_key(scenario)
-                train_detail = f"{timesteps} ts lr={_DEFAULT_LEARNING_RATE:g}; no eval — tracks {proxy}"
+                train_detail = (
+                    f"{timesteps} ts lr={_DEFAULT_LEARNING_RATE:g}; "
+                    f"score-only rewards; no eval — tracks {proxy}"
+                )
             write_focus(focus_path, scenario=scenario, difficulty=difficulty, phase="train")
             _scenario_phase_banner(
                 f"training starting — {tag} ({train_detail})",
@@ -1458,7 +1449,7 @@ def _train_scenarios_segment(
                 save_dir=save_dir,
                 name_prefix=name_prefix,
                 reset_num_timesteps=reset_num_timesteps and not did_train,
-                reward_shaping=reward_shaping,
+                reward_config=reward_config.score_only() if is_proxy else reward_config,
                 profile=profile,
                 runs_key=runs_key,
                 scenario=scenario,
@@ -1734,7 +1725,7 @@ def _eval_segment(
         computer_opponent=computer_opponent,
         onnx_profile=onnx_profile,
         policy_seat=DEFAULT_POLICY_SEAT,
-        reward_shaping=RewardShaping(),
+        reward_config=RewardConfig(),
         scenario=scenario,
         scenario_difficulty=scenario_difficulty,
         episode_mode=episode_mode,
@@ -2087,7 +2078,7 @@ def _load_or_create_model(
     phase: PhaseName,
     reward_profile: RewardProfileName,
     needs_train: bool,
-    reward_shaping: RewardShaping,
+    reward_config: RewardConfig,
 ) -> tuple[MaskablePPO, Path, Path, str, bool, Path]:
     checkpoint_dir = CHECKPOINT_DIR / checkpoint_key
     tb_runs = runs_dir(checkpoint_key)
@@ -2099,7 +2090,7 @@ def _load_or_create_model(
         return make_bootstrap_vec_env(
             base_url=args.base_url,
             continue_on_submit_error=args.continue_on_submit_error,
-            reward_shaping=reward_shaping,
+            reward_config=reward_config,
             n_envs=DEFAULT_N_ENVS,
             verbose=bool(args.verbose),
         )
@@ -2225,7 +2216,7 @@ def _run_one_cycle(
     cycle_index: int,
     n_targets: int,
     target: TrainTarget,
-    reward_shaping: RewardShaping,
+    reward_config: RewardConfig,
     save_stem: Path,
     save_dir: Path,
     name_prefix: str,
@@ -2349,7 +2340,7 @@ def _run_one_cycle(
             save_dir=save_dir,
             name_prefix=name_prefix,
             reset_num_timesteps=first_train_resets_timesteps and not did_train,
-            reward_shaping=reward_shaping,
+            reward_config=reward_config,
             profile=profile,
             runs_key=runs_key,
             game_phase=game_phase,
@@ -2378,7 +2369,7 @@ def _run_one_cycle(
                 save_dir=save_dir,
                 name_prefix=name_prefix,
                 reset_num_timesteps=first_train_resets_timesteps and not did_train,
-                reward_shaping=reward_shaping,
+                reward_config=reward_config,
                 profile=profile,
                 runs_key=runs_key,
             )
@@ -2661,7 +2652,7 @@ def main() -> None:
             if target.deferral_note:
                 print(target.deferral_note, flush=True)
 
-            reward_shaping = _reward_shaping_for_profile(target.reward_profile)
+            reward_config = _reward_config_for_profile(target.reward_profile)
             start = _utc_now()
             t0 = time.perf_counter()
             print(
@@ -2670,14 +2661,14 @@ def main() -> None:
                 f"ent_coef={DEFAULT_ENT_COEF} "
                 f"vf_coef={DEFAULT_VF_COEF} "
                 f"n_epochs={N_EPOCHS} clip_range={CLIP_RANGE} target_kl={TARGET_KL} "
-                f"shaping(idle={reward_shaping.idle_turn_penalty}, ball={reward_shaping.ball_possession_bonus}, "
-                f"approach={reward_shaping.approach_ball_bonus}, gained={reward_shaping.us_gained_ball_bonus}, "
-                f"uncert={reward_shaping.uncertain_challenge_bonus}, "
-                f"td={reward_shaping.touchdown_bonus}, block={reward_shaping.any_block_bonus}, "
-                f"block_bc={reward_shaping.block_ball_carrier_bonus}, "
-                f"bc_act={reward_shaping.ball_carrier_action_bonus}, "
-                f"empty_ez={reward_shaping.empty_scoring_endzone_penalty}, "
-                f"cover={reward_shaping.covering_radius_delta_bonus}) ===",
+                f"shaping(idle={reward_config.shaping.idle_turn_penalty}, ball={reward_config.shaping.ball_possession_bonus}, "
+                f"approach={reward_config.shaping.approach_ball_bonus}, gained={reward_config.shaping.us_gained_ball_bonus}, "
+                f"uncert={reward_config.shaping.uncertain_challenge_bonus}, "
+                f"td={reward_config.shaping.touchdown_bonus}, block={reward_config.shaping.any_block_bonus}, "
+                f"block_bc={reward_config.shaping.block_ball_carrier_bonus}, "
+                f"bc_act={reward_config.shaping.ball_carrier_action_bonus}, "
+                f"empty_ez={reward_config.shaping.empty_scoring_endzone_penalty}, "
+                f"cover={reward_config.shaping.covering_radius_delta_bonus}) ===",
                 flush=True,
             )
 
@@ -2688,7 +2679,7 @@ def main() -> None:
                     phase=target.phase,
                     reward_profile=target.reward_profile,
                     needs_train=needs_train,
-                    reward_shaping=reward_shaping,
+                    reward_config=reward_config,
                 )
                 loaded_key = target.checkpoint_key
                 continued_any = continued_any or continued
@@ -2714,7 +2705,7 @@ def main() -> None:
                 cycle_index=cycle_index,
                 n_targets=len(targets),
                 target=target,
-                reward_shaping=reward_shaping,
+                reward_config=reward_config,
                 save_stem=save_stem,
                 save_dir=save_dir,
                 name_prefix=name_prefix,

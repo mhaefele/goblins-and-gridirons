@@ -45,8 +45,8 @@ from gridiron_ai.metrics import EpisodeActionStats, total_score
 from gridiron_ai.obs import dict_observation_space, slice_packed_step
 from gridiron_ai.reward import (
     REWARD_PROFILES,
+    RewardConfig,
     RewardProfileName,
-    RewardShaping,
     is_episode_ended,
     step_reward,
     training_outcome_winner_rel,
@@ -113,13 +113,12 @@ class GridironEnv(gym.Env):
         turn_timeout_s: float = 180.0,
         on_match_created: Callable[[str], None] | None = None,
         client: GridironClient | None = None,
-        reward_shaping: RewardShaping | None = None,
+        reward_config: RewardConfig | None = None,
         scenario: ScenarioName | None = None,
         scenario_difficulty: int = 0,
         episode_mode: EpisodeMode = EpisodeMode.EVAL,
         soft_mask_bias: bool = False,
         verbose: bool = False,
-        scenario_curriculum_scale: float = 1.0,
     ) -> None:
         super().__init__()
         if opponent_mode not in _VALID_OPPONENT_MODES:
@@ -133,8 +132,6 @@ class GridironEnv(gym.Env):
             raise ValueError(f"scenario_difficulty must be 0–5, was {scenario_difficulty}")
         if episode_mode not in (EpisodeMode.TRAIN, EpisodeMode.EVAL):
             raise ValueError(f"episode_mode must be TRAIN or EVAL, got {episode_mode!r}")
-        if scenario_curriculum_scale <= 0.0:
-            raise ValueError(f"scenario_curriculum_scale must be > 0, was {scenario_curriculum_scale}")
 
         self._owns_client = client is None
         self.client = client or GridironClient(base_url=base_url)
@@ -147,15 +144,13 @@ class GridironEnv(gym.Env):
         self.policy_seat = policy_seat
         self.turn_timeout_s = turn_timeout_s
         self.on_match_created = on_match_created
-        self.reward_shaping = reward_shaping or RewardShaping()
+        self.reward_config = reward_config or RewardConfig()
         self.scenario = scenario
         self.scenario_difficulty = scenario_difficulty
         self.episode_mode = episode_mode
         # Pack 0/1 preferred-row flags into obs when True. Strength is policy-side only.
         self.soft_mask_bias = soft_mask_bias
         self.verbose = verbose
-        # Optional curriculum ± multiplier (train leaves 1.0).
-        self.scenario_curriculum_scale = scenario_curriculum_scale
 
         self.observation_space = dict_observation_space()
         self.action_space = spaces.Discrete(legal_row_action_n())
@@ -182,13 +177,12 @@ class GridironEnv(gym.Env):
         computer_opponent: ComputerOpponentKind,
         onnx_profile: RewardProfileName | None,
         policy_seat: TeamSide,
-        reward_shaping: RewardShaping,
+        reward_config: RewardConfig,
         scenario: ScenarioName | None,
         scenario_difficulty: int,
         episode_mode: EpisodeMode,
         soft_mask_bias: bool,
         verbose: bool = False,
-        scenario_curriculum_scale: float = 1.0,
     ) -> None:
         """Reconfigure an idle worker between train/eval segments (pool reuse)."""
         if opponent_mode not in _VALID_OPPONENT_MODES:
@@ -202,21 +196,18 @@ class GridironEnv(gym.Env):
             raise ValueError(f"scenario_difficulty must be 0–5, was {scenario_difficulty}")
         if episode_mode not in (EpisodeMode.TRAIN, EpisodeMode.EVAL):
             raise ValueError(f"episode_mode must be TRAIN or EVAL, got {episode_mode!r}")
-        if scenario_curriculum_scale <= 0.0:
-            raise ValueError(f"scenario_curriculum_scale must be > 0, was {scenario_curriculum_scale}")
 
         self._release_match()
         self.opponent_mode = opponent_mode
         self.computer_opponent = computer_opponent
         self.onnx_profile = onnx_profile
         self.policy_seat = policy_seat
-        self.reward_shaping = reward_shaping
+        self.reward_config = reward_config
         self.scenario = scenario
         self.scenario_difficulty = scenario_difficulty
         self.episode_mode = episode_mode
         self.soft_mask_bias = soft_mask_bias
         self.verbose = verbose
-        self.scenario_curriculum_scale = scenario_curriculum_scale
         if scenario is not None:
             if self._scenario_eval_debug is None:
                 self._scenario_eval_debug = ScenarioEvalDebug()
@@ -549,6 +540,8 @@ class GridironEnv(gym.Env):
             and not passing_legal_move
             and any(passing)
         )
+        # TODO: stop unpacking — pass terminal / scoring / resolved (and before/after
+        # snapshots) into step_reward as structs; see TODO on step_reward.
         reward = step_reward(
             rewards_before=observation_before_move,
             rewards_after=after_obs,
@@ -558,16 +551,13 @@ class GridironEnv(gym.Env):
             training_outcome=training_outcome,
             training_outcome_before=training_outcome_before,
             turn_start_score_us=self._turn_start_score_us,
-            shaping=self.reward_shaping,
+            config=self.reward_config,
             scoring=scoring,
             legal_choice=resolved.legal_choice,
             perspective_seat=self._perspective_seat,
             passing_legal_move=passing_legal_move,
             scenario_opening_non_passing=scenario_opening_non_passing,
             scenario_difficulty=self.scenario_difficulty if self.scenario is not None else None,
-            scenario_curriculum_scale=(
-                self.scenario_curriculum_scale if self.scenario is not None else 1.0
-            ),
         )
         scored_td = int(after_obs["touchdownsUs"]) > int(observation_before_move["touchdownsUs"])
         # Train --verbose: played path + PASS-edge tag for PPO evidence (not window close).

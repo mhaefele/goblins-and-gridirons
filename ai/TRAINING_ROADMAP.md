@@ -26,6 +26,10 @@ Shell chain: `dump → pack → seed → scenario_a → scenario_b → checkpoin
 4. **Profile shaping** — `general` / `spread` / `td` / `defense` presets (train only; eval off);
    scenario_a / scenario_b use **baseline** (no shaping) — curriculum bonuses still apply
 
+**Difficulty-proxy drills** (e.g. `LOOSE_BALL_BOUNCE`): train via `RewardConfig.score_only()`
+— score-margin (+ profile shaping) only; curriculum ± and all terminals off. Soft-mask /
+difficulty still track the target.
+
 Drill US/THEM still grades curriculum/winrate (counted at window close). Soft-mask still
 owns **sampling** tilt ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference)).
 

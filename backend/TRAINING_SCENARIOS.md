@@ -142,7 +142,7 @@ Optional drills train and bump local difficulty on perfect eval like any other d
 
 **Lookahead solve off, still curriculum-gated:** `CLAIM_KEEP_RUNNING`, `CLAIM_ALL_HANDS` — soft-mask trains; fat LA is not a reliable PASS oracle on every difficulty yet.
 
-**Current optional (proxy):** `LOOSE_BALL_BOUNCE` → `LOOSE_BALL_RUN` — trains bounce boards; difficulty and eval ride on run.
+**Current optional (proxy):** `LOOSE_BALL_BOUNCE` → `LOOSE_BALL_RUN` — trains bounce boards; difficulty and eval ride on run. Proxy train uses score-margin (+ profile shaping) only — no curriculum ± / match or scenario terminals.
 
 ---
 

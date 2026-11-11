@@ -10,7 +10,7 @@ import inspect
 
 from gymnasium import spaces
 
-from gridiron_ai.reward import RewardShaping
+from gridiron_ai.reward import RewardConfig
 from scripts.train_self_play import (
     DEFAULT_N_ENVS,
     _env_thunk,
@@ -24,7 +24,7 @@ def test_make_bootstrap_vec_env_runs_once() -> None:
     """Build the same DummyVecEnv stack ``_load_or_create_model`` uses (n_envs=1)."""
     env = make_bootstrap_vec_env(
         base_url="http://127.0.0.1:9",
-        reward_shaping=RewardShaping(),
+        reward_config=RewardConfig(),
         n_envs=1,
         verbose=False,
     )
@@ -41,7 +41,7 @@ def test_make_env_runs_once() -> None:
     root = make_env(
         "http://127.0.0.1:9",
         500,
-        reward_shaping=RewardShaping(),
+        reward_config=RewardConfig(),
         verbose=False,
     )
     try:
