@@ -35,8 +35,10 @@ the oracle (right moves unknown) or placement (not always solvable). New catalog
 from the JSON start at difficulty 0; stale JSON keys for removed drills are ignored (restart
 training if that matters).
 Coach-window end / US|THEM grading: Kotlin. Scenario budgets: DEFAULT_SCENARIO_TRAIN_* below
-(learning below MAX; healthy d5 skip; soft-d5 maintenance); full-game defaults in
-``scripts/train_self_play.py``.
+(learning below MAX; healthy d5 skip train; soft-d5 maintenance). Climbing
+(scenario_a / scenario_b): healthy d5 drift-eval every
+``HEALTHY_D5_EVAL_EVERY_CYCLES`` cycles in ``scripts/train_self_play.py``; game phase
+evals all drills each cycle. Full-game defaults live in that script too.
 """
 
 from __future__ import annotations
@@ -124,7 +126,8 @@ _SCENARIO_ROLLOUT_TIMESTEPS = 3_840
 DEFAULT_SCENARIO_TRAIN_LEARNING = _SCENARIO_ROLLOUT_TIMESTEPS  # level < MAX: one PPO update
 # Healthy d5: no train (0). Soft-d5 uses DEFAULT_SCENARIO_TRAIN_MAINTENANCE instead.
 DEFAULT_SCENARIO_TRAIN_MASTERED = 0
-# Soft d5 (imperfect after-eval at MAX): one rollout; healthy d5 stay eval-only.
+# Soft d5 (imperfect after-eval at MAX): one rollout; healthy d5 skip train (drift-eval
+# cadence is owned by train_self_play.HEALTHY_D5_EVAL_EVERY_CYCLES on scenario_a/b).
 DEFAULT_SCENARIO_TRAIN_MAINTENANCE = _SCENARIO_ROLLOUT_TIMESTEPS
 
 
@@ -435,6 +438,29 @@ def scenarios_for_eval(
     return eval_names
 
 
+def scenarios_for_healthy_d5_eval(
+    levels: dict[str, int],
+    scenario_names: list[str],
+    gate_failures: dict[str, dict[str, int]] | None = None,
+) -> list[str]:
+    """Healthy d5 drills for climbing drift checks (at MAX, no soft-d5 gate fails).
+
+    Soft-d5 already train → after-eval each cycle; proxies resolve via ``scenarios_for_eval``.
+    """
+    failures = gate_failures if gate_failures is not None else {}
+    healthy: list[str] = []
+    for name in scenarios_for_eval(levels, scenario_names, failures):
+        difficulty = get_difficulty(levels, name)
+        if difficulty < MAX_DIFFICULTY:
+            continue
+        if scenario_needs_maintenance(
+            name, difficulty=difficulty, gate_failures=failures
+        ):
+            continue
+        healthy.append(name)
+    return healthy
+
+
 def scenario_max_coach_turns(difficulty: int) -> int:
     """Mirror of Kotlin ``scenarioCoachTurnWindow`` (server owns episode end).
 
@@ -607,7 +633,7 @@ def train_timesteps_for_scenario(
     if base <= 0:
         return 0
     at_max = _clamp(difficulty) >= MAX_DIFFICULTY
-    # Healthy d5 stay eval-only; soft-d5 (gate fails at MAX) get maintenance — climbing too.
+    # Healthy d5 skip train (drift-eval on climbing cadence); soft-d5 get maintenance.
     if all_mastered or (game_phase and at_max) or (at_max and mastered <= 0):
         if not scenario_needs_maintenance(
             scenario, difficulty=difficulty, gate_failures=failures

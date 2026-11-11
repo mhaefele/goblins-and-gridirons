@@ -116,7 +116,8 @@ deleting board drills from the catalog.
   `CLAIM_UNLOCK_BOARD_DIFFICULTY` (**4**)
 - Short horizon (trainer turn) while difficulties are low; promote on perfect after-eval
 - Soft-mask on flagged openings (sampling bias only)
-- Every active drill trains/evals each cycle (no lead-pack skip)
+- Every active drill below d5 trains → after-eval each cycle (no lead-pack skip);
+  healthy d5 drift-eval every `HEALTHY_D5_EVAL_EVERY_CYCLES` (2) while climbers train
 
 **Gate**
 
@@ -142,6 +143,8 @@ Full games stay **off**.
 
 - Unlock claim catalog when scenario_a gate holds (see **Why board before claims** above)
 - Soft-mask still applies wherever the server flags `expectedScenarioMove`
+- Healthy d5 keep the same every-2-cycle drift-eval as scenario_a (soft-d5 still
+  train → after-eval each cycle)
 
 **Gate**
 
@@ -166,7 +169,8 @@ Full games stay **off**.
 - Unlock full-game train **only after** scenario_b gate — equal parts vs HEURISTIC,
   LOOKAHEAD, and ONNX seats from `FULL_GAME_ONNX_OPPONENT_PROFILES` (today: general, defense)
 - Scenario drills: **stragglers** (< d5) keep learning budget; **soft d5** (imperfect
-  after-eval at MAX) get maintenance budget; healthy d5 stay eval-only (same while climbing)
+  after-eval at MAX) get maintenance budget; healthy d5 stay train-skipped (game phase
+  evals them every cycle; climbing used every-2-cycle drift-eval on scenario_a/b)
 - Judge transfer with shaping-off eval (winrate / score_diff / TD rates)
 - Rotate `baseline` + `profiles_for_all("train")` shaped names with `--profile all`
   (today: `general`, `spread`, `defense`; pin `td` explicitly). Summary `--profile all` still
@@ -188,7 +192,7 @@ keep writing the `scenario_b` tree.
 
 **Do not**
 
-- Drop soft-d5 maintenance (healthy d5 stay eval-only; soft/stragglers train)
+- Drop soft-d5 maintenance (healthy d5 stay train-skipped; soft/stragglers train)
 - Parallel experimental reward stacks beyond the named presets
 
 ---
@@ -241,7 +245,8 @@ Apply on create **and** resume via `_set_learning_rate` / `_set_ent_coef` / `_se
 |------|--------|--------|
 | Scenario learning (below d5) | `scenario_curriculum` — 3840 ts/drill/cycle (1×3840 rollout) | Contiguous train → after-eval |
 | Scenario mastered (d=5) | `scenario_curriculum` — 0 ts | Healthy d5 never rehearse; soft-d5 uses maintenance |
-| Scenario soft-d5 maintenance | `scenario_curriculum` — 3840 ts/drill/cycle | Imperfect after-eval at MAX (climbing + game phase); healthy d5 eval-only |
+| Scenario soft-d5 maintenance | `scenario_curriculum` — 3840 ts/drill/cycle | Imperfect after-eval at MAX (climbing + game phase) |
+| Healthy d5 drift-eval | `train_self_play.HEALTHY_D5_EVAL_EVERY_CYCLES` (2) | scenario_a / scenario_b climbing only; demote/gate-fail still apply; game phase evals all each cycle |
 | vs HEURISTIC / LOOKAHEAD / ONNX train | `train_self_play` — 20k ts each per cycle (ONNX × `FULL_GAME_ONNX_OPPONENT_PROFILES`: general, defense) | 0 until full-game unlock (all drills d5) |
 | vs HEURISTIC / LOOKAHEAD / ONNX eval | `train_self_play` — 200 games each seat, every 4 visits per profile (`FULL_GAME_EVAL_EVERY_CYCLES`; eval-only each pass) | Shaping off, `deterministic=True`; ONNX seats use reward-profile ids as `onnxProfile`; multi-wave up to `n_envs` |
 | `n_envs` / `n_steps` / `batch_size` | `train_self_play` — 30 / 128 / 256 | See [PPO vs SB3 stock](#ppo-vs-sb3-stock) |

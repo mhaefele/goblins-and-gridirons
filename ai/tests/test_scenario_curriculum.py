@@ -45,6 +45,7 @@ from gridiron_ai.scenario_curriculum import (
     scenario_max_coach_turns,
     scenarios_for_cycle,
     scenarios_for_eval,
+    scenarios_for_healthy_d5_eval,
     scenario_needs_maintenance,
     scenario_train_budget_units,
     format_train_multiplier_lines,
@@ -98,6 +99,17 @@ def test_scenario_needs_maintenance_soft_d5() -> None:
     assert scenario_needs_maintenance("TD_RUN", difficulty=MAX_DIFFICULTY, gate_failures=failures)
     assert not scenario_needs_maintenance("TD_RUN", difficulty=MAX_DIFFICULTY, gate_failures={})
     assert not scenario_needs_maintenance("TD_RUN", difficulty=3, gate_failures=failures)
+
+
+def test_scenarios_for_healthy_d5_eval_skips_soft_and_below() -> None:
+    catalog = ["TD_RUN", "MARKED_RUN", "LOOSE_BALL_RUN", "LOOSE_BALL_BOUNCE"]
+    levels = {
+        "TD_RUN": MAX_DIFFICULTY,
+        "MARKED_RUN": MAX_DIFFICULTY,
+        "LOOSE_BALL_RUN": 4,
+    }
+    failures = {"MARKED_RUN": {str(MAX_DIFFICULTY): 1}}
+    assert scenarios_for_healthy_d5_eval(levels, catalog, failures) == ["TD_RUN"]
 
 
 def test_train_timesteps_game_phase_soft_d5_gets_maintenance() -> None:

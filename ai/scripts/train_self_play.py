@@ -9,10 +9,11 @@ Day-to-day: ``./train.sh`` / ``./eval.sh``. Phases: scenario_a → scenario_b �
 profiles (``training_phases``). Mix knobs: ``TRAINING_ROADMAP.md`` + curriculum constants.
 
 Per cycle: game phase → full-game train/eval first, scenario eval + straggler/soft-d5 train;
-climbing → scenario sandwich then full-game (usually 0 until unlock).
-climbing → scenario train → after-eval → full-game. ``--profile all`` rotates baseline
-(unshaped control on scenario_b) plus ``profiles_for_all(\"train\")`` shaped names
-(today: ``general``, ``spread``, ``defense``; pin ``td`` explicitly).
+climbing → scenario train → after-eval → full-game (usually 0 until unlock), plus healthy
+d5 drift-eval every ``HEALTHY_D5_EVAL_EVERY_CYCLES`` on scenario_a / scenario_b.
+``--profile all`` rotates baseline (unshaped control on scenario_b) plus
+``profiles_for_all(\"train\")`` shaped names (today: ``general``, ``spread``, ``defense``;
+pin ``td`` explicitly).
 
 Contents
 --------
@@ -130,6 +131,7 @@ from gridiron_ai.scenario_curriculum import (
     save_levels,
     scenarios_for_cycle,
     scenarios_for_eval,
+    scenarios_for_healthy_d5_eval,
     SCENARIO_EVAL_GAMES,
     SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER,
     scenario_eval_games,
@@ -160,6 +162,7 @@ from gridiron_ai.training_phases import (
     runs_dir,
     PHASE_PROFILES,
     PHASE_SCENARIO_A,
+    PHASE_SCENARIO_B,
 )
 from gridiron_ai.pipeline_state import load_pipeline, rewind_pipeline
 
@@ -194,6 +197,9 @@ DEFAULT_EVAL_ONNX = 200
 # Full-game eval every N visits per profile (rotation round). eval-only always runs.
 # With --profile all, global cycle%N would only ever hit targets[0] (baseline).
 FULL_GAME_EVAL_EVERY_CYCLES = 4
+# Climbing (scenario_a / scenario_b): healthy d5 drift-eval every N cycles while others train.
+# Game phase already evals all drills each cycle.
+HEALTHY_D5_EVAL_EVERY_CYCLES = 2
 DEFAULT_N_ENVS = 30
 DEFAULT_N_STEPS = 128
 DEFAULT_BATCH_SIZE = 256
@@ -1958,6 +1964,7 @@ def _eval_scenarios_segment(
     runs_key: str,
     save_stem: Path,
     update_curriculum: bool = True,
+    healthy_d5_only: bool = False,
 ) -> dict[str, Any]:
     """Scenario eval pass (no train). Curriculum updates only when ``update_curriculum``.
 
@@ -1965,7 +1972,8 @@ def _eval_scenarios_segment(
     ``update_curriculum=False`` so a standalone eval does not mutate levels, and skips
     writing eval JSON under ``output/evals/``.
     Game-phase cycles (scenario train skipped) keep ``True`` so d5 demote / recover
-    still run on the eval pass.
+    still run on the eval pass. ``healthy_d5_only`` is the climbing drift check
+    (scenario_a / scenario_b every ``HEALTHY_D5_EVAL_EVERY_CYCLES`` cycles).
     """
     scenarios = _scenario_names(pin=args.scenario)
     if not scenarios:
@@ -1975,20 +1983,28 @@ def _eval_scenarios_segment(
     curriculum_path = path_for_stem(save_stem)
     levels = load_levels(curriculum_path)
     gate_failures = load_gate_failures(path_for_gate_failures(save_stem))
-    active = scenarios_for_eval(levels, scenarios, gate_failures)
+    active = (
+        scenarios_for_healthy_d5_eval(levels, scenarios, gate_failures)
+        if healthy_d5_only
+        else scenarios_for_eval(levels, scenarios, gate_failures)
+    )
+    if healthy_d5_only and not active:
+        print("Eval healthy d5: none to drift-check — skip", flush=True)
+        return {}
     pin_difficulty = args.difficulty
     # Forced --difficulty must not bump/demote curriculum levels.
     write_curriculum = update_curriculum and pin_difficulty is None
     _eval_section_break()
+    label = "Eval healthy d5" if healthy_d5_only else "Eval scenarios"
     if pin_difficulty is not None:
         print(
-            f"Eval scenarios ({len(active)} drills, difficulty pin d{pin_difficulty}, curriculum off)",
+            f"{label} ({len(active)} drills, difficulty pin d{pin_difficulty}, curriculum off)",
             flush=True,
         )
     elif write_curriculum:
-        print(f"Eval scenarios ({len(active)} drills, curriculum on)", flush=True)
+        print(f"{label} ({len(active)} drills, curriculum on)", flush=True)
     else:
-        print(f"Eval scenarios ({len(active)} drills, curriculum off)", flush=True)
+        print(f"{label} ({len(active)} drills, curriculum off)", flush=True)
     row: dict[str, Any] = {}
     drill_stats = load_drill_stats(path_for_drill_stats(save_stem)) if write_curriculum else {}
     gate_failures_path = path_for_gate_failures(save_stem)
@@ -2283,8 +2299,12 @@ def _run_one_cycle(
         train_jobs.append(
             (onnx_timesteps, OPPONENT_COMPUTER, COMPUTER_KIND_ONNX, onnx_name, f"train_onnx_{onnx_name}")
         )
-    run_full_game_eval = args.eval_only or (
-        ((cycle_index - 1) // max(n_targets, 1)) % FULL_GAME_EVAL_EVERY_CYCLES == 0
+    visit_round = (cycle_index - 1) // max(n_targets, 1)
+    run_full_game_eval = args.eval_only or (visit_round % FULL_GAME_EVAL_EVERY_CYCLES == 0)
+    run_healthy_d5_eval = (
+        not game_phase
+        and target.phase in (PHASE_SCENARIO_A, PHASE_SCENARIO_B)
+        and visit_round % HEALTHY_D5_EVAL_EVERY_CYCLES == 0
     )
     eval_lookahead = args.eval_lookahead if run_full_game_eval else 0
     eval_heuristic = args.eval_heuristic if run_full_game_eval else 0
@@ -2292,8 +2312,7 @@ def _run_one_cycle(
     if not run_full_game_eval and (
         args.eval_lookahead > 0 or args.eval_heuristic > 0 or args.eval_onnx > 0
     ):
-        round_i = (cycle_index - 1) // max(n_targets, 1)
-        next_round = round_i + (FULL_GAME_EVAL_EVERY_CYCLES - round_i % FULL_GAME_EVAL_EVERY_CYCLES)
+        next_round = visit_round + (FULL_GAME_EVAL_EVERY_CYCLES - visit_round % FULL_GAME_EVAL_EVERY_CYCLES)
         next_eval = next_round * max(n_targets, 1) + 1
         print(
             f"  full-game eval skipped (every {FULL_GAME_EVAL_EVERY_CYCLES} visits/profile; "
@@ -2400,7 +2419,9 @@ def _run_one_cycle(
     else:
         _run_scenarios()
         _run_games()
-        if not trained_scenarios and not _skip_scenario_eval(args):
+        if _skip_scenario_eval(args):
+            pass
+        elif not trained_scenarios:
             row.update(
                 _eval_scenarios_segment(
                     model,
@@ -2411,6 +2432,29 @@ def _run_one_cycle(
                     save_stem=save_stem,
                     update_curriculum=not args.eval_only,
                 )
+            )
+        elif run_healthy_d5_eval:
+            row.update(
+                _eval_scenarios_segment(
+                    model,
+                    args=args,
+                    pool=pool,
+                    profile=profile,
+                    runs_key=runs_key,
+                    save_stem=save_stem,
+                    update_curriculum=not args.eval_only,
+                    healthy_d5_only=True,
+                )
+            )
+        elif scenarios_for_healthy_d5_eval(levels, scenarios, gate_failures):
+            next_round = visit_round + (
+                HEALTHY_D5_EVAL_EVERY_CYCLES - visit_round % HEALTHY_D5_EVAL_EVERY_CYCLES
+            )
+            next_eval = next_round * max(n_targets, 1) + 1
+            print(
+                f"  healthy d5 drift-eval skipped (every {HEALTHY_D5_EVAL_EVERY_CYCLES} cycles; "
+                f"next at cycle {next_eval})",
+                flush=True,
             )
     if args.phase is None:
         t0 = time.perf_counter()
@@ -2444,7 +2488,8 @@ def _print_startup_train_plan(
         f"train_onnx_config={args.train_onnx}×[{','.join(FULL_GAME_ONNX_OPPONENT_PROFILES)}] "
         f"eval_lookahead={args.eval_lookahead} eval_heuristic={args.eval_heuristic} "
         f"eval_onnx={args.eval_onnx} "
-        f"full_game_eval_every={FULL_GAME_EVAL_EVERY_CYCLES}",
+        f"full_game_eval_every={FULL_GAME_EVAL_EVERY_CYCLES} "
+        f"healthy_d5_eval_every={HEALTHY_D5_EVAL_EVERY_CYCLES}",
         flush=True,
     )
     try:
