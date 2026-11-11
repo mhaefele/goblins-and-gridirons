@@ -32,7 +32,7 @@ enum class TrainingScenarioEnum {
     /** A loose ball sits uncontested within reach of the trainer. Pick it up and run it in. */
     LOOSE_BALL_RUN,
 
-    /** Loose ball with an adjacent opponent (bounce risk). Block the guard or score. */
+    /** Loose ball with an adjacent opponent (bounce risk). Exposure / proxy — no PASS opening. */
     LOOSE_BALL_BOUNCE,
 
     /** An opponent near their end zone holds the ball; a trainer player is adjacent marking them. Strip and score. */

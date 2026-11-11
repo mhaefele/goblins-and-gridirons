@@ -7,6 +7,14 @@ import com.mhaefele.gridiron.model.TrainingScenarioEnum
 import com.mhaefele.gridiron.shared.TeamSide
 import org.springframework.stereotype.Component
 
+/**
+ * Contested loose ball (opponent adjacent → pickup bounces). Layout: runner on a TD path,
+ * ball ≥2 away on that path, guard on the ball — **not** an opening adjacent block setup.
+ *
+ * No ``passingLegal`` / soft-mask / expected opening: exposure board only (proxy of
+ * [LOOSE_BALL_RUN]); train uses score-only rewards. Do not grade empty-EZ runs or invent
+ * a guard-block lesson the placement does not guarantee.
+ */
 @Component
 class LooseBallBounceTrainingScenario : AbstractLooseBallTrainingScenario(contested = true) {
     override val scenario = TrainingScenarioEnum.LOOSE_BALL_BOUNCE
@@ -17,22 +25,13 @@ class LooseBallBounceTrainingScenario : AbstractLooseBallTrainingScenario(contes
     override fun validateBoard(state: MatchState, trainerSide: TeamSide, legals: List<LegalAction>) {
         val board = state.board
         val ballCoord = board.allSquares().firstOrNull { it.looseBallId != null }?.coordinate ?: error("LOOSE_BALL_BOUNCE: no loose ball on board")
-        val guardCoords = neighbors(board.squareAt(ballCoord), board).map { it.coordinate }.filter { coord ->
-            val occupant = board.squareAt(coord).playerId?.let { board.players[it] }
-            occupant != null && occupant.team != trainerSide
-        }.toSet()
-        require(guardCoords.isNotEmpty()) { "LOOSE_BALL_BOUNCE: no opponent adjacent to the loose ball" }
-        val canBlockGuard = legals.filterIsInstance<LegalAction.Block>().any { block ->
-            board.players[block.playerId]?.team == trainerSide && block.destination in guardCoords
+        val hasGuard = neighbors(board.squareAt(ballCoord), board).any { square ->
+            val occupant = square.playerId?.let { board.players[it] } ?: return@any false
+            occupant.team != trainerSide
         }
-        val canScore = runsIntoEndZone(legals, board, trainerSide.opposite())
-        require(canBlockGuard || canScore) { "LOOSE_BALL_BOUNCE: trainer has neither a block on the guard nor a run into the end zone" }
+        require(hasGuard) { "LOOSE_BALL_BOUNCE: no opponent adjacent to the loose ball" }
     }
 
-    override fun isPassingOpeningMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean {
-        val scoringEndZone = trainerSide.opposite()
-        if (action is LegalAction.Run && state.board.squareAt(action.path.squares.last()).isEndZone(scoringEndZone)) return true
-        val guards = looseBallGuardSquares(state.board, trainerSide)
-        return action is LegalAction.Block && action.destination in guards
-    }
+    /** Exposure-only — no PASS-grade / expected opening rows. */
+    override fun isPassingOpeningMove(action: LegalAction, state: MatchState, trainerSide: TeamSide): Boolean = false
 }

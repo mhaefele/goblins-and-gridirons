@@ -121,8 +121,9 @@ class TrainingScenarioApiTest : BaseApiTest() {
                 assertThat(passing).isSubsetOf(softMask)
             }
             TrainingScenarioEnum.LOOSE_BALL_BOUNCE -> {
+                // Contested layout exposure only — no expected / soft-mask opening.
                 assertThat(softMask).isEmpty()
-                assertThat(passing).isNotEmpty()
+                assertThat(passing).isEmpty()
             }
             else                                   -> {
                 // Claim drills open on forced replace: soft-mask bait discard, PASS only after the claim.

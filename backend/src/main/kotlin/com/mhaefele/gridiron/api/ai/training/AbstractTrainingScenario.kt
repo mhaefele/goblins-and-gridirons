@@ -131,7 +131,7 @@ abstract class AbstractTrainingScenario {
     /**
      * Move that would grade PASS on the opening coach turn (wired to ``passingScenarioMove`` /
      * ``passingLegal``). Usually matches [isSoftMaskScenarioMove]; choice drills (throw target,
-     * marked-run follow-up, bounce block/score, …) override when PASS is a strict subset of
+     * marked-run follow-up, bounce guard-block, …) override when PASS is a strict subset of
      * soft-mask rows.
      * [TrainingScenarios] only consults this on the trainer opening turn.
      */

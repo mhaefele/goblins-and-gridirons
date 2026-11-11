@@ -47,10 +47,10 @@ unique.
 
 Some drills PASS on **attempt** because the point is the *decision*, not dice resolution
 — e.g. claim throws/blocks (`succeedsOnAttempt`), throw target selection, or
-`LOOSE_BALL_BOUNCE` (you often **cannot** just land on a loose ball and pick it up;
-blocking the guard or scoring is the teaching move; we do not grade the bounce pickup
-sequence). That is intentional: teach the constraint or the claim line, not the full
-physics chain.
+`LOOSE_BALL_BOUNCE` (opponent adjacent to the loose ball → pickup bounces). Layout puts
+the ball on a TD path with a guard; the runner is **not** guaranteed adjacent for an
+opening block. **No** `passingLegal` / soft-mask / expected opening — exposure board
+only (proxy of `LOOSE_BALL_RUN`). Do not grade empty-EZ jogs or invent a block lesson.
 
 **Where this is headed (and where we want to stop)**
 
@@ -200,7 +200,7 @@ Several drills intentionally PASS on **attempt**, not full resolution:
 | Pattern | Examples |
 |---------|----------|
 | `succeedsOnAttempt = true` | Claim dice drills: `CLAIM_CONNECT`, `CLAIM_DROP_THEM`, `CLAIM_SEND_THEM_OFF`, `CLAIM_THREAD_THE_NEEDLE`, `CLAIM_STRIP_IT` — right flagged move passes even if throw/block fails to bank the card |
-| Custom `drillStatus` | `THROW_OPEN_RECEIVER`, `THROW_CLOSER_RANGE` — correct target/range, not catch; `LOOSE_BALL_BOUNCE` — block on guard or TD, not post-bounce pickup |
+| Custom `drillStatus` | `THROW_OPEN_RECEIVER`, `THROW_CLOSER_RANGE` — correct target/range, not catch; `LOOSE_BALL_BOUNCE` — no PASS-grade opening (exposure / proxy only) |
 | Run-only TD | `TD_RUN`, `MARKED_RUN`, `LOOSE_BALL_RUN` (d2–d5) — PASS only when the scoring submit is a `Run`; non-Run TDs → `DISTRACTED` |
 | Pickup one-shot | `LOOSE_BALL_RUN` **d0–d1** — PASS on first-step pickup, THEM otherwise; episode ends after that submit (no continue-to-score) |
 | Bank-all-three | `CLAIM_CLEAN_SWEEP` — PASS only when all trio cards are in hand |
