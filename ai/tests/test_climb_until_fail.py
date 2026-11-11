@@ -18,8 +18,8 @@ def test_climb_stops_at_first_failing_difficulty() -> None:
     install_fixture_catalog()
 
     def eval_at(_scenario: str, difficulty: int) -> dict[str, int]:
-        # Pass d0–d1 (≥9/10), fail d2.
-        return _stats(10 if difficulty < 2 else 3)
+        # Pass d0–d1 (≥18/20), fail d2.
+        return _stats(SCENARIO_EVAL_GAMES if difficulty < 2 else 3)
 
     levels = climb_until_fail_levels(["TD_RUN"], eval_at)
     assert levels == {"TD_RUN": 2}
@@ -29,7 +29,7 @@ def test_climb_all_pass_leaves_max() -> None:
     install_fixture_catalog()
 
     def eval_at(_scenario: str, difficulty: int) -> dict[str, int]:
-        return _stats(10)
+        return _stats(SCENARIO_EVAL_GAMES)
 
     levels = climb_until_fail_levels(["MARKED_RUN"], eval_at)
     assert levels == {"MARKED_RUN": MAX_DIFFICULTY}

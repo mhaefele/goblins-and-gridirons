@@ -199,7 +199,7 @@ DEFAULT_N_ENVS = 30
 DEFAULT_N_STEPS = 128
 DEFAULT_BATCH_SIZE = 256
 
-# Deterministic games for each scenario after-eval (10); delta vs prior eval at same @d.
+# Deterministic games for each scenario after-eval (20; 100 at 8×); delta vs prior eval at same @d.
 _VECNORMALIZE_SUFFIX = "_vecnormalize.pkl"
 # (scenario, difficulty) → last train-time eval this process; disk mirror is scenario_last_eval.json.
 _last_scenario_after_eval: dict[tuple[str, int], dict[str, Any]] = {}
@@ -1199,7 +1199,7 @@ def _eval_one_scenario(
 
     Eval line shows ``before→after`` vs the last same drill@d train-time eval (memory,
     else ``{stem}.scenario_last_eval.json``). Persists only while training — ``--eval-only``
-    never writes the cache or sidecar. ``games`` is 100 for 8× train units, else 10.
+    never writes the cache or sidecar. ``games`` is 100 for 8× train units, else 20.
     Before-eval and after-eval both append to the rolling last-eval history.
     ``train_health`` (e.g. ``approx_kl`` from the preceding learn) merges into stats + last-eval.
     """

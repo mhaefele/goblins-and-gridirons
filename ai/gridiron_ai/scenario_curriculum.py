@@ -8,7 +8,7 @@ Writes via ``gridiron_ai.persistence`` (one module per sidecar). Does **not** pl
 
 Sidecars beside the stem: ``.scenario_difficulty.json`` (name → level; bump after perfect
 after-eval; demote when a drill labeled d5 fails after-eval with ``DEMOTE_FROM_MAX_MAX_WINS``
-or fewer wins — default 7/10; 8/10 is a gate fail only); ``.scenario_gate_failures.json``
+or fewer wins — default 14/20; 15–17/20 is a gate fail only); ``.scenario_gate_failures.json``
 (imperfect after-evals per difficulty level; all-time = sum; current level cleared on waive
 recover); ``.scenario_drill_stats.json`` (per-phase ``cycles`` / ``d5_demotes``; summary uses
 ``training_phases.load_drill_stats_cumulative``); ``.scenario_last_eval.json`` (up to 4 slim
@@ -83,13 +83,13 @@ FULL_GAME_UNLOCK_DIFFICULTY = MAX_DIFFICULTY
 # Imperfect after-evals at the current level before a gating claim stops blocking progress.
 GATE_PROGRESS_WAIVE_FAILURES = 40
 # Scenario after-eval batch size (train → after-eval).
-SCENARIO_EVAL_GAMES = 10
-# Bottleneck (8×) train drills get a longer after-eval (same pass/demote *rates* as the 10-game batch).
+SCENARIO_EVAL_GAMES = 20
+# Bottleneck (8×) train drills get a longer after-eval (same pass/demote *rates* as the base batch).
 SCENARIO_EVAL_GAMES_HEAVY = 100
-# Wins needed to pass / bump (9 or 10 of SCENARIO_EVAL_GAMES); scaled for heavy batches.
-SCENARIO_EVAL_PASS_MIN_WINS = 9
-# At d5: demote when wins are at or below this (7 or fewer of SCENARIO_EVAL_GAMES).
-DEMOTE_FROM_MAX_MAX_WINS = 7
+# Wins needed to pass / bump (18–20 of SCENARIO_EVAL_GAMES); scaled for heavy batches.
+SCENARIO_EVAL_PASS_MIN_WINS = 18
+# At d5: demote when wins are at or below this (14 or fewer of SCENARIO_EVAL_GAMES).
+DEMOTE_FROM_MAX_MAX_WINS = 14
 # Extra train when the drill has imperfect after-evals at its current difficulty.
 SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER = 2
 # Current-level fail at pack min / below-d4 opening / high demotes after board d4+.
