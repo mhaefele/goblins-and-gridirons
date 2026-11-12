@@ -29,6 +29,35 @@ def test_format_action_joins_actor_via_player_id() -> None:
     assert ScenarioEvalDebug.format_action(choice, rewards=rewards) == "throw(1,13->4,14)"
 
 
+def test_format_action_throw_annotates_ball_when_off_destination() -> None:
+    choice = {
+        "kind": "throw",
+        "playerId": "h0",
+        "targetCoordinate": {"x": 7, "y": 15},
+    }
+    before = _rewards(
+        players=[
+            {
+                "playerId": "h0",
+                "playerIndex": 1,
+                "teamRel": "US",
+                "coordinate": {"x": 1, "y": 10},
+            }
+        ],
+        ball={"x": 1, "y": 10},
+    )
+    after_miss = _rewards(players=before["players"], ball={"x": 2, "y": 14})
+    after_catch = _rewards(players=before["players"], ball={"x": 7, "y": 15})
+    assert (
+        ScenarioEvalDebug.format_action(choice, rewards=before, rewards_after=after_miss)
+        == "throw(1,10->7,15)(ball->2,14)"
+    )
+    assert (
+        ScenarioEvalDebug.format_action(choice, rewards=before, rewards_after=after_catch)
+        == "throw(1,10->7,15)"
+    )
+
+
 def test_format_action_marks_expected_scored_and_card_suffixes() -> None:
     choice = {"kind": "run"}
     assert ScenarioEvalDebug.format_action(choice, expected_move=True) == "run*"

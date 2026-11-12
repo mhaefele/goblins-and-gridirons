@@ -565,6 +565,7 @@ class GridironEnv(gym.Env):
             move_label = ScenarioEvalDebug.format_action(
                 resolved.legal_choice,
                 rewards=observation_before_move,
+                rewards_after=after_obs,
                 expected_move=passing_legal_move,
                 scored_touchdown=scored_td,
             )
@@ -592,6 +593,7 @@ class GridironEnv(gym.Env):
                 expected_move=passing_legal_move,
                 acquired_card=acquired_card,
                 step_reward=reward,
+                rewards_after=after_obs,
                 policy_obs=policy_obs,
                 legal_moves=self._legal_moves,
                 passing_legal=passing,

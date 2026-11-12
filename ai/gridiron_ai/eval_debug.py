@@ -31,6 +31,9 @@ from gridiron_ai.reward import (
     player_by_id,
 )
 
+# Throw-family kinds: targetCoordinate is the catch destination; ball may bounce elsewhere.
+_THROW_KINDS = frozenset({"throw", "throwTeammate", "quickReleaseThrow"})
+
 def _scoring_endzone_row_y(*, policy_seat: TeamSide) -> int:
     """Perspective-relative row y (`1..PLAY_HEIGHT`) of the end zone the policy seat scores in."""
     if policy_seat == TeamSide.HOME:
@@ -115,6 +118,7 @@ class ScenarioEvalDebug:
         expected_move: bool = False,
         acquired_card: bool = False,
         step_reward: float | None = None,
+        rewards_after: HarnessRewardSnapshotDict | None = None,
         policy_obs: dict[str, np.ndarray] | None = None,
         legal_moves: np.ndarray | None = None,
         passing_legal: list[bool] | None = None,
@@ -145,6 +149,7 @@ class ScenarioEvalDebug:
             action_label = self.format_action(
                 legal_choice,
                 rewards=rewards,
+                rewards_after=rewards_after,
                 scored_touchdown=scored_touchdown,
                 expected_move=expected_move,
                 acquired_card=acquired_card,
@@ -348,11 +353,16 @@ class ScenarioEvalDebug:
         legal_choice: LegalActionDict,
         *,
         rewards: HarnessRewardSnapshotDict | None = None,
+        rewards_after: HarnessRewardSnapshotDict | None = None,
         scored_touchdown: bool = False,
         expected_move: bool = False,
         acquired_card: bool = False,
     ) -> str:
-        """Compact label for logs. Actor geometry joins ``playerId`` → ``rewards.players``."""
+        """Compact label for logs. Actor geometry joins ``playerId`` → ``rewards.players``.
+
+        Throws: when ``rewards_after`` is set and the ball did not land on
+        ``targetCoordinate``, append ``(ball->x,y)`` after the throw coords.
+        """
         tag = str(legal_choice.get("kind") or "?")
 
         challenge_slot = _challenge_slot(legal_choice)
@@ -378,6 +388,11 @@ class ScenarioEvalDebug:
             extras.append(attached_bonus)
 
         suffix = ("*" if expected_move else "") + ("!" if scored_touchdown else "") + ("+" if acquired_card else "")
+        ball_bit = ""
+        if tag in _THROW_KINDS and rewards_after is not None and target_xy is not None:
+            landed = ball_xy(rewards_after)
+            if landed is not None and landed != target_xy:
+                ball_bit = f"(ball->{_abs_xy_label(*landed)})"
 
         if source_xy is not None and target_xy is not None:
             from_label = _abs_xy_label(*source_xy)
@@ -392,11 +407,11 @@ class ScenarioEvalDebug:
         elif extras:
             body = ",".join(extras)
         else:
-            return f"{tag}{suffix}"
+            return f"{tag}{ball_bit}{suffix}"
 
         if extras and (source_xy is not None or actor_player_index is not None or target_xy is not None):
             body = f"{body},{','.join(extras)}"
-        return f"{tag}({body}){suffix}"
+        return f"{tag}({body}){ball_bit}{suffix}"
 
     def _capture_opening_decision_if_needed(
         self,
