@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from gridiron_ai.eval_debug import format_eval_game_line
 from gridiron_ai.metrics import format_scenario_eval_headline
 from gridiron_ai.paths import EVAL_DIR
 from gridiron_ai.reward import FULL_GAME_ONNX_OPPONENT_PROFILES, REWARD_PROFILES, SHAPED_PROFILES
@@ -58,6 +59,8 @@ from gridiron_ai.scenario_curriculum import (
     path_for_gate_failures,
     path_for_last_eval,
     path_for_stem,
+    scenario_train_budget_units,
+    scenarios_for_cycle,
     train_multiplier_summary_lines,
 )
 from gridiron_ai.api.scenarios import (
@@ -299,9 +302,9 @@ def _num_delta(before: float, after: float, *, digits: int = 1) -> str:
 
 
 def _fmt_eval_block(label: str, stats: dict[str, Any]) -> list[str]:
-    wins = int(stats["wins"])
-    losses = int(stats["losses"])
-    draws = int(stats["draws"])
+    wins = int(stats.get("wins") or 0)
+    losses = int(stats.get("losses") or 0)
+    draws = int(stats.get("draws") or 0)
     steps_bit = ""
     raw_steps = stats.get("training_steps")
     if raw_steps is not None:
@@ -312,26 +315,114 @@ def _fmt_eval_block(label: str, stats: dict[str, Any]) -> list[str]:
     return [
         f"  vs {label}:{steps_bit}",
         (
-            f"    winrate={_pct(stats['winrate'])}  wins={wins} losses={losses} draws={draws}  "
+            f"    winrate={_pct(stats.get('winrate'))}  wins={wins} losses={losses} draws={draws}  "
             f"win_by_4_rate={_pct(stats.get('win_by_4_rate'))}"
         ),
         (
-            f"    score_us={stats['score_us']:.1f} score_them={stats['score_them']:.1f} "
-            f"score_diff={stats['score_diff']:+.1f}  "
+            f"    score_us={float(stats.get('score_us') or 0):.1f} "
+            f"score_them={float(stats.get('score_them') or 0):.1f} "
+            f"score_diff={float(stats.get('score_diff') or 0):+.1f}  "
             f"td_rate={_pct(stats.get('td_rate'))}  "
-            f"touchdowns={stats['touchdowns']:.2f} touchdowns_them={stats['touchdowns_them']:.2f}"
+            f"touchdowns={float(stats.get('touchdowns') or 0):.2f} "
+            f"touchdowns_them={float(stats.get('touchdowns_them') or 0):.2f}"
         ),
         (
-            f"    ball_rate_us={_pct(stats['ball_rate_us'])} ball_rate_them={_pct(stats['ball_rate_them'])}  "
-            f"ball_opp_half_rate_us={_pct(stats['ball_opp_half_rate_us'])}  "
-            f"ball_proximity_us={stats['ball_proximity_us']:.2f}"
+            f"    ball_rate_us={_pct(stats.get('ball_rate_us'))} "
+            f"ball_rate_them={_pct(stats.get('ball_rate_them'))}  "
+            f"ball_opp_half_rate_us={_pct(stats.get('ball_opp_half_rate_us'))}  "
+            f"ball_proximity_us={float(stats.get('ball_proximity_us') or 0):.2f}"
         ),
         (
-            f"    truncation_rate={_pct(stats['truncation_rate'])}  "
-            f"submit_error_rate={_pct(stats['submit_error_rate'])}  "
-            f"turns={stats['turns']:.1f} total_actions={stats['total_actions']:.1f}"
+            f"    truncation_rate={_pct(stats.get('truncation_rate'))}  "
+            f"submit_error_rate={_pct(stats.get('submit_error_rate'))}  "
+            f"turns={float(stats.get('turns') or 0):.1f} "
+            f"total_actions={float(stats.get('total_actions') or 0):.1f}"
         ),
     ]
+
+
+# First N games from a failing scenario eval JSON (``--verbose``).
+_SCENARIO_FAIL_EVAL_GAMES = 10
+
+
+def _fmt_scenario_fail_eval_games(target: TrainTarget) -> str | None:
+    """First 10 train-format game lines for active drills whose latest eval failed.
+
+    Active = same set as the train sandwich: ``scenarios_for_cycle`` with next-cycle
+    train budget > 0 (healthy d5 skipped; soft-d5 / climbers included).
+    """
+    catalog = require_catalog()
+    eval_dir = target.eval_dir()
+    if not eval_dir.is_dir():
+        return None
+    levels = target.load_levels()
+    gate_failures = load_gate_failures(path_for_gate_failures(target.save_stem()))
+    drill_stats = target.load_drill_stats_cumulative()
+    scenario_names = catalog.names()
+    game_phase = game_phase_unlocked(target.checkpoint_key)
+    proxies = catalog.proxy_sources()
+    active = [
+        name
+        for name in scenarios_for_cycle(levels, scenario_names, gate_failures)
+        if name not in proxies
+        and scenario_train_budget_units(
+            name,
+            levels,
+            scenario_names,
+            game_phase=game_phase,
+            gate_failures=gate_failures,
+            drill_stats=drill_stats,
+        )
+        > 0
+    ]
+    lines = [
+        f"  failed scenario evals (active drills; first {_SCENARIO_FAIL_EVAL_GAMES} "
+        f"games from latest eval_*.json):"
+    ]
+    found = False
+    for scenario in active:
+        level = get_difficulty(levels, scenario)
+        _path, stats = _latest_scenario_eval(eval_dir, scenario)
+        if stats is None:
+            continue
+        eval_d = _scenario_eval_difficulty(_path, stats)
+        # Skip just-promoted: latest artifact is a pass at the previous d.
+        if eval_d is None or eval_d != level:
+            continue
+        episodes_n = int(stats.get("episodes") or 0)
+        wins = int(stats.get("wins") or 0)
+        if episodes_n <= 0 or wins >= eval_pass_min_wins(episodes_n):
+            continue
+        raw = stats.get("episodes_raw")
+        if not isinstance(raw, list) or not raw:
+            continue
+        games = [ep for ep in raw if isinstance(ep, dict)][:_SCENARIO_FAIL_EVAL_GAMES]
+        if not games:
+            continue
+        found = True
+        short = catalog.short_name(scenario)
+        d_bit = f"d{eval_d}"
+        losses = int(stats.get("losses") or 0)
+        draws = int(stats.get("draws") or 0)
+        steps = stats.get("training_steps")
+        steps_bit = f"  training_steps={int(steps)}" if steps is not None else ""
+        lines.append(
+            f"  {short} {d_bit}  W{wins}/L{losses}/D{draws} ({episodes_n} ep){steps_bit}  "
+            f"games 1–{len(games)}:"
+        )
+        for index, episode in enumerate(games, start=1):
+            # Same stdout as train after-eval (expected= / turn1= / ball_opp).
+            block = format_eval_game_line(
+                episode,
+                game_num=index,
+                games=episodes_n,
+                truncated=bool(episode.get("truncated")),
+                scenario=scenario,
+            )
+            lines.append(block)
+    if not found:
+        return None
+    return "\n".join(lines)
 
 
 def _fmt_trend(
@@ -958,6 +1049,10 @@ def _legend() -> str:
             "  (waived)               claim hit fail threshold — temporarily excluded from gates "
             f"(claims only; threshold {GATE_PROGRESS_WAIVE_FAILURES}; boards never waive)",
             "  gate_fails             current-difficulty / all-time imperfect after-evals (omitted for proxy drills)",
+            "  failed scenario evals  --verbose: first 10 train-format game lines "
+            "(expected= / turn1= / ball_opp) for active drills (same as train sandwich) "
+            "whose latest eval_*.json at the current curriculum d failed "
+            "(skips just-promoted: pass at previous d)",
             f"  train 1×/2×/8×         next-cycle PPO budget multiplier (gating drills; see criteria under drill lists)",
             "  cycles                 train sandwich units cumulative (scenario_a→current; 2× gate fails / behind pack; 8× fail at pack min / below-d4 opening / ≥5 demotes after board d4+)",
             "  d5_demotes             times this drill was demoted from d5",
@@ -1571,6 +1666,9 @@ def _summarize_target(target: TrainTarget, *, trend_steps: int) -> str:
                 levels, scenarios, gate_failures, drill_stats, game_phase=game_phase
             )
         )
+    fail_games = _fmt_scenario_fail_eval_games(target)
+    if fail_games:
+        lines.append(fail_games)
     return "\n".join(lines)
 
 

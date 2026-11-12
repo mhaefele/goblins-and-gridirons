@@ -81,7 +81,7 @@ from gridiron_ai.api.env import (
     GridironEnv,
     opponent_metrics_label,
 )
-from gridiron_ai.eval_debug import ScenarioEvalDebug
+from gridiron_ai.eval_debug import format_eval_game_line
 from gridiron_ai.eval_opening_diag import (
     aggregate_opening_move_scores,
     diagnose_opening_mispick,
@@ -1545,30 +1545,13 @@ def _format_eval_game_line(
     truncated: bool,
     scenario: str | None = None,
 ) -> str:
-    if summary is None:
-        return (
-            f"  game {game_num}/{games} MISSING bb_episode "
-            f"(truncated={truncated}) — not counted"
-        )
-    from gridiron_ai.eval_outcome import format_eval_outcome
-
-    outcome = format_eval_outcome(summary)
-    line = (
-        f"  game {game_num}/{games} outcome={outcome} "
-        f"score={summary.get('score_us')}-{summary.get('score_them')} "
-        f"td={summary.get('touchdowns')}/{summary.get('touchdowns_them')} "
-        f"cards={summary.get('challenge_cards')}/{summary.get('challenge_cards_them')} "
-        f"ball={summary.get('ball_rate_us', 0):.2f}/{summary.get('ball_rate_them', 0):.2f} "
-        f"opp_half={summary.get('ball_opp_half_rate_us', 0):.2f}/{summary.get('ball_opp_half_rate_them', 0):.2f} "
-        f"prox={summary.get('ball_proximity_us', 0):.2f} "
-        f"gained={summary.get('ball_gained_us', 0)}/{summary.get('ball_gained_them', 0)}"
+    return format_eval_game_line(
+        summary,
+        game_num=game_num,
+        games=games,
+        truncated=truncated,
+        scenario=scenario,
     )
-    if scenario is not None:
-        difficulty = summary.get("scenario_difficulty")
-        if difficulty is not None:
-            line += f" difficulty={difficulty}"
-        line += ScenarioEvalDebug.turn1_log_suffix(summary)
-    return line
 
 
 def _attach_opening_move_scores(
