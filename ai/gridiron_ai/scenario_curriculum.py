@@ -67,13 +67,22 @@ from gridiron_ai.persistence.scenario_gate_failures import (  # noqa: F401 — r
 from gridiron_ai.persistence.scenario_last_eval import (  # noqa: F401 — re-export
     LAST_EVAL_HISTORY_MAX,
     LAST_EVAL_METRIC_KEYS,
+    LAST_EVAL_OWN_SOURCES,
+    LAST_EVAL_PEER_HISTORY_MAX,
+    LAST_EVAL_SOURCE_AFTER,
+    LAST_EVAL_SOURCE_BEFORE,
+    LAST_EVAL_SOURCE_PEER,
     LastEvalEntryDict,
     LastEvalMetricsDict,
+    LastEvalSource,
     LastEvalStore,
     extract_last_eval_metrics,
+    is_own_train_snap,
     load_last_eval,
+    normalize_last_eval_source,
     path_for_last_eval,
     save_last_eval,
+    trim_last_eval_history,
 )
 from gridiron_ai.api.scenarios import require_catalog
 
@@ -107,6 +116,11 @@ SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER = 2
 SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER = 8
 # d5_demotes at or above this → 8× with a current-level fail only once boards are d4+.
 SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD = 5
+# Stuck-watch / summarize STUCK! thresholds (shared — train peer-probes use the same predicate).
+SCENARIO_GATE_FAIL_SHOUT = 5
+SCENARIO_CYCLES_BEFORE_DRILL_STUCK = 8
+SCENARIO_CYCLES_BEFORE_OPENING_STUCK = 5
+SCENARIO_OPENING_RANK_STUCK = 8.0
 
 
 def scenario_eval_games(train_units: int = 1) -> int:
@@ -154,23 +168,33 @@ def last_eval_history(
     last_eval: LastEvalStore,
     scenario: ScenarioName,
     difficulty: int,
+    *,
+    own_train_only: bool = False,
 ) -> list[LastEvalMetricsDict]:
-    """Oldest→newest slim snapshots (≤ ``LAST_EVAL_HISTORY_MAX``), or empty."""
+    """Oldest→newest slim snapshots, or empty.
+
+    ``own_train_only`` keeps before/after sandwich snaps (≤ ``LAST_EVAL_HISTORY_MAX``) and
+    drops peer probes so trends ignore interference evals.
+    """
     entry = last_eval_entry(last_eval, scenario, difficulty)
     if entry is None:
         return []
     history = entry.get("history")
     if isinstance(history, list) and history:
-        return [dict(snap) for snap in history[-LAST_EVAL_HISTORY_MAX:]]
-    # Defensive: mirrors only (should not happen after parse/record).
-    out: list[LastEvalMetricsDict] = []
-    prior = entry.get("prior")
-    current = entry.get("current")
-    if isinstance(prior, dict):
-        out.append(dict(prior))
-    if isinstance(current, dict):
-        out.append(dict(current))
-    return out[-LAST_EVAL_HISTORY_MAX:]
+        snaps = [dict(snap) for snap in history]
+    else:
+        # Defensive: mirrors only (should not happen after parse/record).
+        snaps = []
+        prior = entry.get("prior")
+        current = entry.get("current")
+        if isinstance(prior, dict):
+            snaps.append(dict(prior))
+        if isinstance(current, dict):
+            snaps.append(dict(current))
+    if own_train_only:
+        snaps = [snap for snap in snaps if is_own_train_snap(snap)]
+        return snaps[-LAST_EVAL_HISTORY_MAX:]
+    return trim_last_eval_history(snaps)
 
 
 def last_eval_metrics(
@@ -178,7 +202,7 @@ def last_eval_metrics(
     scenario: ScenarioName,
     difficulty: int,
 ) -> LastEvalMetricsDict | None:
-    """Slim **current** metrics for ``scenario`` at ``difficulty``, or ``None`` when missing."""
+    """Slim **current** own-train metrics for ``scenario`` at ``difficulty``, or ``None``."""
     entry = last_eval_entry(last_eval, scenario, difficulty)
     if entry is None:
         return None
@@ -191,7 +215,7 @@ def last_eval_prior_metrics(
     scenario: ScenarioName,
     difficulty: int,
 ) -> LastEvalMetricsDict | None:
-    """Slim **prior** (one-before-last write) metrics, or ``None`` when missing."""
+    """Slim **prior** own-train metrics, or ``None`` when missing."""
     entry = last_eval_entry(last_eval, scenario, difficulty)
     if entry is None:
         return None
@@ -204,9 +228,9 @@ def last_eval_rank_history(
     scenario: ScenarioName,
     difficulty: int,
 ) -> list[float]:
-    """Opening expected-best ranks from stored history (oldest→newest), skipping missing."""
+    """Opening expected-best ranks from own-train history (oldest→newest), skipping missing."""
     ranks: list[float] = []
-    for snap in last_eval_history(last_eval, scenario, difficulty):
+    for snap in last_eval_history(last_eval, scenario, difficulty, own_train_only=True):
         rank = snap.get("opening_expected_rank_best_mean")
         if rank is not None:
             ranks.append(float(rank))
@@ -218,13 +242,28 @@ def last_eval_winrate_history(
     scenario: ScenarioName,
     difficulty: int,
 ) -> list[float]:
-    """Drill winrates from stored history (oldest→newest), skipping missing."""
+    """Drill winrates from own-train history (oldest→newest), skipping missing."""
     rates: list[float] = []
-    for snap in last_eval_history(last_eval, scenario, difficulty):
+    for snap in last_eval_history(last_eval, scenario, difficulty, own_train_only=True):
         rate = snap.get("winrate")
         if rate is not None:
             rates.append(float(rate))
     return rates
+
+
+def last_eval_winrate_trail(
+    last_eval: LastEvalStore,
+    scenario: ScenarioName,
+    difficulty: int,
+) -> list[tuple[float, LastEvalSource]]:
+    """Own-train winrates with ``before``/``after`` tags for ``61%(b)→38%(a)`` display."""
+    trail: list[tuple[float, LastEvalSource]] = []
+    for snap in last_eval_history(last_eval, scenario, difficulty, own_train_only=True):
+        rate = snap.get("winrate")
+        if rate is None:
+            continue
+        trail.append((float(rate), normalize_last_eval_source(snap.get("source"))))
+    return trail
 
 
 def record_last_eval(
@@ -232,11 +271,14 @@ def record_last_eval(
     scenario: ScenarioName,
     difficulty: int,
     stats: dict[str, Any],
+    *,
+    source: LastEvalSource = LAST_EVAL_SOURCE_AFTER,
+    peer: ScenarioName | None = None,
 ) -> LastEvalStore:
-    """Copy of ``last_eval`` with ``stats`` appended (keeps last ``LAST_EVAL_HISTORY_MAX``).
+    """Copy of ``last_eval`` with ``stats`` appended (tagged ``source`` / optional ``peer``).
 
-    Every train-time eval writes here — before-eval and after-eval alike — so the rank
-    trail can show drift into the sandwich and recovery out of it.
+    Own-train before/after update ``current``/``prior``. Peer probes append for interference
+    notes only — they do not move the own-train mirrors or displace the trend window.
     """
     updated: LastEvalStore = {
         name: {
@@ -254,7 +296,7 @@ def record_last_eval(
     level_key = str(_clamp(difficulty))
     previous = by_level.get(level_key) or {}
     old_current = previous.get("current")
-    new_slim = extract_last_eval_metrics(stats)
+    new_slim = extract_last_eval_metrics(stats, source=source, peer=peer)
     old_history = [dict(snap) for snap in (previous.get("history") or [])]
     if not old_history:
         # Migrate legacy current/prior into history once.
@@ -262,11 +304,24 @@ def record_last_eval(
             old_history.append(dict(previous["prior"]))
         if isinstance(old_current, dict):
             old_history.append(dict(old_current))
-    history = (old_history + [new_slim])[-LAST_EVAL_HISTORY_MAX:]
+    history = trim_last_eval_history(old_history + [new_slim])
+    own = [snap for snap in history if is_own_train_snap(snap)]
+    if is_own_train_snap(new_slim):
+        current = new_slim
+        prior = own[-2] if len(own) >= 2 else None
+    else:
+        current = dict(old_current) if isinstance(old_current, dict) else (
+            dict(own[-1]) if own else dict(new_slim)
+        )
+        prior = (
+            dict(previous["prior"])
+            if previous.get("prior") is not None
+            else (dict(own[-2]) if len(own) >= 2 else None)
+        )
     by_level[level_key] = {
         "history": history,
-        "current": new_slim,
-        "prior": dict(old_current) if isinstance(old_current, dict) else None,
+        "current": current,
+        "prior": prior,
     }
     updated[key] = by_level
     return updated
@@ -283,6 +338,120 @@ def gate_failure_count(
     if difficulty is not None:
         return int(by_level.get(str(_clamp(difficulty)), 0))
     return sum(int(count) for count in by_level.values())
+
+
+def scenario_stuck_watch_reasons(
+    scenario: ScenarioName,
+    *,
+    levels: dict[str, int],
+    gate_failures: dict[str, dict[str, int]],
+    drill_stats: dict[str, dict[str, int]],
+    last_eval: LastEvalStore,
+    latest_eval_stats: dict[str, Any] | None = None,
+    latest_eval_difficulty: int | None = None,
+) -> list[str]:
+    """Machine reasons a drill is on the stuck watch list (same bars as summarize STUCK!).
+
+    Empty → not watched. Proxy drills never watch (no trusted after-eval).
+    ``latest_eval_stats`` is the newest on-disk eval JSON for drill-rate stuck (optional).
+    """
+    catalog = require_catalog()
+    if scenario in catalog.proxy_sources():
+        return []
+    difficulty = get_difficulty(levels, scenario)
+    reasons: list[str] = []
+    cycles = drill_stat_count(drill_stats, scenario, "cycles")
+    demotes = drill_stat_count(drill_stats, scenario, "d5_demotes")
+    fails = gate_failure_count(gate_failures, scenario, difficulty=difficulty)
+
+    if is_progress_waived(gate_failures, scenario, levels):
+        reasons.append("progress_waived")
+    elif fails >= SCENARIO_GATE_FAIL_SHOUT:
+        reasons.append("gate_fails")
+
+    if demotes >= SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD:
+        reasons.append("d5_demotes")
+
+    if (
+        latest_eval_stats is not None
+        and latest_eval_difficulty == difficulty
+        and cycles >= SCENARIO_CYCLES_BEFORE_DRILL_STUCK
+        and difficulty < MAX_DIFFICULTY
+    ):
+        wins = int(latest_eval_stats.get("wins") or 0)
+        games = int(latest_eval_stats.get("episodes") or 0)
+        if games > 0 and wins < eval_pass_min_wins(games):
+            reasons.append("drill_rate")
+
+    opening = last_eval_metrics(last_eval, scenario, difficulty)
+    rank = None
+    if opening is not None:
+        raw_rank = opening.get("opening_expected_rank_best_mean")
+        try:
+            rank = float(raw_rank) if raw_rank is not None else None
+        except (TypeError, ValueError):
+            rank = None
+    if (
+        rank is not None
+        and rank >= SCENARIO_OPENING_RANK_STUCK
+        and cycles >= SCENARIO_CYCLES_BEFORE_OPENING_STUCK
+        and difficulty < MAX_DIFFICULTY
+    ):
+        reasons.append("opening_rank")
+    return reasons
+
+
+def scenario_is_stuck_watch(
+    scenario: ScenarioName,
+    *,
+    levels: dict[str, int],
+    gate_failures: dict[str, dict[str, int]],
+    drill_stats: dict[str, dict[str, int]],
+    last_eval: LastEvalStore,
+    latest_eval_stats: dict[str, Any] | None = None,
+    latest_eval_difficulty: int | None = None,
+) -> bool:
+    """True when [scenario_stuck_watch_reasons] is non-empty."""
+    return bool(
+        scenario_stuck_watch_reasons(
+            scenario,
+            levels=levels,
+            gate_failures=gate_failures,
+            drill_stats=drill_stats,
+            last_eval=last_eval,
+            latest_eval_stats=latest_eval_stats,
+            latest_eval_difficulty=latest_eval_difficulty,
+        )
+    )
+
+
+def stuck_watch_scenarios(
+    scenario_names: list[str],
+    *,
+    levels: dict[str, int],
+    gate_failures: dict[str, dict[str, int]],
+    drill_stats: dict[str, dict[str, int]],
+    last_eval: LastEvalStore,
+) -> list[tuple[ScenarioName, int]]:
+    """``(scenario, difficulty)`` pairs on the stuck watch list (catalog order).
+
+    Train uses this without on-disk eval JSON — gate_fails / opening_rank / demotes /
+    waived are enough to catch LBR-style thrash; drill_rate stuck still needs summarize.
+    """
+    catalog = require_catalog()
+    out: list[tuple[ScenarioName, int]] = []
+    for name in scenario_names:
+        if catalog.is_claim(name) and not claims_unlocked(levels, scenario_names, gate_failures):
+            continue
+        if scenario_is_stuck_watch(
+            name,
+            levels=levels,
+            gate_failures=gate_failures,
+            drill_stats=drill_stats,
+            last_eval=last_eval,
+        ):
+            out.append((name, get_difficulty(levels, name)))
+    return out
 
 
 def merge_drill_stats(

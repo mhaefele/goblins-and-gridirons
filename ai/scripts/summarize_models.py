@@ -40,6 +40,10 @@ from gridiron_ai.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
     GATE_PROGRESS_WAIVE_FAILURES,
     MAX_DIFFICULTY,
+    SCENARIO_CYCLES_BEFORE_DRILL_STUCK,
+    SCENARIO_CYCLES_BEFORE_OPENING_STUCK,
+    SCENARIO_GATE_FAIL_SHOUT,
+    SCENARIO_OPENING_RANK_STUCK,
     SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD,
     all_scenarios_mastered,
     board_scenarios_in_catalog,
@@ -52,7 +56,7 @@ from gridiron_ai.scenario_curriculum import (
     last_eval_metrics,
     last_eval_prior_metrics,
     last_eval_rank_history,
-    last_eval_winrate_history,
+    last_eval_winrate_trail,
     load_gate_failures,
     load_last_eval,
     load_levels,
@@ -769,10 +773,7 @@ _TRAIN_HEALTH_FIELDS = (
 )
 
 # Scenario shout thresholds — loud when curriculum is spinning without progress.
-_SCENARIO_GATE_FAIL_SHOUT = 5  # current-level fails (claims auto-waive at GATE_PROGRESS_WAIVE_FAILURES)
-_SCENARIO_CYCLES_BEFORE_DRILL_STUCK = 8
-_SCENARIO_CYCLES_BEFORE_OPENING_STUCK = 5
-_SCENARIO_OPENING_RANK_STUCK = 8.0
+# Stuck thresholds live on scenario_curriculum (train peer-probes share them).
 
 
 def _collect_train_warnings(targets: list[TrainTarget], *, trend_steps: int) -> list[str]:
@@ -839,14 +840,14 @@ def _collect_scenario_warnings(targets: list[TrainTarget]) -> list[str]:
                     f"(claim; ≥{GATE_PROGRESS_WAIVE_FAILURES} gate fails at this level) — "
                     "drill is no longer blocking gates but is not learning"
                 )
-            elif fails >= _SCENARIO_GATE_FAIL_SHOUT:
+            elif fails >= SCENARIO_GATE_FAIL_SHOUT:
                 if catalog.is_claim(scenario):
                     waive_bit = f"; claims auto-waive at {GATE_PROGRESS_WAIVE_FAILURES}"
                 else:
                     waive_bit = "; boards never auto-waive"
                 warnings.append(
                     f"STUCK! {tag} gate_fails={fails} at current level "
-                    f"(shout ≥{_SCENARIO_GATE_FAIL_SHOUT}{waive_bit}) — "
+                    f"(shout ≥{SCENARIO_GATE_FAIL_SHOUT}{waive_bit}) — "
                     "burning scenario train without clearing"
                 )
 
@@ -862,7 +863,7 @@ def _collect_scenario_warnings(targets: list[TrainTarget]) -> list[str]:
             if (
                 stats is not None
                 and eval_d == level
-                and cycles >= _SCENARIO_CYCLES_BEFORE_DRILL_STUCK
+                and cycles >= SCENARIO_CYCLES_BEFORE_DRILL_STUCK
                 and level < MAX_DIFFICULTY
             ):
                 wins = int(stats.get("wins") or 0)
@@ -882,8 +883,8 @@ def _collect_scenario_warnings(targets: list[TrainTarget]) -> list[str]:
                     rank = None
             if (
                 rank is not None
-                and rank >= _SCENARIO_OPENING_RANK_STUCK
-                and cycles >= _SCENARIO_CYCLES_BEFORE_OPENING_STUCK
+                and rank >= SCENARIO_OPENING_RANK_STUCK
+                and cycles >= SCENARIO_CYCLES_BEFORE_OPENING_STUCK
                 and level < MAX_DIFFICULTY
             ):
                 warnings.append(
@@ -1035,7 +1036,7 @@ def _legend() -> str:
             "  truncation_rate        games hitting 500-action cap",
             "  submit_error_rate      failed HTTP submits",
             "  turns / total_actions  match length + policy submits",
-            "  drill_rate             scenario winrate trail (last ≤4 train-time evals, oldest→newest)",
+            "  drill_rate             own-train winrate trail (last ≤4 before/after; (b)/(a) tags; peer probes omitted)",
             "  W/L/D on drill rows      decided scenario episodes (DISTRACTED → D)",
             "  expected: rank→…→rank (n=pref/legal) p= logit_gap=   last ≤4 train-time eval "
             "best PASS ranks (oldest→newest; before+after); n= preferred/legal (latest only); "
@@ -1532,7 +1533,7 @@ def _fmt_scenario_drills(target: TrainTarget) -> str:
                 opening_stats = last_eval_metrics(last_eval, scenario, level) or stats
                 opening_prior = last_eval_prior_metrics(last_eval, scenario, level)
                 rank_history = last_eval_rank_history(last_eval, scenario, level)
-                winrate_history = last_eval_winrate_history(last_eval, scenario, level)
+                winrate_trail = last_eval_winrate_trail(last_eval, scenario, level)
                 headline_stats = {
                     **opening_stats,
                     "winrate": stats["winrate"],
@@ -1548,7 +1549,7 @@ def _fmt_scenario_drills(target: TrainTarget) -> str:
                     stats=headline_stats,
                     prior=opening_prior,
                     rank_history=rank_history or None,
-                    winrate_history=winrate_history or None,
+                    winrate_trail=winrate_trail or None,
                     eval_difficulty=eval_d,
                 )
                 # leader has ``→ NN  `` / ``  NN  ``; headline starts with padded short name + dN.

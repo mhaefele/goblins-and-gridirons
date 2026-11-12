@@ -110,13 +110,31 @@ def format_rate_bit(
     return rendered
 
 
+def _drill_rate_source_tag(source: str | None) -> str:
+    """``(b)`` / ``(a)`` suffix for before-train vs after-train trail points."""
+    if source == "before":
+        return "(b)"
+    if source == "after":
+        return "(a)"
+    return ""
+
+
 def _drill_rate_pct_bit(
     after: float,
     prior: float | None = None,
     *,
     winrate_history: list[float] | None = None,
+    winrate_trail: list[tuple[float, str]] | None = None,
 ) -> str:
-    """Whole-percent drill_rate (``84%`` / ``30%→0%`` / ``40%→30%→28%`` trail)."""
+    """Whole-percent drill_rate (``84%`` / ``30%(b)→0%(a)`` / ``40%→30%→28%`` trail)."""
+    if winrate_trail:
+        bits = [
+            f"{100 * float(rate):.0f}%{_drill_rate_source_tag(source)}"
+            for rate, source in winrate_trail
+            if rate is not None
+        ][-4:]
+        if bits:
+            return "→".join(bits)
     if winrate_history:
         trail = [float(rate) for rate in winrate_history if rate is not None][-4:]
         if trail:
@@ -135,6 +153,7 @@ def format_scenario_eval_headline(
     prior: dict[str, Any] | None = None,
     rank_history: list[float] | None = None,
     winrate_history: list[float] | None = None,
+    winrate_trail: list[tuple[float, str]] | None = None,
     eval_difficulty: int | None = None,
 ) -> str:
     """Readable drill line: ``loose_ball_run  d1  @d1 drill_rate=0% W0/L10/D0 (10 ep) expected: …``.
@@ -165,6 +184,7 @@ def format_scenario_eval_headline(
         float(stats.get("winrate") or 0.0),
         prior_rate,
         winrate_history=winrate_history,
+        winrate_trail=winrate_trail,
     )
     kl_bit = _approx_kl_bit(stats, prior=prior)
     return (
@@ -307,6 +327,7 @@ def print_scenario_eval_metrics(
     prior: dict[str, Any] | None = None,
     rank_history: list[float] | None = None,
     winrate_history: list[float] | None = None,
+    winrate_trail: list[tuple[float, str]] | None = None,
     indent: int = 0,
 ) -> None:
     """Scenario eval: drill headline first, then score/kinds/submit extras."""
@@ -318,6 +339,7 @@ def print_scenario_eval_metrics(
             prior=prior,
             rank_history=rank_history,
             winrate_history=winrate_history,
+            winrate_trail=winrate_trail,
         ),
         indent=indent,
     )

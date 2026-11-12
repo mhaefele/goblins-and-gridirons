@@ -1,21 +1,38 @@
-"""``{stem}.scenario_last_eval.json`` — last train-time eval metrics per drill@d.
+"""``{stem}.scenario_last_eval.json`` — train-time eval metrics per drill@d.
 
-Each slot keeps up to ``LAST_EVAL_HISTORY_MAX`` slim snapshots (oldest→newest). ``current`` /
-``prior`` are the last two entries (dual-written for readers that only need a delta).
+Each slot keeps a rolling ``history`` of slim snapshots (oldest→newest), tagged by
+``source``:
+
+- ``before`` / ``after`` — that drill's own sandwich evals (trend / current / prior)
+- ``peer`` — probe after another drill trained (``peer`` = that drill's name); kept for
+  interference notes, excluded from drill_rate trends
+
+``current`` / ``prior`` always mirror the last two **own-train** snaps.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TypeAlias, TypedDict
+from typing import Literal, NotRequired, TypeAlias, TypedDict
 
 from gridiron_ai.api.harness_wire import ScenarioName
 from gridiron_ai.persistence.json_io import atomic_write_json
 
 _SUFFIX = ".scenario_last_eval.json"
 _MAX_DIFFICULTY = 5
+# Own-train (before/after) snaps kept for trends / current / prior.
 LAST_EVAL_HISTORY_MAX = 4
+# Peer-probe snaps kept alongside (do not displace the own-train window).
+LAST_EVAL_PEER_HISTORY_MAX = 8
+
+LAST_EVAL_SOURCE_BEFORE = "before"
+LAST_EVAL_SOURCE_AFTER = "after"
+LAST_EVAL_SOURCE_PEER = "peer"
+LastEvalSource: TypeAlias = Literal["before", "after", "peer"]
+LAST_EVAL_OWN_SOURCES: frozenset[str] = frozenset(
+    {LAST_EVAL_SOURCE_BEFORE, LAST_EVAL_SOURCE_AFTER}
+)
 
 # Slim fields persisted for Eval-line / learn-line / summary prior→current deltas.
 LAST_EVAL_METRIC_KEYS = (
@@ -49,10 +66,14 @@ class LastEvalMetricsDict(TypedDict):
     opening_ball_swap_expected_p_best_mean: float | None
     opening_ball_swap_expected_rank_best_mean: float | None
     approx_kl: float | None
+    # Tag: own sandwich vs probe after another drill trained. Legacy snaps omit → treat as after.
+    source: NotRequired[LastEvalSource]
+    # When source=peer: curriculum name of the drill that just trained.
+    peer: NotRequired[ScenarioName | None]
 
 
 class LastEvalEntryDict(TypedDict):
-    """One drill@d slot: rolling history plus last-two mirrors."""
+    """One drill@d slot: rolling history plus last-two own-train mirrors."""
 
     history: list[LastEvalMetricsDict]
     current: LastEvalMetricsDict
@@ -72,6 +93,19 @@ def _clamp(level: int) -> int:
     return max(0, min(_MAX_DIFFICULTY, int(level)))
 
 
+def normalize_last_eval_source(raw: object | None) -> LastEvalSource:
+    """Legacy untagged snaps count as ``after`` (own-train)."""
+    if raw == LAST_EVAL_SOURCE_BEFORE:
+        return LAST_EVAL_SOURCE_BEFORE
+    if raw == LAST_EVAL_SOURCE_PEER:
+        return LAST_EVAL_SOURCE_PEER
+    return LAST_EVAL_SOURCE_AFTER
+
+
+def is_own_train_snap(snap: LastEvalMetricsDict | dict[str, object]) -> bool:
+    return normalize_last_eval_source(snap.get("source")) in LAST_EVAL_OWN_SOURCES
+
+
 def _empty_slim() -> LastEvalMetricsDict:
     return {
         "winrate": None,
@@ -85,6 +119,8 @@ def _empty_slim() -> LastEvalMetricsDict:
         "opening_ball_swap_expected_p_best_mean": None,
         "opening_ball_swap_expected_rank_best_mean": None,
         "approx_kl": None,
+        "source": LAST_EVAL_SOURCE_AFTER,
+        "peer": None,
     }
 
 
@@ -101,17 +137,57 @@ def _slim_metrics(raw: object) -> LastEvalMetricsDict | None:
                 values[field] = float(value)
             except (TypeError, ValueError):
                 values[field] = None
-    return LastEvalMetricsDict(**values)  # type: ignore[misc]
+    source = normalize_last_eval_source(raw.get("source"))
+    peer_raw = raw.get("peer")
+    peer: ScenarioName | None
+    if source == LAST_EVAL_SOURCE_PEER and peer_raw:
+        peer = str(peer_raw)
+    else:
+        peer = None
+    return LastEvalMetricsDict(
+        **values,  # type: ignore[misc]
+        source=source,
+        peer=peer,
+    )
+
+
+def trim_last_eval_history(
+    history: list[LastEvalMetricsDict],
+) -> list[LastEvalMetricsDict]:
+    """Keep last ``LAST_EVAL_HISTORY_MAX`` own-train + last ``LAST_EVAL_PEER_HISTORY_MAX`` peers."""
+    own_kept = 0
+    peer_kept = 0
+    kept: list[LastEvalMetricsDict] = []
+    for snap in reversed(history):
+        if is_own_train_snap(snap):
+            if own_kept >= LAST_EVAL_HISTORY_MAX:
+                continue
+            own_kept += 1
+        else:
+            if peer_kept >= LAST_EVAL_PEER_HISTORY_MAX:
+                continue
+            peer_kept += 1
+        kept.append(snap)
+    kept.reverse()
+    return kept
+
+
+def _own_train_snaps(history: list[LastEvalMetricsDict]) -> list[LastEvalMetricsDict]:
+    return [snap for snap in history if is_own_train_snap(snap)]
 
 
 def _entry_from_history(history: list[LastEvalMetricsDict]) -> LastEvalEntryDict | None:
     if not history:
         return None
-    trimmed = history[-LAST_EVAL_HISTORY_MAX:]
+    trimmed = trim_last_eval_history(history)
+    own = _own_train_snaps(trimmed)
+    # Prefer own-train mirrors; fall back to last snap when only peers exist (unusual).
+    current = own[-1] if own else trimmed[-1]
+    prior = own[-2] if len(own) >= 2 else None
     return {
         "history": trimmed,
-        "current": trimmed[-1],
-        "prior": trimmed[-2] if len(trimmed) >= 2 else None,
+        "current": current,
+        "prior": prior,
     }
 
 
@@ -163,19 +239,25 @@ def load_last_eval(path: Path) -> LastEvalStore:
     return out
 
 
+def _snap_payload(snap: LastEvalMetricsDict) -> dict[str, object]:
+    payload: dict[str, object] = {field: snap.get(field) for field in LAST_EVAL_METRIC_KEYS}
+    source = normalize_last_eval_source(snap.get("source"))
+    payload["source"] = source
+    payload["peer"] = snap.get("peer") if source == LAST_EVAL_SOURCE_PEER else None
+    return payload
+
+
 def save_last_eval(path: Path, last_eval: LastEvalStore) -> None:
     payload = {
         scenario: {
             str(_clamp(int(level))): {
                 "history": [
-                    {field: snap.get(field) for field in LAST_EVAL_METRIC_KEYS}
-                    for snap in (entry.get("history") or [])[-LAST_EVAL_HISTORY_MAX:]
+                    _snap_payload(snap)
+                    for snap in trim_last_eval_history(list(entry.get("history") or []))
                 ],
-                "current": {
-                    field: entry.get("current", {}).get(field) for field in LAST_EVAL_METRIC_KEYS
-                },
+                "current": _snap_payload(entry.get("current") or _empty_slim()),
                 "prior": (
-                    {field: entry["prior"].get(field) for field in LAST_EVAL_METRIC_KEYS}
+                    _snap_payload(entry["prior"])
                     if entry.get("prior") is not None
                     else None
                 ),
@@ -188,10 +270,20 @@ def save_last_eval(path: Path, last_eval: LastEvalStore) -> None:
     atomic_write_json(path, payload)
 
 
-def extract_last_eval_metrics(stats: dict[str, object]) -> LastEvalMetricsDict:
+def extract_last_eval_metrics(
+    stats: dict[str, object],
+    *,
+    source: LastEvalSource = LAST_EVAL_SOURCE_AFTER,
+    peer: ScenarioName | None = None,
+) -> LastEvalMetricsDict:
     """Pull the slim prior-delta fields from a full eval ``stats`` dict."""
     values: dict[str, float | None] = {}
     for field in LAST_EVAL_METRIC_KEYS:
         value = stats.get(field)
         values[field] = None if value is None else float(value)
-    return LastEvalMetricsDict(**values)  # type: ignore[misc]
+    normalized = normalize_last_eval_source(source)
+    return LastEvalMetricsDict(
+        **values,  # type: ignore[misc]
+        source=normalized,
+        peer=str(peer) if normalized == LAST_EVAL_SOURCE_PEER and peer else None,
+    )

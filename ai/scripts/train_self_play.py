@@ -89,32 +89,37 @@ from gridiron_ai.eval_opening_diag import (
 from gridiron_ai.metrics import (
     accumulate_kind_totals,
     aggregate_episodes,
+    format_rate_bit,
+    format_scenario_eval_headline,
     format_scenario_learn_line,
     load_kind_breakdown,
     print_kind_mix,
     print_metrics,
     print_scenario_eval_metrics,
-    format_scenario_eval_headline,
 )
 from gridiron_ai.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
     DEFAULT_SCENARIO_TRAIN_LEARNING,
     DEFAULT_SCENARIO_TRAIN_MASTERED,
     DEFAULT_SCENARIO_TRAIN_MAINTENANCE,
+    LAST_EVAL_HISTORY_MAX,
+    LAST_EVAL_SOURCE_AFTER,
+    LAST_EVAL_SOURCE_BEFORE,
+    LAST_EVAL_SOURCE_PEER,
     MAX_DIFFICULTY,
     apply_after_eval_curriculum,
     claims_unlocked,
     climb_until_fail_levels,
     eval_pass_min_wins,
+    format_train_multiplier_lines,
     gate_failure_count,
     gating_scenarios_mastered,
     get_difficulty,
-    probe_catalog_scenario_keys,
-    LAST_EVAL_HISTORY_MAX,
     last_eval_history,
     last_eval_metrics,
     last_eval_rank_history,
     last_eval_winrate_history,
+    last_eval_winrate_trail,
     load_drill_stats,
     load_gate_failures,
     load_last_eval,
@@ -123,6 +128,7 @@ from gridiron_ai.scenario_curriculum import (
     path_for_gate_failures,
     path_for_last_eval,
     path_for_stem,
+    probe_catalog_scenario_keys,
     record_last_eval,
     record_train_cycles,
     save_drill_stats,
@@ -135,7 +141,7 @@ from gridiron_ai.scenario_curriculum import (
     SCENARIO_EVAL_GAMES,
     SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER,
     scenario_eval_games,
-    format_train_multiplier_lines,
+    stuck_watch_scenarios,
     train_multiplier_drill_label,
 )
 from gridiron_ai.train_mix import (
@@ -200,8 +206,10 @@ DEFAULT_BATCH_SIZE = 256
 
 # Deterministic games for each scenario after-eval (20; 100 at 8×); delta vs prior eval at same @d.
 _VECNORMALIZE_SUFFIX = "_vecnormalize.pkl"
-# (scenario, difficulty) → last train-time eval this process; disk mirror is scenario_last_eval.json.
+# (scenario, difficulty) → last own-train eval this process; disk mirror is scenario_last_eval.json.
 _last_scenario_after_eval: dict[tuple[str, int], dict[str, Any]] = {}
+# Last watch-probe (own after-eval or peer) for interference deltas — not used for before→after.
+_last_watch_probe: dict[tuple[str, int], dict[str, Any]] = {}
 # One blank line between drills (phase banners carry the rest of the structure).
 _EVAL_SECTION_GAP = "\n"
 _scenario_perfect_summaries: list[str] = []
@@ -213,7 +221,7 @@ def _prior_scenario_eval(
     difficulty: int,
     save_stem: Path,
 ) -> dict[str, Any] | None:
-    """In-memory last eval, else slim metrics from ``{stem}.scenario_last_eval.json``."""
+    """In-memory last own-train eval, else slim metrics from ``{stem}.scenario_last_eval.json``."""
     prior = _last_scenario_after_eval.get((scenario, difficulty))
     if prior is not None:
         return prior
@@ -225,11 +233,27 @@ def _remember_scenario_eval(
     difficulty: int,
     stats: dict[str, Any],
     save_stem: Path,
+    *,
+    source: str = LAST_EVAL_SOURCE_AFTER,
+    peer: str | None = None,
 ) -> None:
-    """Update process cache + persist slim metrics beside the checkpoint stem."""
-    _last_scenario_after_eval[(scenario, difficulty)] = stats
+    """Persist slim metrics; own-train also updates the process before→after cache."""
+    key = (scenario, difficulty)
+    if source != LAST_EVAL_SOURCE_PEER:
+        _last_scenario_after_eval[key] = stats
+    _last_watch_probe[key] = stats
     path = path_for_last_eval(save_stem)
-    save_last_eval(path, record_last_eval(load_last_eval(path), scenario, difficulty, stats))
+    save_last_eval(
+        path,
+        record_last_eval(
+            load_last_eval(path),
+            scenario,
+            difficulty,
+            stats,
+            source=source,  # type: ignore[arg-type]
+            peer=peer,
+        ),
+    )
 
 
 def _ppo_train_health(model: MaskablePPO) -> dict[str, float]:
@@ -1175,24 +1199,33 @@ def _eval_one_scenario(
     difficulty: int,
     games: int = SCENARIO_EVAL_GAMES,
     train_health: dict[str, float] | None = None,
+    source: str = LAST_EVAL_SOURCE_AFTER,
+    peer: str | None = None,
 ) -> dict[str, Any]:
     """Deterministic eval for one drill at its current curriculum difficulty.
 
     Eval line shows ``before→after`` vs the last same drill@d train-time eval (memory,
     else ``{stem}.scenario_last_eval.json``). Persists only while training — ``--eval-only``
     never writes the cache or sidecar. ``games`` is 100 for 8× train units, else 20.
-    Before-eval and after-eval both append to the rolling last-eval history.
+    Before/after/peer evals share one last-eval history (tagged); trends filter own-train.
     ``train_health`` (e.g. ``approx_kl`` from the preceding learn) merges into stats + last-eval.
     """
-    prior = _prior_scenario_eval(scenario, difficulty, save_stem)
+    # Peer probes delta vs the last watch snapshot (own after-eval or prior peer), not own-train prior.
+    if source == LAST_EVAL_SOURCE_PEER:
+        prior = _last_watch_probe.get((scenario, difficulty))
+        if prior is None:
+            prior = _prior_scenario_eval(scenario, difficulty, save_stem)
+    else:
+        prior = _prior_scenario_eval(scenario, difficulty, save_stem)
     stored = load_last_eval(path_for_last_eval(save_stem))
     stored_ranks = last_eval_rank_history(stored, scenario, difficulty)
     stored_rates = last_eval_winrate_history(stored, scenario, difficulty)
+    stored_trail = last_eval_winrate_trail(stored, scenario, difficulty)
     # ball_swap_probe — removable
     from gridiron_ai.eval_ball_swap_probe import ball_swap_rank_trail_from_history
 
     stored_ball_swap_ranks = ball_swap_rank_trail_from_history(
-        last_eval_history(stored, scenario, difficulty)
+        last_eval_history(stored, scenario, difficulty, own_train_only=True)
     )
     stats = _eval_segment(
         model,
@@ -1209,11 +1242,15 @@ def _eval_one_scenario(
         metrics_prior=prior,
         rank_history_before=stored_ranks,
         winrate_history_before=stored_rates,
+        winrate_trail_before=stored_trail,
         ball_swap_rank_history_before=stored_ball_swap_ranks,
         train_health=train_health,
+        eval_source=source,
     )
     if not args.eval_only:
-        _remember_scenario_eval(scenario, difficulty, stats, save_stem)
+        _remember_scenario_eval(
+            scenario, difficulty, stats, save_stem, source=source, peer=peer
+        )
     return stats
 
 
@@ -1399,6 +1436,7 @@ def _train_scenarios_segment(
                     scenario=scenario,
                     difficulty=difficulty,
                     games=eval_games,
+                    source=LAST_EVAL_SOURCE_BEFORE,
                 )
                 row.update(_cycle_stats_fields(f"eval_scenario_{slug}_before", before))
                 _scenario_phase_banner(
@@ -1454,53 +1492,68 @@ def _train_scenarios_segment(
                 f"training complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
             )
 
-            if not do_eval:
-                _eval_section_break()
-                continue
+            if do_eval:
+                write_focus(
+                    focus_path, scenario=scenario, difficulty=difficulty, phase="after-eval"
+                )
+                _scenario_phase_banner(
+                    f"after-eval starting — {tag} ({eval_games}g)",
+                    blank_before=True,
+                )
+                phase_t0 = time.perf_counter()
+                after = _eval_one_scenario(
+                    model,
+                    args=args,
+                    pool=pool,
+                    profile=profile,
+                    runs_key=runs_key,
+                    save_stem=save_stem,
+                    scenario=scenario,
+                    difficulty=difficulty,
+                    games=eval_games,
+                    train_health=train_health or None,
+                    source=LAST_EVAL_SOURCE_AFTER,
+                )
+                row.update(_cycle_stats_fields(f"eval_scenario_{slug}_after", after))
+                _print_scenario_learn_line(
+                    scenario=scenario,
+                    difficulty=difficulty,
+                    before=before,
+                    after=after,
+                    row=row,
+                    slug=slug,
+                )
+                levels, gate_failures, drill_stats = _apply_scenario_after_eval(
+                    scenario=scenario,
+                    difficulty=difficulty,
+                    stats=after,
+                    levels=levels,
+                    gate_failures=gate_failures,
+                    drill_stats=drill_stats,
+                    curriculum_path=curriculum_path,
+                    gate_failures_path=gate_failures_path,
+                    drill_stats_path=drill_stats_path,
+                    expected_games=eval_games,
+                )
+                _scenario_phase_banner(
+                    f"after-eval complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
+                )
 
-            write_focus(
-                focus_path, scenario=scenario, difficulty=difficulty, phase="after-eval"
-            )
-            _scenario_phase_banner(
-                f"after-eval starting — {tag} ({eval_games}g)",
-                blank_before=True,
-            )
-            phase_t0 = time.perf_counter()
-            after = _eval_one_scenario(
+            # Stuck watches: probe each after this peer trained (attrs impact to this drill).
+            _probe_stuck_watches_after_peer(
                 model,
                 args=args,
                 pool=pool,
                 profile=profile,
                 runs_key=runs_key,
                 save_stem=save_stem,
-                scenario=scenario,
-                difficulty=difficulty,
-                games=eval_games,
-                train_health=train_health or None,
-            )
-            row.update(_cycle_stats_fields(f"eval_scenario_{slug}_after", after))
-            _print_scenario_learn_line(
-                scenario=scenario,
-                difficulty=difficulty,
-                before=before,
-                after=after,
-                row=row,
-                slug=slug,
-            )
-            levels, gate_failures, drill_stats = _apply_scenario_after_eval(
-                scenario=scenario,
-                difficulty=difficulty,
-                stats=after,
+                focus_path=focus_path,
+                peer_scenario=scenario,
+                peer_difficulty=difficulty,
                 levels=levels,
                 gate_failures=gate_failures,
                 drill_stats=drill_stats,
-                curriculum_path=curriculum_path,
-                gate_failures_path=gate_failures_path,
-                drill_stats_path=drill_stats_path,
-                expected_games=eval_games,
-            )
-            _scenario_phase_banner(
-                f"after-eval complete — {tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
+                scenario_names=scenarios,
             )
             _eval_section_break()
     finally:
@@ -1535,6 +1588,85 @@ def _print_scenario_learn_line(
         ).lstrip(),
         indent=1,
     )
+
+
+def _probe_stuck_watches_after_peer(
+    model: MaskablePPO,
+    *,
+    args: argparse.Namespace,
+    pool: WorkerPool,
+    profile: RewardProfileName,
+    runs_key: str,
+    save_stem: Path,
+    focus_path: Path,
+    peer_scenario: str,
+    peer_difficulty: int,
+    levels: dict[str, int],
+    gate_failures: dict[str, dict[str, int]],
+    drill_stats: dict[str, dict[str, int]],
+    scenario_names: list[str],
+) -> None:
+    """After ``peer`` trains: eval each stuck-watch drill and attribute the delta to peer.
+
+    Peer probes write ``source=peer`` into the shared last-eval file (filtered out of trends).
+    """
+    if args.eval_only:
+        return
+    last_eval = load_last_eval(path_for_last_eval(save_stem))
+    watches = stuck_watch_scenarios(
+        scenario_names,
+        levels=levels,
+        gate_failures=gate_failures,
+        drill_stats=drill_stats,
+        last_eval=last_eval,
+    )
+    if not watches:
+        return
+    catalog = require_catalog()
+    peer_short = catalog.short_name(peer_scenario)
+    for watch, watch_d in watches:
+        if watch == peer_scenario:
+            continue
+        watch_tag = f"{watch} d{watch_d}"
+        prior = _last_watch_probe.get((watch, watch_d))
+        if prior is None:
+            prior = _prior_scenario_eval(watch, watch_d, save_stem)
+        write_focus(
+            focus_path,
+            scenario=watch,
+            difficulty=watch_d,
+            phase="peer-eval",
+        )
+        _scenario_phase_banner(
+            f"peer-eval starting — {watch_tag} after {peer_scenario} d{peer_difficulty} "
+            f"({SCENARIO_EVAL_GAMES}g)",
+            blank_before=True,
+        )
+        phase_t0 = time.perf_counter()
+        after = _eval_one_scenario(
+            model,
+            args=args,
+            pool=pool,
+            profile=profile,
+            runs_key=runs_key,
+            save_stem=save_stem,
+            scenario=watch,
+            difficulty=watch_d,
+            games=SCENARIO_EVAL_GAMES,
+            source=LAST_EVAL_SOURCE_PEER,
+            peer=peer_scenario,
+        )
+        before_rate = float(prior["winrate"]) if prior and prior.get("winrate") is not None else None
+        after_rate = float(after.get("winrate") or 0.0)
+        rate_bit = format_rate_bit(after_rate, before_rate, with_delta=before_rate is not None)
+        _section_print(
+            f"peer-impact: {catalog.short_name(watch)} d{watch_d} after {peer_short} train — "
+            f"drill_rate {rate_bit}",
+            indent=1,
+        )
+        _scenario_phase_banner(
+            f"peer-eval complete — {watch_tag} ({_fmt_wall_s(time.perf_counter() - phase_t0)})"
+        )
 
 
 def _format_eval_game_line(
@@ -1661,16 +1793,20 @@ def _eval_segment(
     metrics_prior: dict[str, Any] | None = None,
     rank_history_before: list[float] | None = None,
     winrate_history_before: list[float] | None = None,
+    winrate_trail_before: list[tuple[float, str]] | None = None,
     ball_swap_rank_history_before: list[float] | None = None,
     train_health: dict[str, float] | None = None,
+    eval_source: str = LAST_EVAL_SOURCE_AFTER,
 ) -> dict[str, Any]:
     """Deterministic games; shaping off. Soft-mask bias follows ``eval_episode_mode`` (TRAIN=on).
 
     ``metrics_prior``: optional prior same-drill eval stats so the Eval line can show
     ``before→after`` drift (``_eval_one_scenario`` supplies the last eval this process).
     ``rank_history_before`` / ``winrate_history_before``: stored trails; current appended.
+    ``winrate_trail_before``: own-train ``(rate, before|after)`` trail for ``61%(b)→38%(a)``.
     ``ball_swap_rank_history_before``: removable probe trail (``eval_ball_swap_probe``).
     ``train_health``: optional PPO logger scalars (``approx_kl``) from the preceding train segment.
+    ``eval_source``: ``before`` / ``after`` / ``peer`` tag for the current trail point + persist.
     """
     workers = min(games, DEFAULT_N_ENVS)
     opp_label = opponent_metrics_label(computer_opponent, onnx_profile)
@@ -1791,6 +1927,14 @@ def _eval_segment(
                 winrate_history = list(winrate_history_before)
                 winrate_history.append(float(stats.get("winrate") or 0.0))
                 winrate_history = winrate_history[-LAST_EVAL_HISTORY_MAX:]
+            winrate_trail: list[tuple[float, str]] | None = None
+            if winrate_trail_before is not None:
+                winrate_trail = list(winrate_trail_before)
+                if eval_source in (LAST_EVAL_SOURCE_BEFORE, LAST_EVAL_SOURCE_AFTER):
+                    winrate_trail.append(
+                        (float(stats.get("winrate") or 0.0), eval_source)
+                    )
+                    winrate_trail = winrate_trail[-LAST_EVAL_HISTORY_MAX:]
             print_scenario_eval_metrics(
                 short_name=require_catalog().short_name(scenario),
                 difficulty=int(scenario_difficulty),
@@ -1798,6 +1942,7 @@ def _eval_segment(
                 prior=metrics_prior,
                 rank_history=rank_history,
                 winrate_history=winrate_history,
+                winrate_trail=winrate_trail,
                 indent=body_indent,
             )
             # ball_swap_probe — removable second line (TD_RUN / LOOSE_BALL_RUN only)

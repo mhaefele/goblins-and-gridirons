@@ -203,6 +203,13 @@ def test_format_metrics_line_winrate_delta_vs_prior() -> None:
         winrate_history=[0.40, 0.34, 0.30, 0.28],
     )
     assert "drill_rate=40%→34%→30%→28%" in trail
+    tagged = format_scenario_eval_headline(
+        short_name="loose_ball_run",
+        difficulty=0,
+        stats={**stats, "scenario_difficulty": 0, "episodes": 100, "wins": 38, "losses": 62, "draws": 0, "winrate": 0.38},
+        winrate_trail=[(0.61, "before"), (0.06, "after"), (0.65, "before"), (0.38, "after")],
+    )
+    assert "drill_rate=61%(b)→6%(a)→65%(b)→38%(a)" in tagged
     kl_line = format_scenario_eval_headline(
         short_name="loose_ball_run",
         difficulty=0,

@@ -36,6 +36,7 @@ from gridiron_ai.scenario_curriculum import (
     last_eval_prior_metrics,
     last_eval_rank_history,
     last_eval_winrate_history,
+    last_eval_winrate_trail,
     load_last_eval,
     maybe_bump_after_perfect_eval,
     merge_drill_stats,
@@ -312,7 +313,53 @@ def test_last_eval_round_trip(tmp_path) -> None:
         )
     assert last_eval_rank_history(loaded, "TD_RUN", 1) == [20.5, 19.5, 20.1, 18.8]
     assert last_eval_winrate_history(loaded, "TD_RUN", 1) == [0.0, 0.0, 0.0, 0.0]
-    assert len(last_eval_history(loaded, "TD_RUN", 1)) == 4
+    assert len(last_eval_history(loaded, "TD_RUN", 1, own_train_only=True)) == 4
+
+
+def test_last_eval_peer_does_not_displace_own_train_trend() -> None:
+    from gridiron_ai.scenario_curriculum import (
+        LAST_EVAL_SOURCE_AFTER,
+        LAST_EVAL_SOURCE_BEFORE,
+        LAST_EVAL_SOURCE_PEER,
+    )
+
+    store: dict = {}
+    store = record_last_eval(
+        store, "LOOSE_BALL_RUN", 0, {"winrate": 0.61}, source=LAST_EVAL_SOURCE_BEFORE
+    )
+    store = record_last_eval(
+        store, "LOOSE_BALL_RUN", 0, {"winrate": 0.06}, source=LAST_EVAL_SOURCE_AFTER
+    )
+    store = record_last_eval(
+        store,
+        "LOOSE_BALL_RUN",
+        0,
+        {"winrate": 0.01},
+        source=LAST_EVAL_SOURCE_PEER,
+        peer="TD_RUN",
+    )
+    store = record_last_eval(
+        store, "LOOSE_BALL_RUN", 0, {"winrate": 0.65}, source=LAST_EVAL_SOURCE_BEFORE
+    )
+    store = record_last_eval(
+        store, "LOOSE_BALL_RUN", 0, {"winrate": 0.38}, source=LAST_EVAL_SOURCE_AFTER
+    )
+    assert last_eval_winrate_history(store, "LOOSE_BALL_RUN", 0) == [0.61, 0.06, 0.65, 0.38]
+    assert last_eval_winrate_trail(store, "LOOSE_BALL_RUN", 0) == [
+        (0.61, "before"),
+        (0.06, "after"),
+        (0.65, "before"),
+        (0.38, "after"),
+    ]
+    assert last_eval_metrics(store, "LOOSE_BALL_RUN", 0)["winrate"] == 0.38
+    peers = [
+        snap
+        for snap in last_eval_history(store, "LOOSE_BALL_RUN", 0)
+        if snap.get("source") == "peer"
+    ]
+    assert len(peers) == 1
+    assert peers[0]["peer"] == "TD_RUN"
+    assert peers[0]["winrate"] == 0.01
 
 
 def test_last_eval_loads_legacy_flat(tmp_path) -> None:

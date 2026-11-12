@@ -15,7 +15,7 @@ from gridiron_ai.persistence.json_io import atomic_write_json
 
 _SUFFIX = ".scenario_focus.json"
 
-FocusPhase = Literal["before-eval", "train", "after-eval", "eval"]
+FocusPhase = Literal["before-eval", "train", "after-eval", "peer-eval", "eval"]
 
 
 class ScenarioFocusDict(TypedDict):
