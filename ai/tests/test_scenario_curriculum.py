@@ -5,6 +5,7 @@ from gridiron_ai.scenario_curriculum import (
     DEFAULT_SCENARIO_TRAIN_MAINTENANCE,
     FULL_GAME_UNLOCK_DIFFICULTY,
     GATE_PROGRESS_WAIVE_FAILURES,
+    LOOSE_BALL_FOCUS_UNTIL,
     MAX_DIFFICULTY,
     SCENARIO_EVAL_GAMES,
     SCENARIO_EVAL_GAMES_HEAVY,
@@ -13,6 +14,7 @@ from gridiron_ai.scenario_curriculum import (
     SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER,
     SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD,
     active_scenario_catalog,
+    loose_ball_focus_active,
     all_scenarios_mastered,
     apply_after_eval_curriculum,
     claims_unlocked,
@@ -183,6 +185,8 @@ def test_full_game_on_after_gating_drills_at_max() -> None:
 
 def test_claims_deferred_until_board_d4() -> None:
     levels = {name: 3 for name in BOARD_NAMES}
+    # Lift loose-ball focus so this asserts claim deferral alone.
+    levels["LOOSE_BALL_RUN"] = LOOSE_BALL_FOCUS_UNTIL
     assert not claims_unlocked(levels, _FULL)
     active = active_scenario_catalog(levels, _FULL)
     assert all(not name.startswith("CLAIM_") for name in active)
@@ -197,7 +201,8 @@ def test_claims_enter_catalog_at_board_d4() -> None:
 
 
 def test_scenarios_for_cycle_runs_all_active_even_when_spread() -> None:
-    levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": 2, "MARKED_RUN": 5}
+    # LBR at focus-until so the full catalog stays in cycle.
+    levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": LOOSE_BALL_FOCUS_UNTIL, "MARKED_RUN": 5}
     cycle = scenarios_for_cycle(levels, _CATALOG)
     assert set(cycle) == set(_CATALOG)
     assert cycle == sorted(cycle, key=lambda name: (get_difficulty(levels, name), _CATALOG.index(name)))
@@ -207,14 +212,38 @@ def test_scenarios_for_cycle_orders_by_ascending_difficulty() -> None:
     levels = {
         "TD_RUN": 2,
         "MARKED_RUN": 0,
-        "LOOSE_BALL_RUN": 1,
+        "LOOSE_BALL_RUN": LOOSE_BALL_FOCUS_UNTIL,
         "THROW_TO_ENDZONE": 2,
     }
     cycle = scenarios_for_cycle(levels, _CATALOG)
     difficulties = [get_difficulty(levels, name) for name in cycle]
     assert difficulties == sorted(difficulties)
-    assert cycle.index("MARKED_RUN") < cycle.index("LOOSE_BALL_RUN")
-    assert cycle.index("LOOSE_BALL_RUN") < cycle.index("TD_RUN")
+    assert cycle.index("MARKED_RUN") < cycle.index("TD_RUN")
+    assert cycle.index("TD_RUN") < cycle.index("LOOSE_BALL_RUN")
+
+
+def test_loose_ball_focus_keeps_run_and_bounce_only() -> None:
+    """Focus pause: LBR + difficultyProxy bounce train; every other opening sits out."""
+    levels = {"TD_RUN": 3, "LOOSE_BALL_RUN": 2, "MARKED_RUN": 5, "LOOSE_BALL_BOUNCE": 0}
+    catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN", "LOOSE_BALL_BOUNCE"]
+    assert loose_ball_focus_active(levels, catalog)
+    assert active_scenario_catalog(levels, catalog) == ["LOOSE_BALL_RUN", "LOOSE_BALL_BOUNCE"]
+    assert scenarios_for_cycle(levels, catalog) == ["LOOSE_BALL_RUN", "LOOSE_BALL_BOUNCE"]
+    assert scenarios_for_eval(levels, catalog) == ["LOOSE_BALL_RUN"]
+
+
+def test_loose_ball_focus_lifts_at_d4() -> None:
+    levels = {"TD_RUN": 1, "LOOSE_BALL_RUN": LOOSE_BALL_FOCUS_UNTIL, "MARKED_RUN": 0}
+    catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN"]
+    assert not loose_ball_focus_active(levels, catalog)
+    assert set(scenarios_for_cycle(levels, catalog)) == set(catalog)
+
+
+def test_loose_ball_focus_skips_when_target_absent() -> None:
+    levels = {"TD_RUN": 0, "MARKED_RUN": 0}
+    catalog = ["TD_RUN", "MARKED_RUN"]
+    assert not loose_ball_focus_active(levels, catalog)
+    assert set(scenarios_for_cycle(levels, catalog)) == set(catalog)
 
 
 def test_train_timesteps_zero_knobs_skip() -> None:
@@ -311,7 +340,7 @@ def test_new_catalog_name_starts_at_difficulty_zero() -> None:
 
 def test_eval_replaces_bounce_with_loose_ball_run() -> None:
     catalog = ["TD_RUN", "LOOSE_BALL_RUN", "LOOSE_BALL_BOUNCE"]
-    levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": 0}
+    levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": LOOSE_BALL_FOCUS_UNTIL}
     assert scenarios_for_eval(levels, catalog) == ["TD_RUN", "LOOSE_BALL_RUN"]
     assert scenarios_for_eval(levels, ["LOOSE_BALL_BOUNCE"]) == ["LOOSE_BALL_RUN"]
 
@@ -352,8 +381,17 @@ def test_non_gating_drill_stays_in_cycle() -> None:
         ]
     )
     set_catalog(catalog)
-    levels = {"TD_RUN": 0, "LOOSE_BALL_RUN": 0, "HELD_SS_REROLL": 5}
-    assert scenarios_for_cycle(levels, catalog.names()) == ["TD_RUN", "LOOSE_BALL_RUN", "HELD_SS_REROLL"]
+    # Past loose-ball focus so optional board drills share the cycle.
+    levels = {
+        "TD_RUN": 0,
+        "LOOSE_BALL_RUN": LOOSE_BALL_FOCUS_UNTIL,
+        "HELD_SS_REROLL": 5,
+    }
+    assert scenarios_for_cycle(levels, catalog.names()) == [
+        "TD_RUN",
+        "LOOSE_BALL_RUN",
+        "HELD_SS_REROLL",
+    ]
     install_fixture_catalog()
 
 
@@ -382,6 +420,7 @@ def test_non_gating_drill_bumps_on_perfect_eval() -> None:
 
 
 def test_non_gating_board_and_claims_share_cycle_after_unlock() -> None:
+    # No LOOSE_BALL_RUN → focus filter does not apply.
     catalog = ScenarioCatalog.from_entries(
         [
             ScenarioInfo("TD_RUN", "BOARD"),
@@ -422,8 +461,10 @@ def test_demote_failed_max_eval() -> None:
 
 
 def test_no_demote_single_failure_at_max() -> None:
+    # 15–17/20: gate fail only; demote at ≤ DEMOTE_FROM_MAX_MAX_WINS (14/20).
     levels = {"TD_RUN": MAX_DIFFICULTY}
-    stats = {"episodes": _EVAL, "wins": 8, "losses": 2, "draws": 0}
+    wins = eval_demote_max_wins(_EVAL) + 1
+    stats = {"episodes": _EVAL, "wins": wins, "losses": _EVAL - wins, "draws": 0}
     updated, demoted = maybe_demote_after_failed_max_eval(
         levels, "TD_RUN", stats, expected_games=_EVAL
     )
@@ -452,7 +493,8 @@ def test_record_gate_failure_counts_per_level() -> None:
 
 def test_apply_after_eval_single_fail_at_max_counts_without_demote() -> None:
     levels = {"TD_RUN": MAX_DIFFICULTY}
-    stats = {"episodes": _EVAL, "wins": 8, "losses": 2, "draws": 0}
+    wins = eval_demote_max_wins(_EVAL) + 1
+    stats = {"episodes": _EVAL, "wins": wins, "losses": _EVAL - wins, "draws": 0}
     levels, failures, drill_stats, action = apply_after_eval_curriculum(
         levels, {}, "TD_RUN", stats, expected_games=_EVAL
     )
@@ -623,7 +665,12 @@ def test_train_timesteps_no_double_on_d5_gate_fails() -> None:
 
 
 def test_train_timesteps_climbing_healthy_d5_skipped() -> None:
-    levels = {"TD_RUN": MAX_DIFFICULTY, "LOOSE_BALL_RUN": 0, "MARKED_RUN": MAX_DIFFICULTY}
+    # LBR past focus-until so pack-relative 2× still applies to the opening behind d5 peers.
+    levels = {
+        "TD_RUN": MAX_DIFFICULTY,
+        "LOOSE_BALL_RUN": LOOSE_BALL_FOCUS_UNTIL,
+        "MARKED_RUN": MAX_DIFFICULTY,
+    }
     assert train_timesteps_for_scenario("TD_RUN", levels, _CATALOG) == 0
     assert (
         train_timesteps_for_scenario("LOOSE_BALL_RUN", levels, _CATALOG)
@@ -631,8 +678,21 @@ def test_train_timesteps_climbing_healthy_d5_skipped() -> None:
     )
 
 
-def test_train_timesteps_climbing_soft_d5_gets_maintenance() -> None:
+def test_train_timesteps_during_loose_ball_focus_is_plain_1x() -> None:
+    """While focus pauses peers, LBR is the whole gating pack — no below-pack 2×."""
     levels = {"TD_RUN": MAX_DIFFICULTY, "LOOSE_BALL_RUN": 0, "MARKED_RUN": MAX_DIFFICULTY}
+    assert train_timesteps_for_scenario("LOOSE_BALL_RUN", levels, _CATALOG) == (
+        DEFAULT_SCENARIO_TRAIN_LEARNING
+    )
+    assert scenario_train_budget_units("LOOSE_BALL_RUN", levels, _CATALOG) == 1
+
+
+def test_train_timesteps_climbing_soft_d5_gets_maintenance() -> None:
+    levels = {
+        "TD_RUN": MAX_DIFFICULTY,
+        "LOOSE_BALL_RUN": LOOSE_BALL_FOCUS_UNTIL,
+        "MARKED_RUN": MAX_DIFFICULTY,
+    }
     failures = record_gate_failure({}, "TD_RUN", MAX_DIFFICULTY)
     assert (
         train_timesteps_for_scenario("TD_RUN", levels, _CATALOG, gate_failures=failures)
@@ -641,7 +701,11 @@ def test_train_timesteps_climbing_soft_d5_gets_maintenance() -> None:
 
 
 def test_scenario_train_budget_units_matches_timesteps() -> None:
-    levels = {"TD_RUN": MAX_DIFFICULTY, "LOOSE_BALL_RUN": 0, "MARKED_RUN": MAX_DIFFICULTY}
+    levels = {
+        "TD_RUN": MAX_DIFFICULTY,
+        "LOOSE_BALL_RUN": LOOSE_BALL_FOCUS_UNTIL,
+        "MARKED_RUN": MAX_DIFFICULTY,
+    }
     assert scenario_train_budget_units("TD_RUN", levels, _CATALOG) == 0
     assert scenario_train_budget_units("LOOSE_BALL_RUN", levels, _CATALOG) == 2
     failures = record_gate_failure({}, "TD_RUN", MAX_DIFFICULTY)
@@ -673,14 +737,15 @@ def test_train_multiplier_summary_lines_empty_when_nothing_trains() -> None:
 
 def test_train_multiplier_summary_lines_notes_soft_and_proxy() -> None:
     levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
-    levels["LOOSE_BALL_RUN"] = 0
+    # At focus-until so bounce stays in cycle beside soft-d5 peers (not focus-paused).
+    levels["LOOSE_BALL_RUN"] = LOOSE_BALL_FOCUS_UNTIL
     failures = record_gate_failure({}, "THROW_TO_ENDZONE", MAX_DIFFICULTY)
     lines = train_multiplier_summary_lines(levels, FULL_NAMES, failures, {}, game_phase=False)
     joined = "\n".join(lines)
     assert "throw_to_endzone (d5; soft)" in joined
-    assert "loose_ball_bounce (d0; proxy)" in joined
-    assert "loose_ball_run (d0)" in joined
-    assert "loose_ball_run (d0; " not in joined
+    assert "loose_ball_bounce (d4; proxy)" in joined
+    assert "loose_ball_run (d4)" in joined
+    assert "loose_ball_run (d4; " not in joined
 
 
 def test_train_timesteps_behind_pack_doubles_without_claim_unlock() -> None:

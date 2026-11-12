@@ -14,6 +14,8 @@ recover); ``.scenario_drill_stats.json`` (per-phase ``cycles`` / ``d5_demotes``;
 ``training_phases.load_drill_stats_cumulative``); ``.scenario_last_eval.json`` (up to 4 slim
 snapshots per drill@d — ``history`` plus ``current``/``prior`` mirrors — for deltas / rank trails).
 Phases (scenario_a board→d4 / scenario_b all→d5 / profiles games): ``training_phases``.
+While ``LOOSE_BALL_RUN`` is below ``LOOSE_BALL_FOCUS_UNTIL`` (d4), the cycle keeps only that
+drill and its difficultyProxy sources (bounce) — other openings pause.
 8× train units use ``SCENARIO_EVAL_GAMES_HEAVY`` (100) after-evals with scaled pass/demote.
 Drills with fails at their **current** difficulty get ``SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER``×
 train budget below d5 (gating drills only — ``gatesProgress=false`` never multiplies; d5 gate
@@ -79,6 +81,10 @@ MAX_DIFFICULTY = 5
 # Claims stay out until every board drill is ≥ this level (scenario_a gate). Why: TRAINING_ROADMAP
 # “Why board before claims” — shared heads; establish core openings before claim dialects.
 CLAIM_UNLOCK_BOARD_DIFFICULTY = 4
+# While LOOSE_BALL_RUN is below this, pause every other drill in the cycle (proxies of LBR stay).
+# Harness policy knob — not catalog membership; catalog still owns names / difficultyProxy.
+LOOSE_BALL_FOCUS_UNTIL = CLAIM_UNLOCK_BOARD_DIFFICULTY
+LOOSE_BALL_FOCUS_TARGET = "LOOSE_BALL_RUN"
 # No heuristic/lookahead full-game train until every catalog drill is at MAX (scenario_b gate).
 # Alias kept so callers/docs can say "full-game unlock == all mastered".
 FULL_GAME_UNLOCK_DIFFICULTY = MAX_DIFFICULTY
@@ -865,13 +871,23 @@ def scenarios_for_cycle(
     scenario_names: list[str],
     gate_failures: dict[str, dict[str, int]] | None = None,
 ) -> list[str]:
-    """Drills to train/eval this cycle (after claim deferral filter).
+    """Drills to train/eval this cycle (after claim deferral + loose-ball focus).
 
     Every active drill runs — nothing is skipped for being ahead of the pack.
     Order: ascending curriculum difficulty (d0 first), catalog order within a level.
     """
     active = active_scenario_catalog(levels, scenario_names, gate_failures)
     return sorted(active, key=lambda name: (get_difficulty(levels, name), scenario_names.index(name)))
+
+
+def loose_ball_focus_active(
+    levels: dict[str, int],
+    scenario_names: list[str],
+) -> bool:
+    """True while ``LOOSE_BALL_FOCUS_TARGET`` is in the catalog and below ``LOOSE_BALL_FOCUS_UNTIL``."""
+    if LOOSE_BALL_FOCUS_TARGET not in scenario_names:
+        return False
+    return get_difficulty(levels, LOOSE_BALL_FOCUS_TARGET) < LOOSE_BALL_FOCUS_UNTIL
 
 
 def active_scenario_catalog(
@@ -883,14 +899,25 @@ def active_scenario_catalog(
 
     Optional board drills (``gatesProgress=false``) train from d0 alongside gating board drills.
     Every ``family=CLAIM`` drill waits for [claims_unlocked] — optional claims are not special-cased.
+
+    While [loose_ball_focus_active], only ``LOOSE_BALL_FOCUS_TARGET`` and drills whose
+    catalog ``difficultyProxy`` points at it stay in the cycle — pause everything else so
+    shared heads learn ball location before other openings fight the prior.
     """
     catalog = require_catalog()
     claims_ok = claims_unlocked(levels, scenario_names, gate_failures)
-    return [
+    active = [
         name
         for name in scenario_names
         if catalog.is_board(name)
         or (catalog.is_claim(name) and claims_ok)
+    ]
+    if not loose_ball_focus_active(levels, scenario_names):
+        return active
+    return [
+        name
+        for name in active
+        if catalog.curriculum_key(name) == LOOSE_BALL_FOCUS_TARGET
     ]
 
 
