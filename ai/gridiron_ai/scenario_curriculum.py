@@ -15,7 +15,8 @@ recover); ``.scenario_drill_stats.json`` (per-phase ``cycles`` / ``d5_demotes``;
 snapshots per drill@d — ``history`` plus ``current``/``prior`` mirrors — for deltas / rank trails).
 Phases (scenario_a board→d4 / scenario_b all→d5 / profiles games): ``training_phases``.
 While ``LOOSE_BALL_RUN`` is below ``LOOSE_BALL_FOCUS_UNTIL`` (d4), the cycle keeps only that
-drill and its difficultyProxy sources (bounce) — other openings pause.
+drill (and bounce once past ``LOOSE_BALL_BOUNCE_PAUSE_THROUGH``) — other openings pause.
+Bounce itself stays out through LBR d2 (contested exposure poisons free-pickup learning).
 8× train units use ``SCENARIO_EVAL_GAMES_HEAVY`` (100) after-evals with scaled pass/demote.
 Drills with fails at their **current** difficulty get ``SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER``×
 train budget below d5 (gating drills only — ``gatesProgress=false`` never multiplies; d5 gate
@@ -81,10 +82,12 @@ MAX_DIFFICULTY = 5
 # Claims stay out until every board drill is ≥ this level (scenario_a gate). Why: TRAINING_ROADMAP
 # “Why board before claims” — shared heads; establish core openings before claim dialects.
 CLAIM_UNLOCK_BOARD_DIFFICULTY = 4
-# While LOOSE_BALL_RUN is below this, pause every other drill in the cycle (proxies of LBR stay).
-# Harness policy knob — not catalog membership; catalog still owns names / difficultyProxy.
+# While LOOSE_BALL_RUN is below this, pause every other drill in the cycle (bounce may stay —
+# see LOOSE_BALL_BOUNCE_PAUSE_THROUGH). Harness policy — not catalog membership.
 LOOSE_BALL_FOCUS_UNTIL = CLAIM_UNLOCK_BOARD_DIFFICULTY
 LOOSE_BALL_FOCUS_TARGET = "LOOSE_BALL_RUN"
+# Inclusive: pause LOOSE_BALL_RUN difficultyProxy drills (bounce) while LBR is at this level or below.
+LOOSE_BALL_BOUNCE_PAUSE_THROUGH = 2
 # No heuristic/lookahead full-game train until every catalog drill is at MAX (scenario_b gate).
 # Alias kept so callers/docs can say "full-game unlock == all mastered".
 FULL_GAME_UNLOCK_DIFFICULTY = MAX_DIFFICULTY
@@ -890,6 +893,16 @@ def loose_ball_focus_active(
     return get_difficulty(levels, LOOSE_BALL_FOCUS_TARGET) < LOOSE_BALL_FOCUS_UNTIL
 
 
+def loose_ball_bounce_paused(
+    levels: dict[str, int],
+    scenario_names: list[str],
+) -> bool:
+    """True while LBR is in the catalog and at ``LOOSE_BALL_BOUNCE_PAUSE_THROUGH`` or below."""
+    if LOOSE_BALL_FOCUS_TARGET not in scenario_names:
+        return False
+    return get_difficulty(levels, LOOSE_BALL_FOCUS_TARGET) <= LOOSE_BALL_BOUNCE_PAUSE_THROUGH
+
+
 def active_scenario_catalog(
     levels: dict[str, int],
     scenario_names: list[str],
@@ -903,6 +916,9 @@ def active_scenario_catalog(
     While [loose_ball_focus_active], only ``LOOSE_BALL_FOCUS_TARGET`` and drills whose
     catalog ``difficultyProxy`` points at it stay in the cycle — pause everything else so
     shared heads learn ball location before other openings fight the prior.
+
+    While [loose_ball_bounce_paused], drop LBR difficultyProxy drills (bounce) even under focus —
+    contested exposure without a PASS/soft-mask lesson flattens free-pickup learning at d0–d2.
     """
     catalog = require_catalog()
     claims_ok = claims_unlocked(levels, scenario_names, gate_failures)
@@ -912,13 +928,20 @@ def active_scenario_catalog(
         if catalog.is_board(name)
         or (catalog.is_claim(name) and claims_ok)
     ]
-    if not loose_ball_focus_active(levels, scenario_names):
-        return active
-    return [
-        name
-        for name in active
-        if catalog.curriculum_key(name) == LOOSE_BALL_FOCUS_TARGET
-    ]
+    if loose_ball_focus_active(levels, scenario_names):
+        active = [
+            name
+            for name in active
+            if catalog.curriculum_key(name) == LOOSE_BALL_FOCUS_TARGET
+        ]
+    if loose_ball_bounce_paused(levels, scenario_names):
+        active = [
+            name
+            for name in active
+            if catalog.curriculum_key(name) != LOOSE_BALL_FOCUS_TARGET
+            or name == LOOSE_BALL_FOCUS_TARGET
+        ]
+    return active
 
 
 def full_game_train_timesteps(

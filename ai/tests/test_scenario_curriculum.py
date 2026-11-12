@@ -5,6 +5,7 @@ from gridiron_ai.scenario_curriculum import (
     DEFAULT_SCENARIO_TRAIN_MAINTENANCE,
     FULL_GAME_UNLOCK_DIFFICULTY,
     GATE_PROGRESS_WAIVE_FAILURES,
+    LOOSE_BALL_BOUNCE_PAUSE_THROUGH,
     LOOSE_BALL_FOCUS_UNTIL,
     MAX_DIFFICULTY,
     SCENARIO_EVAL_GAMES,
@@ -14,6 +15,7 @@ from gridiron_ai.scenario_curriculum import (
     SCENARIO_TRAIN_GATE_FAIL_MULTIPLIER,
     SCENARIO_TRAIN_HIGH_DEMOTE_THRESHOLD,
     active_scenario_catalog,
+    loose_ball_bounce_paused,
     loose_ball_focus_active,
     all_scenarios_mastered,
     apply_after_eval_curriculum,
@@ -222,11 +224,21 @@ def test_scenarios_for_cycle_orders_by_ascending_difficulty() -> None:
     assert cycle.index("TD_RUN") < cycle.index("LOOSE_BALL_RUN")
 
 
-def test_loose_ball_focus_keeps_run_and_bounce_only() -> None:
-    """Focus pause: LBR + difficultyProxy bounce train; every other opening sits out."""
-    levels = {"TD_RUN": 3, "LOOSE_BALL_RUN": 2, "MARKED_RUN": 5, "LOOSE_BALL_BOUNCE": 0}
+def test_loose_ball_bounce_paused_through_d2() -> None:
+    catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN", "LOOSE_BALL_BOUNCE"]
+    for difficulty in range(LOOSE_BALL_BOUNCE_PAUSE_THROUGH + 1):
+        levels = {"TD_RUN": 3, "LOOSE_BALL_RUN": difficulty, "MARKED_RUN": 5}
+        assert loose_ball_bounce_paused(levels, catalog)
+        assert active_scenario_catalog(levels, catalog) == ["LOOSE_BALL_RUN"]
+        assert scenarios_for_cycle(levels, catalog) == ["LOOSE_BALL_RUN"]
+
+
+def test_loose_ball_focus_keeps_run_and_bounce_at_d3() -> None:
+    """Past bounce pause, focus still keeps LBR + bounce only until d4."""
+    levels = {"TD_RUN": 3, "LOOSE_BALL_RUN": LOOSE_BALL_BOUNCE_PAUSE_THROUGH + 1, "MARKED_RUN": 5}
     catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN", "LOOSE_BALL_BOUNCE"]
     assert loose_ball_focus_active(levels, catalog)
+    assert not loose_ball_bounce_paused(levels, catalog)
     assert active_scenario_catalog(levels, catalog) == ["LOOSE_BALL_RUN", "LOOSE_BALL_BOUNCE"]
     assert scenarios_for_cycle(levels, catalog) == ["LOOSE_BALL_RUN", "LOOSE_BALL_BOUNCE"]
     assert scenarios_for_eval(levels, catalog) == ["LOOSE_BALL_RUN"]
