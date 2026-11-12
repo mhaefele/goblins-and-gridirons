@@ -783,7 +783,7 @@ def test_model_config_table_default_and_overrides() -> None:
     text = _fmt_model_config_table()
     assert text.startswith("config (PPO shared")
     assert "default" in text
-    assert "0.0003" in text or "3e-4" in text
+    assert "0.001" in text or "1e-3" in text
     assert "0.005" in text
     assert " none " in f" {text} " or "none" in text
     assert "margin + terminal only" in text

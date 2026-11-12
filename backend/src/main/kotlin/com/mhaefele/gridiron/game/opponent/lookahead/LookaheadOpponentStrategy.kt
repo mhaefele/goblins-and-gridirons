@@ -108,7 +108,7 @@ class LookaheadOpponentStrategy(
             return ChosenAction(correctSearchMiss(state, heurPick, heurPick, searchable), searchNanos = ran.searchNanos)
         }
         val baseline = LookaheadScorer.score(state, state.currentTurnState.activeCoach)
-        val chosen = rankedChoice(searchable, heurPick, ran.ranked, baseline)
+        val chosen = rankedChoice(searchable, heurPick, ran.ranked, baseline, state)
         val action = correctSearchMiss(state, chosen, heurPick, searchable)
         val scores = SearchScores(baseline, ran.ranked.maxOf { it.score }, usedSearch = true)
         return ChosenAction(action, scores, searchNanos = ran.searchNanos)
@@ -178,8 +178,10 @@ class LookaheadOpponentStrategy(
         heurPick: LegalAction,
         ranked: List<LookaheadSearch.Evaluation>,
         baseline: Double,
+        state: MatchState,
     ): LegalAction {
-        val best = ranked.maxBy { it.score }
+        // No clear winner: among near-tied leaves, prefer ending closer to the ball.
+        val best = pickNearTiedBest(ranked, state)
         val heurScore = ranked.firstOrNull { it.action.id == heurPick.id }?.score
         val claimOnBest = best.action.potentialChallengeClaims.maxOfOrNull { it.points } ?: 0
         return when {
@@ -191,8 +193,28 @@ class LookaheadOpponentStrategy(
             claimOnBest >= 1 && (heurScore == null || best.score >= heurScore) -> best.action
             // Only override the heuristic when search beat it by a clear margin on a shared candidate.
             heurScore != null && best.action.isMostlyDeterministic() && best.score >= heurScore + 40.0 -> best.action
-            else                                                                                       -> heurPick
+            // Flat pack that still includes the heuristic: closest-to-ball among the near-tie, not empty-EZ luck.
+            heurScore != null && heurScore >= ranked.maxOf { it.score } - NEAR_TIE_SCORE -> best.action
+            else                                                                         -> heurPick
         }
+    }
+
+    /**
+     * Among evals within [NEAR_TIE_SCORE] of the top leaf, pick closest-to-ball (then highest score).
+     * Decisive gaps still collapse to the unique max.
+     */
+    private fun pickNearTiedBest(
+        ranked: List<LookaheadSearch.Evaluation>,
+        state: MatchState,
+    ): LookaheadSearch.Evaluation {
+        val top = ranked.maxOf { it.score }
+        val tied = ranked.filter { it.score >= top - NEAR_TIE_SCORE }
+        if (tied.size == 1) return tied.single()
+        val team = state.currentTurnState.activeCoach
+        val ctx = LookaheadCandidateRanker.Context.from(state, team)
+        return tied.minWith(
+            compareBy<LookaheadSearch.Evaluation> { LookaheadCandidateRanker.ballDistanceAfter(it.action, ctx) ?: Int.MAX_VALUE }.thenByDescending { it.score },
+        )
     }
 
     /** Search dry-runs favor bombs, obstructed throws, and solo blocks. Put the obvious play back. */
@@ -486,5 +508,7 @@ class LookaheadOpponentStrategy(
         const val HUMAN_THINK_NANOS = 300_000_000L
         /** Expert dump LOOKAHEAD seats — above AI-vs-AI so parallel export still finishes a full-ish ply. */
         const val EXPERT_EXPORT_THINK_NANOS = 150_000_000L
+        /** Leaf EV band treated as a tie for closest-to-ball ranking (≪ [LookaheadScorer.DECISIVE_MARGIN]). */
+        const val NEAR_TIE_SCORE = 40.0
     }
 }

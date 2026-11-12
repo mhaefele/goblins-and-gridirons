@@ -64,7 +64,7 @@ def test_atomic_model_save_survives_env_lock_via_schedule_closure(tmp_path: Path
     class _LockyModel:
         def __init__(self) -> None:
             self.env = type("E", (), {"lock": threading.Lock()})()
-            self.learning_rate = 3e-4
+            self.learning_rate = 1e-3
             self.lr_schedule = FloatSchedule(lambda _p: self.learning_rate)
             self.clip_range = FloatSchedule(lambda _p: 0.2)
             self.clip_range_vf = None
@@ -102,8 +102,8 @@ def test_atomic_model_save_strips_verbose_train_hook_closure(tmp_path: Path) -> 
     class _HookyModel:
         def __init__(self) -> None:
             self.env = type("E", (), {"lock": threading.Lock()})()
-            self.learning_rate = 3e-4
-            self.lr_schedule = 3e-4
+            self.learning_rate = 1e-3
+            self.lr_schedule = 1e-3
             self.clip_range = 0.2
             self.clip_range_vf = None
             self._payload = b"saved"

@@ -98,8 +98,8 @@ def atomic_model_save(model: Any, save_stem: str | Path) -> Path:
             held[name] = getattr(model, name)
             setattr(model, name, None)
     for name, fallback in (
-        ("learning_rate", 3e-4),
-        ("lr_schedule", 3e-4),
+        ("learning_rate", 1e-3),
+        ("lr_schedule", 1e-3),
         ("clip_range", 0.2),
         ("clip_range_vf", 0.2),
     ):

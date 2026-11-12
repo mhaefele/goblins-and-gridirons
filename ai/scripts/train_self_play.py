@@ -184,7 +184,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 _LONG_RUNNING_STEM = "maskable_ppo_selfplay_final"
 _SESSION_LONG = "train_sessions_long.tsv"
 # PPO knobs: stock SB3 unless noted in TRAINING_ROADMAP.md § "PPO vs SB3 stock".
-_DEFAULT_LEARNING_RATE = 3e-4
+_DEFAULT_LEARNING_RATE = 1e-3
 DEFAULT_MAX_EPISODE_STEPS = 500
 DEFAULT_POLICY_SEAT = "HOME"
 DEFAULT_DEVICE = "cpu"

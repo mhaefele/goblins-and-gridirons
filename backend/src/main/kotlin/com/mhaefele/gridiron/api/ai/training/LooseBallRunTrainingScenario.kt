@@ -16,13 +16,14 @@ import org.springframework.stereotype.Component
  *
  * - **PASS / expected** (`passingLegal`): pickup only — Python opening stats / expected rank use this.
  * - **Soft-mask** (`softMaskLegal`, TRAIN): every lesson run, plus **exactly
- *   [BAD_SOFT_MASK_COUNT]** random empty-handed scoring-EZ runs (or fewer if the menu is short).
+ *   [BAD_SOFT_MASK_COUNT]** random empty-handed scoring-EZ runs (or fewer if the menu is short;
+ *   **0** = lesson-only soft-mask — no empty-EZ distractors).
  *   EVAL: soft-mask == lesson (no empty-EZ).
  *
  * Why: shared policy + TD_RUN make empty-EZ hotter than pickup. Soft-masking **every** empty-EZ with
- * the same +2.5 left relative order unchanged → train ~6% US. A fixed small distractor sample keeps
- * fail exposure without drowning pickup→+4 trajectories. Soft-mask is sampling only — empty-EZ stays
- * off `passingLegal`.
+ * the same +2.5 left relative order unchanged → train ~6% US. Distractors (when count > 0) keep
+ * fail exposure without drowning pickup; soft-mask is sampling only — empty-EZ stays off
+ * `passingLegal`. Count is currently 0 while free-pickup learning is stuck.
  *
  * **Grading**
  * - **d0–d1 (experiment):** first opening action only — PASS on pickup, else THEM; episode ends
@@ -109,7 +110,7 @@ class LooseBallRunTrainingScenario : AbstractLooseBallTrainingScenario(contested
     }
 
     companion object {
-        /** TRAIN opening: soft-mask this many non-lesson empty-EZ runs (when available). */
-        const val BAD_SOFT_MASK_COUNT = 2
+        /** TRAIN opening: soft-mask this many non-lesson empty-EZ runs (0 = lesson only). */
+        const val BAD_SOFT_MASK_COUNT = 0
     }
 }

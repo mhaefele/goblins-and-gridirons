@@ -793,7 +793,7 @@ def _collect_train_warnings(targets: list[TrainTarget], *, trend_steps: int) -> 
                 warnings.append(
                     f"STUCK! {profile} approx_kl={cell.split()[0]} — "
                     "PPO barely moving the policy; burning timesteps with no progress. "
-                    "Do: bump learning_rate in train_self_play (stock 3e-4); confirm clip_fraction "
+                    "Do: bump learning_rate in train_self_play (default 1e-3); confirm clip_fraction "
                     "is also ~0 (corroborates under-updating); if scenario openings are flat, "
                     "spend budget on stuck drills (2×/8×) rather than more raw steps — "
                     "raising entropy alone explores without larger updates"

@@ -223,7 +223,7 @@ Standing record of MaskablePPO hyperparameters vs Stable-Baselines3 defaults.
 
 | Knob | SB3 stock | Ours | Why |
 |------|-----------|------|-----|
-| `learning_rate` | `3e-4` | `3e-4` | Stock default (8× drills keep the same LR — only timesteps/eval batch scale). |
+| `learning_rate` | `3e-4` | `1e-3` | Raised while LBR opening mass stayed flat at stock (`Δ≈0`, tiny KL). |
 | `n_epochs` | `10` | `10` | Stock. Was `4` to stop factor-head thrash. |
 | `clip_range` | `0.2` | `0.2` | Stock. Was `0.1`. |
 | `target_kl` | `None` | `None` | Stock (no KL early-stop). Was `0.02`. |

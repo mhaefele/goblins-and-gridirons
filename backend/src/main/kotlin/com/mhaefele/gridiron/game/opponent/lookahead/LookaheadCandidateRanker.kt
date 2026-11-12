@@ -34,6 +34,8 @@ object LookaheadCandidateRanker {
         return candidates
             .sortedWith(
                 compareByDescending<LegalAction> { weight(it, ctx) }
+                    // Flat weights: prefer ending closer to the loose ball / ball carrier.
+                    .thenBy { ballDistanceAfter(it, ctx) ?: Int.MAX_VALUE }
                     .thenBy { it.id.value },
             )
             .take(limit.coerceAtLeast(1))
@@ -124,10 +126,12 @@ object LookaheadCandidateRanker {
                 else -> if (ez != null) w += (10 - ez.coerceAtMost(10)) * 3.0
             }
         } else {
+            // No ball yet: absolute closeness beats empty-EZ jogs that only “improve” by 1.
             ctx.ballAt?.let { ball ->
                 val from = ctx.board.findSquare(playerId).coordinate
                 val before = chebyshev(from, ball)
                 val after = chebyshev(end, ball)
+                w += (10 - after.coerceAtMost(10)) * 8.0
                 if (after < before) w += (before - after) * 5.0
                 if (after == 0) w += 15.0
             }
@@ -137,8 +141,24 @@ object LookaheadCandidateRanker {
                 val after = chebyshev(end, carrier)
                 if (after < before) w += (before - after) * 3.5
             }
+            // Ball-less scoring-EZ landing is never the lesson — demote vs same-distance approach.
+            if (endSq.isEndZone(ctx.team.opposite())) w -= 40.0
         }
         return w
+    }
+
+    /** Chebyshev from path/block end to [Context.ballAt], or null when the action has no dest. */
+    internal fun ballDistanceAfter(action: LegalAction, ctx: Context): Int? {
+        val ball = ctx.ballAt ?: return null
+        val end = when (action) {
+            is LegalAction.Run      -> action.path.squares.last()
+            is LegalAction.Mark     -> action.path.squares.last()
+            is LegalAction.Sidestep -> action.path.squares.last()
+            is LegalAction.Block    -> action.destination
+            is LegalAction.Foul     -> action.destination
+            else                    -> return null
+        }
+        return chebyshev(end, ball)
     }
 
     private fun endZoneDist(coord: Coordinate, ctx: Context): Int? {
