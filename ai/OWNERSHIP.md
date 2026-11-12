@@ -97,7 +97,7 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `scenario_training.py` | Pointer: grading is Kotlin |
 | `metrics.py` / `tb_callback.py` | Episode aggregates / TensorBoard / metrics·success·learn lines; kind totals I/O via `persistence/kind_totals` |
 | `ppo_update_evidence.py` | `--verbose` Passed/Failed drill blocks + PASS-edge buffer; see [`PPO_LEARNING_DEBUG.md`](PPO_LEARNING_DEBUG.md) |
-| `eval_ball_swap_probe.py` | Removable: re-score opening PASS after moving ball to opposite end (eval stdout `expected(ball_opp)=…`) |
+| `eval_ball_swap_probe.py` | Removable: re-score opening PASS after a local ball nudge 1–3 sideways / 0–3 back (eval stdout `expected(ball_opp)=…`) |
 | `eval_opening_diag.py` | Opening join-score aggregates + ``expected_p``/rank format (+ prior deltas) |
 | `eval_debug.py` | Throwaway per-episode turn1 / expected-move logging |
 | `paths.py` | `output/` roots |

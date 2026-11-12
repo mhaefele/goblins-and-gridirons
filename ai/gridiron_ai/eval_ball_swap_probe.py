@@ -1,9 +1,13 @@
-"""REMOVABLE probe: re-score opening PASS rows after moving the ball to the opposite pitch end.
+"""REMOVABLE probe: re-score opening PASS rows after a small local ball nudge.
 
 Eval-only helper for ``TD_RUN`` / ``LOOSE_BALL_RUN``. Does not change training or rewards —
 mutates a *copy* of the frozen opening ``policy_obs`` pitch ball channels **and** packed
 legal-row ``actorHasBall`` / ``targetHasBall`` so the join scorer sees a consistent lie,
 then re-runs diagnostics.
+
+Nudge (deterministic, smallest valid): **1–3** steps sideways (±x) and **0–3** steps
+back (−y in perspective — away from the scoring endzone). Far teleport was OOD and
+barely moved expected ranks; local nudge stays near trained geometry.
 
 Delete this module + the thin call sites tagged ``# ball_swap_probe`` to remove.
 Scenario allowlist is intentional probe policy (not a catalog mirror for product logic).
@@ -62,18 +66,30 @@ def _find_ball_yx(pitch: np.ndarray) -> tuple[int, int] | None:
     return int(ys[0]), int(xs[0])
 
 
-def _opposite_end_yx(y: int, x: int) -> tuple[int, int]:
-    """Same column, other end of the board in perspective coords.
+# Sideways first (smaller |dx|), then deeper back — keeps the lie near the opening.
+_NUDGE_SIDE_DX: tuple[int, ...] = (1, -1, 2, -2, 3, -3)
+_NUDGE_BACK_DY: tuple[int, ...] = (0, 1, 2, 3)
 
-    Prefer vertical mirror. Odd-height midfield mirrors onto itself — snap to the far
-    endzone row (``PLAY_HEIGHT - 1``) so the probe still moves the ball.
-    """
+
+def _local_nudge_yx(y: int, x: int) -> tuple[int, int] | None:
+    """Perspective ``(y, x)``: 1–3 sideways (±x), 0–3 back (−y). Prefer smaller moves."""
     y = int(y)
     x = int(x)
-    mirrored = PLAY_HEIGHT - 1 - y
-    if mirrored != y:
-        return (mirrored, x)
-    return (PLAY_HEIGHT - 1, x)
+    # side_i keeps _NUDGE_SIDE_DX order (+1 before −1) when |dx| ties.
+    best: tuple[int, int, int, int, int] | None = None  # (|dx|+dy, |dx|, side_i, ny, nx)
+    for dy in _NUDGE_BACK_DY:
+        for side_i, dx in enumerate(_NUDGE_SIDE_DX):
+            nx, ny = x + dx, y - dy
+            if not _pitch_xy_valid(nx, ny):
+                continue
+            if (ny, nx) == (y, x):
+                continue
+            key = (abs(dx) + dy, abs(dx), side_i, ny, nx)
+            if best is None or key < best:
+                best = key
+    if best is None:
+        return None
+    return (best[3], best[4])
 
 
 def _pitch_xy_valid(x: int, y: int) -> bool:
@@ -100,8 +116,8 @@ def rewrite_legal_row_ball_flags(legal_moves: np.ndarray, *, ball_x: int, ball_y
         row[FACTOR_TARGET_HAS_BALL] = 1 if _pitch_xy_valid(tx, ty) and tx == ball_x and ty == ball_y else 0
 
 
-def relocate_ball_opposite_end(policy_obs: dict[str, np.ndarray]) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
-    """Copy obs; move pitch ``hasBall`` to the opposite end; refresh ``distToBall`` + row ball flags.
+def relocate_ball_nearby(policy_obs: dict[str, np.ndarray]) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+    """Copy obs; nudge pitch ``hasBall`` locally; refresh ``distToBall`` + row ball flags.
 
     Clears ``canPickup`` / ``canReachBall`` on all pitch cells so stale affordances do not
     still point at the old square. Rewrites packed ``actorHasBall`` / ``targetHasBall`` so
@@ -115,9 +131,10 @@ def relocate_ball_opposite_end(policy_obs: dict[str, np.ndarray]) -> tuple[dict[
     if found is None:
         return out, {"error": "no_ball"}
     y0, x0 = found
-    y1, x1 = _opposite_end_yx(y0, x0)
-    if (y1, x1) == (y0, x0):
-        return out, {"error": "ball_unmoved", "from": (x0 + 1, y0 + 1), "to": (x1 + 1, y1 + 1)}
+    nudged = _local_nudge_yx(y0, x0)
+    if nudged is None:
+        return out, {"error": "ball_unmoved", "from": (x0 + 1, y0 + 1)}
+    y1, x1 = nudged
 
     pitch[CELL_CH_HAS_BALL].fill(0.0)
     pitch[CELL_CH_HAS_BALL, y1, x1] = 1.0
@@ -153,7 +170,7 @@ def attach_ball_swap_opening_scores(
     summary.pop("opening_ball_swap", None)
     if not probe_enabled_for(scenario):
         return
-    swapped_obs, meta = relocate_ball_opposite_end(snapshot["policy_obs"])
+    swapped_obs, meta = relocate_ball_nearby(snapshot["policy_obs"])
     if meta.get("error"):
         summary["opening_ball_swap"] = {"error": meta["error"], **{k: v for k, v in meta.items() if k != "error"}}
         return

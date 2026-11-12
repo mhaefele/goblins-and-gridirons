@@ -1,4 +1,4 @@
-"""Unit tests for removable ball-opposite-end opening probe."""
+"""Unit tests for removable local ball-nudge opening probe."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from gridiron_ai.eval_ball_swap_probe import (
     aggregate_ball_swap_scores,
     format_ball_swap_turn1_line,
     probe_enabled_for,
-    relocate_ball_opposite_end,
+    relocate_ball_nearby,
 )
 
 
@@ -69,44 +69,43 @@ def test_probe_only_td_run_and_loose_ball() -> None:
     assert not probe_enabled_for(None)
 
 
-def test_relocate_ball_mirrors_row_and_clears_pickup() -> None:
-    obs, meta = relocate_ball_opposite_end(_pitch_with_ball(2, 4))
+def test_relocate_ball_prefers_plus_one_x() -> None:
+    """Smallest valid nudge: +1 x, 0 back."""
+    obs, meta = relocate_ball_nearby(_pitch_with_ball(2, 4))
     assert meta["from"] == (5, 3)  # pitch (4,2) → absolute 1-based
-    assert meta["to"] == (5, PLAY_HEIGHT - 2)  # pitch y mirrored, then +1
+    assert meta["to"] == (6, 3)  # +1 x
     pitch = obs[OBS_KEY_PITCH]
     assert float(pitch[CELL_CH_HAS_BALL, 2, 4]) == 0.0
-    ty = PLAY_HEIGHT - 1 - 2
-    assert float(pitch[CELL_CH_HAS_BALL, ty, 4]) == 1.0
+    assert float(pitch[CELL_CH_HAS_BALL, 2, 5]) == 1.0
     assert float(pitch[CELL_CH_CAN_PICKUP].max()) == 0.0
-    assert float(pitch[CELL_CH_DIST_TO_BALL, ty, 4]) == 0.0
-    assert float(pitch[CELL_CH_DIST_TO_BALL, 2, 4]) == float(abs(ty - 2))
+    assert float(pitch[CELL_CH_DIST_TO_BALL, 2, 5]) == 0.0
+    assert float(pitch[CELL_CH_DIST_TO_BALL, 2, 4]) == 1.0
 
 
-def test_relocate_midfield_ball_snaps_to_far_endzone() -> None:
-    """Odd PLAY_HEIGHT midfield mirrors onto itself — probe must still move the ball."""
-    mid_y = PLAY_HEIGHT // 2
-    assert PLAY_HEIGHT - 1 - mid_y == mid_y
-    obs, meta = relocate_ball_opposite_end(_pitch_with_ball(mid_y, 3))
+def test_relocate_at_right_edge_uses_minus_x() -> None:
+    x_edge = PLAY_WIDTH - 1
+    obs, meta = relocate_ball_nearby(_pitch_with_ball(5, x_edge))
     assert "error" not in meta
-    assert meta["from"] == (4, mid_y + 1)
-    assert meta["to"] == (4, PLAY_HEIGHT)
+    assert meta["from"] == (x_edge + 1, 6)
+    assert meta["to"] == (x_edge, 6)  # −1 x
     pitch = obs[OBS_KEY_PITCH]
-    assert float(pitch[CELL_CH_HAS_BALL, mid_y, 3]) == 0.0
-    assert float(pitch[CELL_CH_HAS_BALL, PLAY_HEIGHT - 1, 3]) == 1.0
+    assert float(pitch[CELL_CH_HAS_BALL, 5, x_edge]) == 0.0
+    assert float(pitch[CELL_CH_HAS_BALL, 5, x_edge - 1]) == 1.0
 
 
 def test_relocate_rewrites_legal_row_ball_flags() -> None:
     """Packed actorHasBall / targetHasBall follow the lied ball square, not the old one."""
     y0, x0 = 2, 4
-    y1 = PLAY_HEIGHT - 1 - y0
+    x1 = x0 + 1  # preferred nudge
+    y1 = y0
     rows = [
         _row(sx=x0, sy=y0, tx=x0, ty=y0, actor_ball=1, target_ball=1),  # was carrier @ ball
         _row(sx=x0, sy=y0, tx=5, ty=5, actor_ball=1, target_ball=0),  # carrier run elsewhere
         _row(sx=1, sy=1, tx=x0, ty=y0, actor_ball=0, target_ball=1),  # pickup toward old ball
-        _row(sx=1, sy=1, tx=x0, ty=y1, actor_ball=0, target_ball=0),  # dest = new ball square
+        _row(sx=1, sy=1, tx=x1, ty=y1, actor_ball=0, target_ball=0),  # dest = new ball square
     ]
-    obs, meta = relocate_ball_opposite_end(_pitch_with_ball(y0, x0, legal_rows=rows))
-    assert meta["to"] == (x0 + 1, y1 + 1)
+    obs, meta = relocate_ball_nearby(_pitch_with_ball(y0, x0, legal_rows=rows))
+    assert meta["to"] == (x1 + 1, y1 + 1)
     legal = obs[OBS_KEY_LEGAL_MOVES]
     assert int(legal[0, FACTOR_ACTOR_HAS_BALL]) == 0
     assert int(legal[0, FACTOR_TARGET_HAS_BALL]) == 0
@@ -123,7 +122,7 @@ def test_format_ball_swap_turn1_line() -> None:
     summary = {
         "opening_ball_swap": {
             "from": (4, 2),
-            "to": (4, 12),
+            "to": (5, 2),
             "expected_moves": ["run(9,13->8,14)*"],
             "expected": [{"index": 3, "rank": 12, "p": 0.013}],
         }
@@ -133,7 +132,7 @@ def test_format_ball_swap_turn1_line() -> None:
     assert "run(9,13->8,14)*" in line
     assert "rank=12" in line
     assert "p=0.013" in line
-    assert "ball=4,2->4,12" in line
+    assert "ball=4,2->5,2" in line
 
 
 def test_aggregate_ball_swap_scores() -> None:
