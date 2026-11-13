@@ -21,14 +21,23 @@
 #   ./start_over.sh --phase dump
 #   ./start_over.sh --phase seed --profile general
 #   ./start_over.sh --phase scenario_a
-#   ./start_over.sh --phase scenario_a --from-scratch   # random PPO; keeps expert seed zip
+#   ./start_over.sh --phase scenario_a --from-scratch
 #   ./start_over.sh --phase scenario_b
 #   ./start_over.sh --phase checkpoint --profile td
 #   ./start_over.sh --phase pack --cycles 3
 #   ./start_over.sh --undo
 #
-# --from-scratch (scenario_a only): wipe scenario_a onward, then train from a fresh
-# MaskablePPO instead of copying maskable_ppo_seed.zip. Never deletes the clone.
+# Expert prior vs random init (scenario_a):
+#   Default fork (NO --from-scratch): scenario_a starts by copying maskable_ppo_seed.zip
+#   (behavioral clone of expert moves). That is the normal “keep the expert prior” path.
+#   --from-scratch: wipe scenario_a onward, then train a brand-new random MaskablePPO —
+#   expert moves are NOT in the weights. Keeps the seed zip on disk; never deletes or
+#   re-clones it. Use only when you want a clean random baseline.
+#
+# After a policy/obs shape change (need a new seed zip that matches current code):
+#   ./start_over.sh --phase seed          # re-clone expert → new seed, then scenario_a from that
+#   NOT seed then --from-scratch (that would throw the new clone away and random-init).
+#   NOT --phase scenario_a alone if the old seed zip has the wrong net shape.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -743,8 +743,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--from-scratch",
         action="store_true",
-        help="scenario_a only: init a fresh MaskablePPO (no expert clone weights). Does not delete "
-        "output/expert/maskable_ppo_seed.zip — wipe scenario_a first (./start_over.sh --phase scenario_a --from-scratch)",
+        help="scenario_a only: random-init MaskablePPO (no expert clone weights). Opposite of "
+        "forking maskable_ppo_seed.zip. Does not delete that zip — "
+        "./start_over.sh --phase scenario_a --from-scratch. Want expert prior after a shape "
+        "change? ./start_over.sh --phase seed (not seed then --from-scratch)",
     )
     p.add_argument("--continue-on-submit-error", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--reset-long-running", action="store_true", help="Delete long-running checkpoints and TensorBoard logs for the selected profile(s), then exit (start_over.sh)")

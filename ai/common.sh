@@ -124,9 +124,11 @@ Options:
   --train-scenario-mastered N        PPO timesteps per drill at max while pack climbs
   --force-promote                    persist next phase gate without live curriculum
                                      (already at profiles: sticky full-game unlock)
-  --from-scratch                     scenario_a only: random-init PPO (do not copy expert
-                                     clone). Keeps maskable_ppo_seed.zip. Use with
+  --from-scratch                     scenario_a only: random-init PPO — no expert
+                                     clone weights. Opposite of the default fork from
+                                     maskable_ppo_seed.zip. Keeps that zip on disk.
                                      ./start_over.sh --phase scenario_a --from-scratch …
+                                     (want expert prior after a shape change? wipe --phase seed)
 
 Mix defaults live in scripts/train_self_play.py / TRAINING_ROADMAP.md.
 EOF
