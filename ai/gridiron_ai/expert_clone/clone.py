@@ -45,8 +45,9 @@ _CLONE_FIT_BATCH_SIZE = 512
 _CLONE_DEVICE = "cpu"
 # Rare full-dump pass — stop early when mean NLL plateaus; cap so it cannot run forever.
 MAX_CLONE_EPOCHS = 30
-_CLONE_PLATEAU_PATIENCE = 3
-_CLONE_PLATEAU_MIN_DELTA = 0.01
+# One epoch that fails to beat best_mean by at least this NLL drop → stop (was 3× / 0.01).
+_CLONE_PLATEAU_PATIENCE = 1
+_CLONE_PLATEAU_MIN_DELTA = 0.02
 # Heartbeat while an epoch is still chewing through millions of steps.
 _CLONE_PROGRESS_EVERY_S = 120.0
 
