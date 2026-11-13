@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
 
-from gridiron_ai.eval_opening_diag import diagnose_opening_mispick
+from gridiron_ai.eval_opening_diag import annotate_move_label, diagnose_opening_mispick
 
 
 def uninstall_evidence_train_hook(model: Any) -> None:
@@ -98,34 +98,56 @@ def summarize_pass_step_advantages(
     }
 
 
+def _plain_rank_by_index(rows: list[dict[str, Any]]) -> dict[int, tuple[int, float]]:
+    """Map legal-row index → (1-based plain rank, p_plain)."""
+    ordered = sorted(rows, key=lambda row: float(row["p_plain"]), reverse=True)
+    return {
+        int(row["index"]): (rank, float(row["p_plain"]))
+        for rank, row in enumerate(ordered, start=1)
+    }
+
+
 def score_opening_chosen_plain(policy: Any, snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Unbiased (plain) mass/rank of the opening move that was actually taken."""
+    """Unbiased (plain) mass/rank of the opening move that was actually taken.
+
+    Also returns ``expected_moves`` annotated with the same ``[rank= p=]`` bits eval uses
+    (``annotate_move_label``), so failed-drill expected lines match turn1/debug format.
+    """
     diag = diagnose_opening_mispick(policy, snapshot, all_rows=True)
     rows = list(diag.get("ranked_rows") or [])
+    plain = _plain_rank_by_index(rows)
     chosen_i = int(snapshot.get("chosen_row_index", -1))
     chosen = next((row for row in rows if int(row["index"]) == chosen_i), None)
+    expected_moves = expected_move_labels_from_snapshot(snapshot, plain_by_index=plain)
     if chosen is None:
         return {
             "p_chosen": None,
             "rank_chosen": None,
             "passing": False,
             "label": str(snapshot.get("chosen_label") or "?"),
+            "expected_moves": expected_moves,
+            "plain_by_index": plain,
         }
-    ordered = sorted(rows, key=lambda row: float(row["p_plain"]), reverse=True)
-    rank = next(
-        (index for index, row in enumerate(ordered, start=1) if int(row["index"]) == chosen_i),
-        None,
-    )
+    rank, p_chosen = plain.get(chosen_i, (None, float(chosen["p_plain"])))
     return {
-        "p_chosen": float(chosen["p_plain"]),
+        "p_chosen": p_chosen,
         "rank_chosen": float(rank) if rank is not None else None,
         "passing": bool(chosen.get("passing")),
         "label": str(snapshot.get("chosen_label") or chosen.get("label") or "?"),
+        "expected_moves": expected_moves,
+        "plain_by_index": plain,
     }
 
 
-def format_move_sequence(sequence: list[dict[str, Any]] | None) -> str:
-    """Lesson path only: stop at PASS-edge / TD (``!``), drop coach-window chaff after."""
+def format_move_sequence(
+    sequence: list[dict[str, Any]] | None,
+    *,
+    opening_score: dict[str, Any] | None = None,
+) -> str:
+    """Lesson path only: stop at PASS-edge / TD (``!``), drop coach-window chaff after.
+
+    Move bits use [annotate_move_label] — same ``label [rank= p= reward=…]`` shape as eval turn1.
+    """
     if not sequence:
         return "(no moves)"
     steps: list[dict[str, Any]] = []
@@ -135,17 +157,25 @@ def format_move_sequence(sequence: list[dict[str, Any]] | None) -> str:
         if step.get("pass_edge") or step.get("scored_td") or "!" in label:
             break
     parts: list[str] = []
-    for step in steps:
+    for index, step in enumerate(steps):
         label = str(step.get("label") or "?")
-        grade = "passing" if step.get("passing") else "non-passing"
-        parts.append(f"{label}[{grade}]")
+        score = opening_score if index == 0 else None
+        reward = step.get("reward")
+        parts.append(
+            annotate_move_label(
+                label,
+                score,
+                reward=float(reward) if reward is not None else None,
+            )
+        )
     return " → ".join(parts)
 
 
 def _fmt_p_delta(before: float | None, after: float | None) -> tuple[str, str]:
     if before is None or after is None:
         return "n/a", "n/a"
-    return f"{after - before:+.3f}", f"{before:.3f}→{after:.3f}"
+    # .6f so tiny KL/mass moves are not rounded to Δ=+0.000.
+    return f"{after - before:+.6f}", f"{before:.6f}→{after:.6f}"
 
 
 def _fmt_buf_pair(rew: float | None, adv: float | None) -> str:
@@ -170,6 +200,18 @@ def _fmt_mass_rank(
     return f"mass {p_bit} (Δ={d_bit}, {rank_bit})"
 
 
+def _annotate_opening_label(
+    label: str,
+    *,
+    p: float | None,
+    rank: float | None,
+) -> str:
+    """Opening move with shared eval ``[rank= p=]`` when scores exist."""
+    if p is None or rank is None:
+        return label
+    return annotate_move_label(label, {"rank": int(rank), "p": float(p)})
+
+
 def format_passed_drill_block(
     *,
     sequence: str,
@@ -190,11 +232,12 @@ def format_passed_drill_block(
     tag = f" [{scenario}]" if scenario else ""
     open_r = "n/a" if opening_reward is None else f"{opening_reward:+.2f}"
     score_r = "n/a" if scoring_reward is None else f"{scoring_reward:+.2f}"
+    open_move = _annotate_opening_label(opening_label, p=p_after, rank=rank_after)
     return "\n".join(
         [
             f"[gridiron] Passed the drill.{tag}",
             f"  steps: {sequence}",
-            f"  opening: {opening_label} env={open_r} {_fmt_buf_pair(opening_buf_rew, opening_buf_adv)} "
+            f"  opening: {open_move} env={open_r} {_fmt_buf_pair(opening_buf_rew, opening_buf_adv)} "
             f"{_fmt_mass_rank(p_before, p_after, rank_before, rank_after)}",
             f"  scoring: env={score_r} {_fmt_buf_pair(scoring_buf_rew, scoring_buf_adv)}",
         ]
@@ -230,6 +273,7 @@ def format_failed_drill_block(
     )
     open_r = "n/a" if opening_reward is None else f"{opening_reward:+.2f}"
     last_r = "n/a" if last_reward is None else f"{last_reward:+.2f}"
+    open_move = _annotate_opening_label(opening_label, p=p_after, rank=rank_after)
     lines = [
         f"[gridiron] Failed the drill.{tag}",
         f"  steps: {sequence}",
@@ -238,7 +282,7 @@ def format_failed_drill_block(
         lines.append(f"  expected: {expected_moves}")
     lines.extend(
         [
-            f"  opening: {opening_label} ({grade}{soft_bit}) env={open_r} "
+            f"  opening: {open_move} ({grade}{soft_bit}) env={open_r} "
             f"{_fmt_buf_pair(opening_buf_rew, opening_buf_adv)} "
             f"{_fmt_mass_rank(p_before, p_after, rank_before, rank_after)}",
             f"  last: env={last_r} {_fmt_buf_pair(last_buf_rew, last_buf_adv)}",
@@ -247,8 +291,12 @@ def format_failed_drill_block(
     return "\n".join(lines)
 
 
-def expected_move_labels_from_snapshot(snapshot: dict[str, Any]) -> str:
-    """Format opening ``passingLegal`` rows for failed-drill evidence."""
+def expected_move_labels_from_snapshot(
+    snapshot: dict[str, Any],
+    *,
+    plain_by_index: dict[int, tuple[int, float]] | None = None,
+) -> str:
+    """Format opening ``passingLegal`` rows — same ``[rank= p=]`` as eval turn1 when scored."""
     from gridiron_ai.eval_debug import ScenarioEvalDebug
 
     # Snapshots store numpy arrays — do not use ``x or []`` (ambiguous truth value).
@@ -268,11 +316,16 @@ def expected_move_labels_from_snapshot(snapshot: dict[str, Any]) -> str:
             if action is None and isinstance(row, dict):
                 action = row
         if isinstance(action, dict):
-            labels.append(
-                ScenarioEvalDebug.format_action(action, rewards=rewards, expected_move=True)
+            label = ScenarioEvalDebug.format_action(
+                action, rewards=rewards, expected_move=True
             )
         else:
-            labels.append(f"row{index}*")
+            label = f"row{index}*"
+        score = None
+        if plain_by_index is not None and index in plain_by_index:
+            rank, p = plain_by_index[index]
+            score = {"rank": rank, "p": p}
+        labels.append(annotate_move_label(label, score))
     return " ".join(labels) if labels else "(none)"
 
 
@@ -482,7 +535,13 @@ class PpoUpdateEvidenceCallback(BaseCallback):
             env_idx = row.get("env_idx")
             env_i = int(env_idx) if env_idx is not None else None
             scored = score_opening_chosen_plain(self.model.policy, row["snapshot"])
-            sequence = str(row.get("sequence") or format_move_sequence(raw_seq))
+            opening_score = None
+            if row.get("p_before") is not None and row.get("rank_before") is not None:
+                opening_score = {
+                    "rank": int(row["rank_before"]),
+                    "p": float(row["p_before"]),
+                }
+            sequence = format_move_sequence(raw_seq, opening_score=opening_score)
             if outcome == "US":
                 n_passed += 1
                 opening = _first_opening_lesson_step(raw_seq)
@@ -530,6 +589,9 @@ class PpoUpdateEvidenceCallback(BaseCallback):
                     soft_list = list(soft_arr)
                     if 0 <= int(chosen_i) < len(soft_list):
                         opening_soft = bool(soft_list[int(chosen_i)])
+            expected = scored.get("expected_moves")
+            if not expected and snap:
+                expected = expected_move_labels_from_snapshot(snap)
             print(
                 format_failed_drill_block(
                     sequence=sequence,
@@ -546,7 +608,7 @@ class PpoUpdateEvidenceCallback(BaseCallback):
                     opening_buf_adv=first_buf_adv,
                     last_buf_rew=last_buf_rew,
                     last_buf_adv=last_buf_adv,
-                    expected_moves=expected_move_labels_from_snapshot(snap) if snap else None,
+                    expected_moves=expected,
                     opening_soft_mask=bool(opening_soft) if opening_soft is not None else None,
                 ),
                 flush=True,
@@ -619,7 +681,18 @@ class PpoUpdateEvidenceCallback(BaseCallback):
                         "passing": scored.get("passing"),
                         "label": scored.get("label"),
                         "raw_sequence": raw_seq,
-                        "sequence": format_move_sequence(raw_seq),
+                        "sequence": format_move_sequence(
+                            raw_seq,
+                            opening_score=(
+                                {
+                                    "rank": int(scored["rank_chosen"]),
+                                    "p": float(scored["p_chosen"]),
+                                }
+                                if scored.get("rank_chosen") is not None
+                                and scored.get("p_chosen") is not None
+                                else None
+                            ),
+                        ),
                         "buf_ts": list(item.get("buf_ts") or []),
                         "env_idx": item.get("env_idx"),
                     }

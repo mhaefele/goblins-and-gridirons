@@ -127,16 +127,17 @@ With fixed buffer indexing + raw rewards, a Pass opening can show `adv≈+5` and
 ```text
 [gridiron] PASS-edge buffer …          ← mean buf rew/adv on score + prior (pickup)
 [gridiron] Passed the drill. …
-  steps: pickup → score
-  opening: env=… buf=… mass …→…       ← raw env vs what PPO saw; plain mass Δ
+  steps: run(…) [rank= p= reward=…] → …   ← same annotate_move_label as eval turn1
+  opening: run(…) [rank= p=] env=… buf=… mass …→… (Δ=±0.000012, rank …→…)
   scoring: env=… buf=…
 [gridiron] Failed the drill. …
+  expected: run(…)* [rank= p=]            ← PASS rows, same format
   opening: …
   last: env=-0.50 buf=…                 ← window loss; buf≈0 means normalize ate it
 [gridiron] PPO update … passed=N failed=M; ‖θ‖ … approx_kl=…
 ```
 
-`env=` = what `step_reward` paid. `buf=` = rollout buffer after VecNormalize (when on). Mass / rank = **plain** (unbiased) policy on the opening that was taken.
+`env=` = what `step_reward` paid. `buf=` = rollout buffer after VecNormalize (when on). Mass / rank = **plain** (unbiased) policy; move listings share eval’s `label [rank= p=]` (`annotate_move_label`). Mass Δ prints six decimals so tiny moves are not `0.000`.
 
 ### Logging bug (fixed): `buf.pos - 1` before `add`
 

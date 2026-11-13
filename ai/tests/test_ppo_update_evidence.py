@@ -23,15 +23,19 @@ def test_format_move_sequence_stops_at_touchdown() -> None:
             {"label": "run(3,4->5,7)*!", "passing": True, "reward": 4.75, "scored_td": True},
             {"label": "reserves(p3)", "passing": False, "reward": 0.0},
             {"label": "run(9,1->4,2)", "passing": False, "reward": 0.0},
-        ]
+        ],
+        opening_score={"rank": 3, "p": 0.012},
     )
-    assert text == "run(1,2->3,4)*[passing] → run(3,4->5,7)*![passing]"
+    assert text == (
+        "run(1,2->3,4)* [rank=3 p=0.012 reward=+0.25] → "
+        "run(3,4->5,7)*! [reward=+4.75]"
+    )
     assert "reserves" not in text
 
 
 def test_passed_drill_block_is_sequential() -> None:
     block = format_passed_drill_block(
-        sequence="run(a)*[passing] → run(b)*![passing]",
+        sequence="run(a)* [rank=12 p=0.080 reward=+0.25] → run(b)*! [reward=+4.75]",
         opening_label="run(a)*",
         opening_reward=0.25,
         scoring_reward=4.75,
@@ -48,7 +52,9 @@ def test_passed_drill_block_is_sequential() -> None:
     lines = block.splitlines()
     assert lines[0] == "[gridiron] Passed the drill. [LOOSE_BALL_RUN]"
     assert lines[1].startswith("  steps:")
+    assert "run(a)* [rank=9 p=0.110]" in lines[2]
     assert "env=+0.25" in lines[2] and "buf(rew=+0.1200 adv=+0.4000)" in lines[2]
+    assert "mass 0.080000→0.110000 (Δ=+0.030000, rank 12→9)" in lines[2]
     assert "env=+4.75" in lines[3] and "buf(rew=+1.8500 adv=+2.1000)" in lines[3]
     assert "approx_kl" not in block
 
@@ -69,9 +75,31 @@ def test_expected_move_labels_accepts_numpy_passing_legal() -> None:
     assert labels == "run(5,9)*"
 
 
+def test_expected_move_labels_annotate_rank_and_p() -> None:
+    labels = expected_move_labels_from_snapshot(
+        {
+            "passing_legal": np.asarray([0, 1], dtype=np.int8),
+            "legal_row_meta": [
+                {"action": {"kind": "run", "id": "a"}},
+                {
+                    "action": {
+                        "kind": "run",
+                        "id": "b",
+                        "playerId": "h0",
+                        "targetCoordinate": {"x": 10, "y": 14},
+                    }
+                },
+            ],
+            "rewards": None,
+        },
+        plain_by_index={1: (3, 0.0123)},
+    )
+    assert labels == "run(10,14)* [rank=3 p=0.012]"
+
+
 def test_failed_drill_block_includes_opening_and_last() -> None:
     block = format_failed_drill_block(
-        sequence="run(4,8->6,15)[non-passing]",
+        sequence="run(4,8->6,15) [rank=1 p=0.040 reward=+0]",
         opening_label="run(4,8->6,15)",
         opening_passing=False,
         opening_reward=0.0,
@@ -85,15 +113,36 @@ def test_failed_drill_block_includes_opening_and_last() -> None:
         opening_buf_adv=-0.20,
         last_buf_rew=-0.30,
         last_buf_adv=-0.50,
-        expected_moves="run(5,8->5,9)*",
+        expected_moves="run(5,8->5,9)* [rank=12 p=0.045]",
         opening_soft_mask=True,
     )
     lines = block.splitlines()
     assert lines[0].startswith("[gridiron] Failed the drill.")
-    assert lines[2] == "  expected: run(5,8->5,9)*"
+    assert lines[2] == "  expected: run(5,8->5,9)* [rank=12 p=0.045]"
+    assert "run(4,8->6,15) [rank=2 p=0.030]" in lines[3]
     assert "env=+0.00" in lines[3]
+    assert "mass 0.040000→0.030000 (Δ=-0.010000, rank 1→2)" in lines[3]
     assert "env=-0.50" in lines[4]
     assert "non-passing, softmask" in lines[3]
+
+
+def test_mass_delta_keeps_sub_milli_moves() -> None:
+    block = format_failed_drill_block(
+        sequence="run(a)",
+        opening_label="run(a)",
+        opening_passing=False,
+        opening_reward=-3.0,
+        last_reward=-3.0,
+        p_before=0.008041,
+        p_after=0.008029,
+        rank_before=60,
+        rank_after=62,
+        scenario="LOOSE_BALL_RUN",
+        expected_moves="run(b)* [rank=14 p=0.021]",
+    )
+    assert "Δ=-0.000012" in block
+    assert "0.008041→0.008029" in block
+    assert "Δ=+0.000" not in block.split("Δ=")[1][:8]
 
 
 def test_ppo_update_line_once_per_update() -> None:
