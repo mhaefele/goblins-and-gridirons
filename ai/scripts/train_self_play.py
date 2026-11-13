@@ -106,6 +106,8 @@ from gridiron_ai.scenario_curriculum import (
     LAST_EVAL_SOURCE_AFTER,
     LAST_EVAL_SOURCE_BEFORE,
     LAST_EVAL_SOURCE_PEER,
+    LOOSE_BALL_FOCUS_TARGET,
+    LOOSE_BALL_FOCUS_UNTIL,
     MAX_DIFFICULTY,
     apply_after_eval_curriculum,
     claims_unlocked,
@@ -142,6 +144,7 @@ from gridiron_ai.scenario_curriculum import (
     SCENARIO_TRAIN_BELOW_PACK_MAX_MULTIPLIER,
     scenario_eval_games,
     stuck_watch_scenarios,
+    suppress_full_game_eval_for_loose_ball_focus,
     train_multiplier_drill_label,
 )
 from gridiron_ai.train_mix import (
@@ -2417,6 +2420,10 @@ def _run_one_cycle(
         train_jobs.append(
             (onnx_timesteps, OPPONENT_COMPUTER, COMPUTER_KIND_ONNX, onnx_name, f"train_onnx_{onnx_name}")
         )
+    # LBR-only focus: scenario train/eval matter; 200+200 full-game seats are not worth the wall time.
+    suppress_full_game_eval = suppress_full_game_eval_for_loose_ball_focus(
+        levels, scenarios, game_phase=game_phase, eval_only=mix.eval_only
+    )
     run_full_game_eval = mix.run_full_game_eval(cycle_index=cycle_index, n_targets=n_targets)
     run_healthy_d5_eval = mix.run_healthy_d5_eval(
         game_phase=game_phase,
@@ -2427,7 +2434,17 @@ def _run_one_cycle(
     eval_heuristic, eval_lookahead, eval_onnx = mix.full_game_eval_games(
         cycle_index=cycle_index, n_targets=n_targets
     )
-    if not run_full_game_eval and (
+    if suppress_full_game_eval:
+        if mix.eval_lookahead > 0 or mix.eval_heuristic > 0 or mix.eval_onnx > 0:
+            print(
+                f"  full-game eval skipped (LBR focus until d{LOOSE_BALL_FOCUS_UNTIL}; "
+                f"only training {LOOSE_BALL_FOCUS_TARGET})",
+                flush=True,
+            )
+        eval_heuristic = 0
+        eval_lookahead = 0
+        eval_onnx = 0
+    elif not run_full_game_eval and (
         mix.eval_lookahead > 0 or mix.eval_heuristic > 0 or mix.eval_onnx > 0
     ):
         next_eval = mix.next_full_game_eval_cycle(cycle_index=cycle_index, n_targets=n_targets)

@@ -17,6 +17,7 @@ from gridiron_ai.scenario_curriculum import (
     active_scenario_catalog,
     loose_ball_bounce_paused,
     loose_ball_focus_active,
+    suppress_full_game_eval_for_loose_ball_focus,
     all_scenarios_mastered,
     apply_after_eval_curriculum,
     claims_unlocked,
@@ -250,6 +251,24 @@ def test_loose_ball_focus_lifts_at_d4() -> None:
     catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN"]
     assert not loose_ball_focus_active(levels, catalog)
     assert set(scenarios_for_cycle(levels, catalog)) == set(catalog)
+
+
+def test_suppress_full_game_eval_during_lbr_focus_only() -> None:
+    catalog = ["TD_RUN", "LOOSE_BALL_RUN", "MARKED_RUN"]
+    focused = {"TD_RUN": 0, "LOOSE_BALL_RUN": 0, "MARKED_RUN": 0}
+    past = {"TD_RUN": 1, "LOOSE_BALL_RUN": LOOSE_BALL_FOCUS_UNTIL, "MARKED_RUN": 0}
+    assert suppress_full_game_eval_for_loose_ball_focus(
+        focused, catalog, game_phase=False, eval_only=False
+    )
+    assert not suppress_full_game_eval_for_loose_ball_focus(
+        past, catalog, game_phase=False, eval_only=False
+    )
+    assert not suppress_full_game_eval_for_loose_ball_focus(
+        focused, catalog, game_phase=True, eval_only=False
+    )
+    assert not suppress_full_game_eval_for_loose_ball_focus(
+        focused, catalog, game_phase=False, eval_only=True
+    )
 
 
 def test_loose_ball_focus_skips_when_target_absent() -> None:

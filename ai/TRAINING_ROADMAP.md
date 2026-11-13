@@ -252,7 +252,7 @@ Apply on create **and** resume via `_set_learning_rate` / `_set_ent_coef` / `_se
 | Scenario soft-d5 maintenance | `scenario_curriculum` — 3840 ts/drill/cycle | Imperfect after-eval at MAX (climbing + game phase) |
 | Healthy d5 drift-eval | `train_mix.HEALTHY_D5_EVAL_EVERY_CYCLES` (2) | scenario_a / scenario_b climbing only; demote/gate-fail still apply; game phase evals all each cycle |
 | vs HEURISTIC / LOOKAHEAD / ONNX train | `train_mix.TrainMix` — 20k ts each per cycle (ONNX × `FULL_GAME_ONNX_OPPONENT_PROFILES`: general, defense) | 0 until full-game unlock (all drills d5) |
-| vs HEURISTIC / LOOKAHEAD / ONNX eval | `train_mix.TrainMix` — 200 games each seat, every 4 visits per profile (`FULL_GAME_EVAL_EVERY_CYCLES`; eval-only each pass) | Shaping off, `deterministic=True`; ONNX seats use reward-profile ids as `onnxProfile`; multi-wave up to `n_envs` |
+| vs HEURISTIC / LOOKAHEAD / ONNX eval | `train_mix.TrainMix` — 200 games each seat, every 4 visits per profile (`FULL_GAME_EVAL_EVERY_CYCLES`; eval-only each pass) | Shaping off, `deterministic=True`; ONNX seats use reward-profile ids as `onnxProfile`; multi-wave up to `n_envs`; **suppressed while LBR focus** (`loose_ball_focus_active`, until d`LOOSE_BALL_FOCUS_UNTIL`) — not worth the wall clock when only training that drill |
 | `n_envs` / `n_steps` / `batch_size` | `train_self_play` — 30 / 128 / 256 | See [PPO vs SB3 stock](#ppo-vs-sb3-stock) |
 | `learning_rate` / `n_epochs` / `clip_range` / `target_kl` | stock SB3 | See table above |
 | `ent_coef` `0.005` / `vf_coef` `0.5` | shared all profiles | Create **and** resume; no profile overrides |

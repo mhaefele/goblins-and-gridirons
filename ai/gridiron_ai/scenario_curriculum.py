@@ -92,7 +92,8 @@ MAX_DIFFICULTY = 5
 # “Why board before claims” — shared heads; establish core openings before claim dialects.
 CLAIM_UNLOCK_BOARD_DIFFICULTY = 4
 # While LOOSE_BALL_RUN is below this, pause every other drill in the cycle (bounce may stay —
-# see LOOSE_BALL_BOUNCE_PAUSE_THROUGH). Harness policy — not catalog membership.
+# see LOOSE_BALL_BOUNCE_PAUSE_THROUGH). Also skips full-game HEURISTIC/LOOKAHEAD/ONNX eval seats
+# in train_self_play (scenario climbing only). Harness policy — not catalog membership.
 LOOSE_BALL_FOCUS_UNTIL = CLAIM_UNLOCK_BOARD_DIFFICULTY
 LOOSE_BALL_FOCUS_TARGET = "LOOSE_BALL_RUN"
 # Inclusive: pause LOOSE_BALL_RUN difficultyProxy drills (bounce) while LBR is at this level or below.
@@ -1060,6 +1061,24 @@ def loose_ball_focus_active(
     if LOOSE_BALL_FOCUS_TARGET not in scenario_names:
         return False
     return get_difficulty(levels, LOOSE_BALL_FOCUS_TARGET) < LOOSE_BALL_FOCUS_UNTIL
+
+
+def suppress_full_game_eval_for_loose_ball_focus(
+    levels: dict[str, int],
+    scenario_names: list[str],
+    *,
+    game_phase: bool,
+    eval_only: bool,
+) -> bool:
+    """Skip HEURISTIC/LOOKAHEAD/ONNX eval seats while climbing under LBR-only focus.
+
+    Full-game train is already gated off until scenario_b unlock; the eval seats still
+    burned ~400 games every few cycles. Not worth it until the catalog opens past focus.
+    Explicit ``--eval-only`` and unlocked game phase keep the seats.
+    """
+    if game_phase or eval_only:
+        return False
+    return loose_ball_focus_active(levels, scenario_names)
 
 
 def loose_ball_bounce_paused(
