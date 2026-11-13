@@ -7,6 +7,7 @@ Python harness (Stable-Baselines3) over the Kotlin `/api/ai/...` trainer API.
 | **[OWNERSHIP.md](OWNERSHIP.md)** | Concept → owner file (start here when editing) |
 | [BACKLOG.md](BACKLOG.md) | Open tasks |
 | [DESIGN.md](DESIGN.md) | Locked contract decisions |
+| [PPO_STRATEGY.md](PPO_STRATEGY.md) | MaskablePPO policy + learning strategy (detail) |
 | [TRAINING_ROADMAP.md](TRAINING_ROADMAP.md) | Phases, gates, mix knobs |
 | [ACTION_SAMPLING.md](ACTION_SAMPLING.md) | Action heads / soft-mask inventory |
 

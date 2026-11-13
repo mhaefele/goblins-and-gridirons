@@ -6,7 +6,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 **Near-term (product):** [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) scenarios · [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) · [AI2.6](#ai26--onnx-export--kotlin-compute-opponent) regen · [AI2.5](#ai25--multi-team-curriculum).
 
-**Hygiene:** [AI2.14](#ai214--split-train_self_play) · optional [AI2.23](#ai223--flat-cell-table-drop-pitch-chw)→[AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) · [AI2.30](#ai230--binary-http-packed-step--submit).
+**Hygiene:** [AI2.14](#ai214--split-train_self_play) · [AI2.23](#ai223--flat-cell-table-drop-pitch-chw) parked (CNN trunk) · optional [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) · [AI2.30](#ai230--binary-http-packed-step--submit).
 
 **Design:** [`DESIGN.md`](DESIGN.md) · **Owners:** [`OWNERSHIP.md`](OWNERSHIP.md) · **Architecture:** [Backend § Long-term product goals](../backend/ARCHITECTURE.md#long-term-product-goals).
 
@@ -49,13 +49,14 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [ ] [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) — Blind-spot remediation
 - [ ] [AI2.18](#ai218--one-bonus-play-action-kind-retrain) — One bonus-play action kind *(bundle with next layout bump)*
 - [ ] [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) — Shared wire kind on `LegalAction` *(investigate)*
+- [ ] [AI2.31](#ai231--legal-action-success-chance-in-packed-rows) — Success chance on packed legal rows *(throws first; block/foul follow)*
 
 ### Open — hygiene
 
 - [ ] [AI2.14](#ai214--split-train_self_play) — Split `train_self_play.py`
 - [ ] [AI2.20](#ai220--remove-local-sb3-pickle-aliases) — Drop pickle-alias shim *(after resume zips re-saved)*
 - [x] [AI2.22](#ai222--python-typeddicts-for-harness-wire) — TypedDicts for harness wire
-- [ ] [AI2.23](#ai223--flat-cell-table-drop-pitch-chw) — Flat cell table; drop pitch `(C,H,W)`
+- [ ] [AI2.23](#ai223--flat-cell-table-drop-pitch-chw) — Flat cell table; drop pitch `(C,H,W)` *(parked — CNN trunk)*
 - [ ] [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) — Packed `Box` obs
 - [x] [AI2.29](#ai229--retune-ppo-after-factor-heads--join-score) — Re-tune PPO after factor heads → join-score
 - [ ] [AI2.30](#ai230--binary-http-packed-step--submit) — Binary body on HTTP `/…/packed` (not UDS)
@@ -238,8 +239,9 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 **Notes**
 
 - Distinct from [AI2.8](#ai28--evaluate-obs-enrichment-vs-truncated-legals): that item is extra *game-state* affordance hints on the DTO; this one is feeding the *legal menu* to the net and reshaping the Python obs Dict.
-- **Dict-shape half (landed, schema 7):** gym keys `scalars` / `challenges` / `deck` / `hand` / `pitch` `(C,15,11)` / `benches` `(2,10,C)` + enum embeddings + pitch `(x,y,dist-to-ball)`; MLP concat, no CNN. Kotlin `AiObsDto.cells[185]` is unchanged; `schemaVersion` bumped because the gym/model packing changed. **Schema 8:** pitch-only `boardTarget` pack column; play-bonus `HandSlot` removed (identity in kind). **Schema 9:** free factors + `sugarFactors`; `declineOffer` / `reroll` / `adjustByDoOver`; drop reroll MultiDiscrete axis; omit `cancelThrowTeammate` from AI legals. Prior schema checkpoints/onnx are incompatible.
-- Remaining: whether the policy/value nets should see legal-row content beyond masking; CNN vs this MLP concat (ablate later). Raw padded legal matrix into an MLP is still a candidate to reject early.
+- **Dict-shape half (landed, schema 7):** gym keys `scalars` / `challenges` / `deck` / `hand` / `pitch` `(C,15,11)` / `benches` `(2,10,C)` + enum embeddings + pitch `(x,y,dist-to-ball)`. Kotlin `AiObsDto.cells[185]` is unchanged; `schemaVersion` bumped because the gym/model packing changed. **Schema 8:** pitch-only `boardTarget` pack column; play-bonus `HandSlot` removed (identity in kind). **Schema 9:** free factors + `sugarFactors`; `declineOffer` / `reroll` / `adjustByDoOver`; drop reroll MultiDiscrete axis; omit `cancelThrowTeammate` from AI legals. Prior schema checkpoints/onnx are incompatible.
+- **Pitch CNN trunk (landed):** emb map → Conv2d → GAP → fuse with non-pitch pieces → 512-d latent; join still global ⊕ row embs. Detail: [`PPO_STRATEGY.md`](PPO_STRATEGY.md). Next ablation: source/target gather from the spatial map (not landed).
+- Remaining: whether further legal-row content beyond the join pack helps. Raw padded legal matrix into an MLP is still a candidate to reject early.
 - Renaming `board` → something like `game_state` (or splitting into scalars / grid / cards / hand) is in scope for the dict-shape half of this item.
 
 ---
@@ -492,10 +494,10 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 | Field | Detail |
 |-------|--------|
-| **Status** | Open — optional hygiene toward stock SB3 (no CNN). |
-| **Problem** | Gym Dict keeps `pitch` as `(C,H,W)` for a spatial layout we do not convolve. Feature extractor already treats cells as a table; H×W is ceremony and duplicates the linear pack index space. |
+| **Status** | **Parked** — conflicts with pitch Conv2d trunk ([`PPO_STRATEGY.md`](PPO_STRATEGY.md)). Reopen only if we drop convolution. |
+| **Problem** | Gym Dict keeps `pitch` as `(C,H,W)`. Was hygiene toward stock SB3 when the extractor flattened cells; now the spatial layout is intentional for Conv2d. |
 | **Goal** | Observe all board slots as one table `(BOARD_SLOT_COUNT, C)` (or pitch `(165,C)` + benches `(2,10,C)` without H×W). Drop transpose / `(C,H,W)` in `obs.py` / `export_onnx.py` / `features.py`. |
-| **Depends on** | Schema 22 cell channels settled. Bundle with a retrain / schema bump if gym Dict shapes change. |
+| **Depends on** | Decision to abandon CNN trunk. Bundle with a retrain / schema bump if gym Dict shapes change. |
 | **Files** | `obs.py`, `features.py`, `export_onnx.py`, `constants.py`; tests that hard-code pitch shape. |
 | **Acceptance** | No `(C,H,W)` pitch in the gym Dict; extractor encodes a flat cell table; ONNX slice matches; train/eval green after retrain. |
 | **Rulebook** | n/a |
@@ -530,6 +532,20 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 | **Files** | Kotlin packed mapper / controller content-type; `gridiron_ai/api/client.py` (+ env); expert dump parity if dumps stay JSONL of the same tensors; [`DESIGN.md`](DESIGN.md) obs-wire row. |
 | **Acceptance** | Train/eval hot path reads binary packed step/submit over HTTP; `schemaVersion` still gates; nested JSON path unchanged; no UDS / no second JVM required. |
 | **Rulebook** | n/a |
+
+---
+
+## AI2.31 — Legal-action success chance in packed rows
+
+| Field | Detail |
+|-------|--------|
+| **Status** | Open — product; **throws first**. |
+| **Problem** | Throw difficulty lives only as `range` / `obstructed` on [`LegalAction`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt); packed legal rows omit it ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md)). Policy / GUI / Lookahead re-derive or approximate instead of reading one engine value. |
+| **Goal** | When root [Quick TODO](../BACKLOG.md#quick-todo) lands success chance on throw-shaped (then block / foul) legal actions, **pack that field** into AI step / join-score rows (schema bump). Harness nested `legalRows` already wraps `LegalAction` — nested JSON gets it for free; packed ints/floats must copy the wire value. **Do not recalculate** in Python or Kotlin ONNX packing once present. |
+| **Depends on** | Root Quick TODO: throw success chance on the legal action (GUI + AI + model); block / foul odds items follow the same pack path. |
+| **Files** | `AiLegalPacker` / layout / `constants.py` / `ACTION_SAMPLING.md`; encoder input if a new row channel; ONNX regen with schema. |
+| **Acceptance** | Packed rows expose throw success chance; model consumes it; no dual path that recomputes from TV + range. Block/foul packed when those LegalAction fields exist. |
+| **Rulebook** | digest § Throw / Block / Foul (probability only — engine already owns the check). |
 
 ---
 

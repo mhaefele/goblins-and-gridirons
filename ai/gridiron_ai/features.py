@@ -1,12 +1,14 @@
 """Game-state + legal-row feature encoding for LegalRowActorCriticPolicy.
 
-Owner: gym Dict → embedding/MLP board trunk; same emb/coord style for each legal
-row (actor / kind / target xy / source xy / actorHasBall / targetHasBall / challenge).
-Policy join-scores board latent ⊕ row features. See ``ai/OWNERSHIP.md``.
+Owner: gym Dict → board trunk (pitch CNN + non-pitch MLP pieces); same emb/coord
+style for each legal row (actor / kind / target xy / source xy / actorHasBall /
+targetHasBall / challenge). Policy join-scores board latent ⊕ row features.
+See ``ai/OWNERSHIP.md`` / ``ai/PPO_STRATEGY.md``.
 
 # DEVIATION: stock CombinedExtractor would Flatten each Dict Box. We embed enums
-# and pitch x/y ids, keep benches as a table, then Linear-project. Spatial x/y are
-# categorical embeddings (not raw magnitudes); distToBall and stats are scaled ~0..1.
+# and pitch x/y ids, run Conv2d+GAP on the pitch map, keep benches as a table, then
+# Linear-project the concat. Spatial x/y are categorical embeddings (not raw
+# magnitudes); distToBall and stats are scaled ~0..1.
 """
 
 from __future__ import annotations
@@ -63,7 +65,6 @@ from gridiron_ai.constants import (
     OBS_KEY_HELD_CHECK,
     OBS_KEY_PITCH,
     OBS_KEY_SCALARS,
-    PITCH_SQUARE_COUNT,
     PLAYER_ABILITY_VOCAB,
     PLAYER_INDEX_VOCAB,
     PLAYER_STATUS_VOCAB,
@@ -127,13 +128,17 @@ LEGAL_ROW_FEATURE_DIM = (
 )
 # heldCheck: kind emb + scaled d6 + 3 face embs.
 _HELD_CHECK_WIDTH = EMBED_DIM + 1 + MAX_HELD_BLOCK_FACES * EMBED_DIM
+# Pitch spatial trunk: emb map → Conv2d → GAP. Join still uses global latent ⊕ row embs
+# (no source/target feature-map gather yet — see PPO_STRATEGY.md).
+_PITCH_CNN_WIDTH = 64
+_PITCH_CNN_OUT = 128
 # Board trunk width — also the join-side summary when policy net_arch leaves pi/vf empty.
 _PROJECTED_FEATURES = 512
 
 
 def _concat_width() -> int:
-    """Flattened size before the projection Linear — keep in sync with forward()."""
-    pitch = PITCH_SQUARE_COUNT * _OCCUPANT_WIDTH
+    """Size before the projection Linear — keep in sync with forward()."""
+    pitch = _PITCH_CNN_OUT
     benches = 2 * BENCH_SLOTS * _OCCUPANT_WIDTH
     scalars = EMBED_DIM + (SCALAR_COUNT - 1)  # phase embedded, other scalars scaled
     challenges = ACTIVE_CHALLENGE_SLOTS * (EMBED_DIM + 1)
@@ -143,7 +148,7 @@ def _concat_width() -> int:
 
 
 class GridironFeaturesExtractor(BaseFeaturesExtractor):
-    """Embed packed cell channels + flatten concat + Linear. Pitch is (C, H, W); benches are a table."""
+    """Embed packed cells; Conv2d+GAP on pitch; flatten benches; Linear fuse."""
 
     def __init__(self, observation_space: spaces.Dict, features_dim: int = _PROJECTED_FEATURES) -> None:
         super().__init__(observation_space, features_dim=features_dim)
@@ -162,6 +167,16 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         # Shared pitch-axis ids for cells, reach bbox, and legal-row dest/source.
         self.pitch_x_emb = nn.Embedding(PITCH_X_VOCAB, EMBED_DIM)
         self.pitch_y_emb = nn.Embedding(PITCH_Y_VOCAB, EMBED_DIM)
+        # Local spatial bias on the 15×11 pitch only; benches stay a non-neighbor table.
+        self.pitch_cnn = nn.Sequential(
+            nn.Conv2d(_OCCUPANT_WIDTH, _PITCH_CNN_WIDTH, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(_PITCH_CNN_WIDTH, _PITCH_CNN_WIDTH, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(_PITCH_CNN_WIDTH, _PITCH_CNN_OUT, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d(1),
+        )
 
         self.proj = nn.Linear(_concat_width(), features_dim)
         self.proj_act = nn.ReLU()
@@ -262,10 +277,16 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         return th.cat([kind, d6, faces], dim=1)
 
     def _encode_pitch(self, pitch: th.Tensor) -> th.Tensor:
-        """pitch: (N, C, H, W) packed cell channels — no extra synth; still no conv."""
+        """pitch: (N, C, H, W) → per-cell emb map → Conv2d → GAP → (_PITCH_CNN_OUT,)."""
         if pitch.shape[1] != NUMBERS_PER_BOARD_CELL:
             raise ValueError(f"pitch channel count {pitch.shape[1]} != {NUMBERS_PER_BOARD_CELL}")
-        return self._encode_occupants(pitch.permute(0, 2, 3, 1)).flatten(1)
+        if pitch.shape[2] != PLAY_HEIGHT or pitch.shape[3] != PLAY_WIDTH:
+            raise ValueError(
+                f"pitch spatial shape {tuple(pitch.shape[2:])} != ({PLAY_HEIGHT}, {PLAY_WIDTH})"
+            )
+        # Channel-last emb, then NCHW for Conv2d (occupancy-rich planes, not raw pack ints).
+        emb = self._encode_occupants(pitch.permute(0, 2, 3, 1))
+        return self.pitch_cnn(emb.permute(0, 3, 1, 2).contiguous()).flatten(1)
 
     def _encode_benches(self, benches: th.Tensor) -> th.Tensor:
         """benches: (N, 2, 10, C) — us then them; not spatial neighbors of the pitch."""

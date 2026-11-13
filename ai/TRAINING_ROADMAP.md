@@ -39,6 +39,7 @@ regressed easier drills — see [`PPO_LEARNING_DEBUG.md`](PPO_LEARNING_DEBUG.md)
 
 PPO knobs: see [PPO vs SB3 stock](#ppo-vs-sb3-stock) below — join-score era uses stock
 `lr` / `n_epochs` / `clip_range` / `target_kl`; only `ent_coef` is intentionally raised.
+Policy architecture + learning-signal contract (detail): [`PPO_STRATEGY.md`](PPO_STRATEGY.md).
 
 ---
 
@@ -231,7 +232,7 @@ Standing record of MaskablePPO hyperparameters vs Stable-Baselines3 defaults.
 | `ent_coef` | `0.0` | `0.005` | **Intentional** — large legal-row Discrete peaks fast at 0; keep exploration. |
 | `vf_coef` | `0.5` | `0.5` | Stock. Removed former `td=0.8` profile override. |
 | `net_arch` (pi/vf) | `[64, 64]` | `[]` / `[]` | **Intentional** — stock crushed the board trunk to 64 before legal-row join; empty MLPs keep `latent_pi ==` board features (**512**). |
-| board features / join hidden | (custom) | `512` / `512` | Trunk + join MLP track each other (was 256 / 256 after an earlier widen from 128). |
+| board features / join hidden | (custom) | `512` / `512` | Trunk + join MLP track each other (was 256 / 256 after an earlier widen from 128). Pitch trunk = emb→Conv2d→GAP (see [`PPO_STRATEGY.md`](PPO_STRATEGY.md)). |
 | `n_steps` × `n_envs` | `2048` × 1 | `128` × `30` (=3840) | **Intentional** — parallel HTTP envs; same order of rollout size. |
 | `batch_size` | `64` | `256` | **Intentional** — matches multi-env rollout chunks. |
 | `gamma` / `gae_lambda` | `0.99` / `0.95` | stock | Unchanged. |

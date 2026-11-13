@@ -8,8 +8,8 @@ batch's max ``legal_move_count`` (pad tail → ``-1e8``).
 
 MaskablePPO → ``forward`` (rollouts) / ``evaluate_actions`` (PPO + clone);
 pick via stock ``MaskableCategoricalDistribution.get_actions``.
+Strategy detail: ``ai/PPO_STRATEGY.md``.
 """
-
 from __future__ import annotations
 
 from typing import Any

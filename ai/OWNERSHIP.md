@@ -9,6 +9,7 @@ Doc roles (do not restate each other):
 | **This file** | Concept → owner path; dual-catalog hazards; do-not-touch |
 | [`README.md`](README.md) | How to run / wipe / expert chain commands |
 | [`DESIGN.md`](DESIGN.md) | Locked contract decisions (why the wire/API is shaped this way) |
+| [`PPO_STRATEGY.md`](PPO_STRATEGY.md) | MaskablePPO policy architecture + learning-signal contract (detail) |
 | [`TRAINING_ROADMAP.md`](TRAINING_ROADMAP.md) | Phase gates, curriculum policy, PPO/mix knob table |
 | [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md) | Action-head inventory / soft-mask / next sampling experiments |
 | [`BLINDSPOTS.md`](BLINDSPOTS.md) | Model-vs-lookahead failure taxonomy + remediation pointers |
@@ -24,7 +25,8 @@ Kotlin DTOs / packers are the field-level contract — **not** a parallel markdo
 |---------|-------|--------|
 | Obs packing / `schemaVersion` / cell layout | Kotlin `AiObsPacker`, `AiObsLayout`, `AiObsDto` | Re-encode eligibility or channel order in Python |
 | Gym Dict slice + spaces | `gridiron_ai/obs.py`, `constants.py` | Invent new obs facts client-side |
-| Feature extract (embed / pitch coords) | `gridiron_ai/features.py` | Put legality into features |
+| Feature extract (embed / pitch CNN / coords) | `gridiron_ai/features.py` — strategy in [`PPO_STRATEGY.md`](PPO_STRATEGY.md) | Put legality into features |
+
 | Legal row pack / join-score action / soft-mask | Kotlin `AiLegalPacker` + `actions.py` / `legal_row_policy.py` | Hard-mask distractors; duplicate `expectedScenarioMove` in Python; factor MultiDiscrete remask; use packed ints for reward/business logic |
 | Harness reward snapshot (`players` + status + `ballCoordinate`) | Kotlin `HarnessRewardSnapshotDto` / `AiGameStateMapper` | HxW cells; `hasBall` on every player; jam board facts onto legal rows |
 | Harness legal rows | Kotlin `AiLegalChoiceDto` (LegalAction + curriculum flags) | Actor / ball-carrier sidecars; scrape packed ints for reward |
@@ -87,7 +89,8 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `obs.py` | Packed float → gym Dict |
 | `actions.py` | Pad / match / resolve legal-row index |
 | `legal_row_policy.py` | Join-score legal rows (+ soft-mask bias on preferred rows) |
-| `features.py` | Embeddings → MLP vector; `encode_legal_rows` reuses board embs (does not re-pack) |
+| `features.py` | Embeddings → pitch Conv2d+GAP + fuse Linear; `encode_legal_rows` reuses board embs (does not re-pack) |
+
 | `reward.py` | `RewardConfig` / `RewardShaping` + `step_reward` + profile presets |
 | `train_mix.py` | `TrainMix` — CLI train/eval amounts + cadence (`from_args`); answers how much to run |
 | `persistence/` | JSON load/save — one module per on-disk file (see package docstring) |
