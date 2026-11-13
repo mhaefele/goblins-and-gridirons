@@ -230,6 +230,8 @@ Standing record of MaskablePPO hyperparameters vs Stable-Baselines3 defaults.
 | `target_kl` | `None` | `None` | Stock (no KL early-stop). Was `0.02`. |
 | `ent_coef` | `0.0` | `0.005` | **Intentional** — large legal-row Discrete peaks fast at 0; keep exploration. |
 | `vf_coef` | `0.5` | `0.5` | Stock. Removed former `td=0.8` profile override. |
+| `net_arch` (pi/vf) | `[64, 64]` | `[]` / `[]` | **Intentional** — stock crushed the board trunk to 64 before legal-row join; empty MLPs keep `latent_pi ==` board features (**512**). |
+| board features / join hidden | (custom) | `512` / `512` | Trunk + join MLP track each other (was 256 / 256 after an earlier widen from 128). |
 | `n_steps` × `n_envs` | `2048` × 1 | `128` × `30` (=3840) | **Intentional** — parallel HTTP envs; same order of rollout size. |
 | `batch_size` | `64` | `256` | **Intentional** — matches multi-env rollout chunks. |
 | `gamma` / `gae_lambda` | `0.99` / `0.95` | stock | Unchanged. |

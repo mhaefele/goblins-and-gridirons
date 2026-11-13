@@ -31,10 +31,25 @@ from gridiron_ai.constants import (
     OBS_KEY_SOFT_MASK_LEGAL,
     SOFT_MASK_LOGIT_BIAS,
 )
-from gridiron_ai.features import LEGAL_ROW_FEATURE_DIM, GridironFeaturesExtractor
+from gridiron_ai.features import (
+    LEGAL_ROW_FEATURE_DIM,
+    GridironFeaturesExtractor,
+    _PROJECTED_FEATURES,
+)
 
-# Join MLP width — 256 so ball/spatial row bits have more room than the old 128 bottleneck.
-_SCORE_HIDDEN = 256
+# Join MLP width — track board summary so 512-d latent is not crushed again at score time.
+_SCORE_HIDDEN = 512
+# DEVIATION: SB3 stock ``net_arch`` is ``pi/vf=[64,64]``, which crushed the board trunk
+# to 64 before every legal-row join. Empty MLPs → ``latent_pi == features_dim``.
+POLICY_NET_ARCH: dict[str, list[int]] = dict(pi=[], vf=[])
+
+
+def maskable_ppo_policy_kwargs() -> dict[str, Any]:
+    """Shared create-time kwargs so train + clone keep the full board summary into the join."""
+    return {
+        "net_arch": POLICY_NET_ARCH,
+        "features_extractor_kwargs": {"features_dim": _PROJECTED_FEATURES},
+    }
 
 
 class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):

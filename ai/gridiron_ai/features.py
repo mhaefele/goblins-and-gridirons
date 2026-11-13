@@ -127,7 +127,8 @@ LEGAL_ROW_FEATURE_DIM = (
 )
 # heldCheck: kind emb + scaled d6 + 3 face embs.
 _HELD_CHECK_WIDTH = EMBED_DIM + 1 + MAX_HELD_BLOCK_FACES * EMBED_DIM
-_PROJECTED_FEATURES = 256
+# Board trunk width — also the join-side summary when policy net_arch leaves pi/vf empty.
+_PROJECTED_FEATURES = 512
 
 
 def _concat_width() -> int:

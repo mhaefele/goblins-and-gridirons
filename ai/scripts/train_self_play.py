@@ -159,7 +159,7 @@ from gridiron_ai.api.scenarios import refresh_catalog, require_catalog, resolve_
 from gridiron_ai.persistence.scenario_focus import clear_focus, path_for_focus, write_focus
 from gridiron_ai.ppo_update_evidence import PpoUpdateEvidenceCallback
 from gridiron_ai.tb_callback import GridironMetricsCallback, PeriodicFinalSaveCallback
-from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
+from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy, maskable_ppo_policy_kwargs
 from gridiron_ai.training_phases import (
     EVAL_PHASE_CHOICES,
     PhaseName,
@@ -2194,6 +2194,7 @@ def _write_fresh_scenario_a_zip(
         target_kl=TARGET_KL,
         ent_coef=DEFAULT_ENT_COEF,
         vf_coef=DEFAULT_VF_COEF,
+        policy_kwargs=maskable_ppo_policy_kwargs(),
         verbose=1,
         device=DEFAULT_DEVICE,
         tensorboard_log=tensorboard_log,

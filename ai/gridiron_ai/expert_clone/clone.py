@@ -31,7 +31,7 @@ from gridiron_ai.actions import legal_row_action_mask, legal_row_action_n
 from gridiron_ai.checkpoints import atomic_model_save
 from gridiron_ai.constants import OBS_KEY_SOFT_MASK_LEGAL
 from gridiron_ai.expert_clone.expert import NPZ_KEY_ACTION, batch_gym_obs, load_npz
-from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
+from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy, maskable_ppo_policy_kwargs
 from gridiron_ai.obs import dict_observation_space, empty_step_observation
 
 logger = logging.getLogger(__name__)
@@ -274,6 +274,7 @@ def clone_arrays_into_checkpoint(
             bootstrap,
             n_steps=_CLONE_N_STEPS,
             batch_size=_CLONE_BATCH_SIZE,
+            policy_kwargs=maskable_ppo_policy_kwargs(),
             verbose=0,
             seed=seed,
             device=device,
