@@ -1,10 +1,10 @@
 """Join-score policy: rank this step's legal rows given the board (schema 16).
 
 Owner: one score per packed legal row = ``f(board_latent, encode(row))``.
-Row features use the same emb/coord style as the board trunk
-(``GridironFeaturesExtractor.encode_legal_rows``). Gym action is
-``Discrete(MAX_LEGAL_MOVES)``. Soft-mask adds a logit bias on preferred rows.
-Encode+score truncates to this batch's max ``legal_move_count`` (pad tail → ``-1e8``).
+Row features use the same emb style as the board trunk (including pitch x/y
+ids — not raw coordinate magnitudes). Gym action is ``Discrete(MAX_LEGAL_MOVES)``.
+Soft-mask adds a logit bias on preferred rows. Encode+score truncates to this
+batch's max ``legal_move_count`` (pad tail → ``-1e8``).
 
 MaskablePPO → ``forward`` (rollouts) / ``evaluate_actions`` (PPO + clone);
 pick via stock ``MaskableCategoricalDistribution.get_actions``.

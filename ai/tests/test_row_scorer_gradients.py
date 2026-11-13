@@ -33,8 +33,8 @@ from gridiron_ai.features import EMBED_DIM, GridironFeaturesExtractor
 from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
 from gridiron_ai.obs import dict_observation_space, empty_step_observation
 
-# encode_legal_rows concat: actor(8) + kind(8) + target(3) + source(3) + actorHasBall + targetHasBall
-_TARGET_HAS_BALL_FEAT = EMBED_DIM + EMBED_DIM + 3 + 3 + 1
+# encode_legal_rows concat: actor(8) + kind(8) + target xy embs(16) + source xy embs(16) + actorHasBall + targetHasBall
+_TARGET_HAS_BALL_FEAT = EMBED_DIM + EMBED_DIM + 2 * EMBED_DIM + 2 * EMBED_DIM + 1
 
 
 def _noise_board(rng: np.random.Generator) -> dict[str, np.ndarray]:
