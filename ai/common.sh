@@ -7,7 +7,8 @@
 #   seed       expert/maskable_ppo_seed.zip (+ optional .scenario_difficulty.json floor probe)
 #   scenario_a checkpoints/scenario_a/, runs/scenario_a/ (incl. that tree’s difficulty sidecar)
 #              + expert seed .scenario_difficulty.json (only extra — otherwise fork reuses floors)
-#              (first train: expert climb-until-fail floors if difficulty sidecar missing)
+#              (first train: climb-until-fail floors if difficulty sidecar missing;
+#               --from-scratch probes the random zip, does not rewrite seed floors)
 #   scenario_b checkpoints/scenario_b/, runs/scenario_b/
 #              + shared scenario artifacts: scenario_catalog.json,
 #                runs/train_eval_cycles.tsv, evals/baseline/ (pre-split + post-split baseline evals)

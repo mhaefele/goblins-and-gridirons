@@ -2007,25 +2007,28 @@ def _maybe_probe_expert_scenario_floors(
     save_stem: Path,
     phase: PhaseName,
 ) -> None:
-    """Once before scenario_a train: climb each drill on the expert clone until fail.
+    """Once before scenario_a train: climb each drill until fail on the loaded zip.
 
-    Writes ``.scenario_difficulty.json`` beside the scenario_a stem (and the expert seed
-    stem when present) so training starts at the first failing difficulty. Skipped when
-    the sidecar already exists, on ``--from-scratch``, or during ``--eval-only``.
-    ``./start_over.sh --phase scenario_a`` parks the seed sidecar so the next train
-    re-probes instead of forking stale floors.
+    Writes ``.scenario_difficulty.json`` beside the scenario_a stem so training starts at
+    the first failing difficulty. Expert-clone runs also mirror floors beside the seed
+    stem; ``--from-scratch`` writes only the scenario_a sidecar (random floors must not
+    overwrite expert seed floors). Skipped when the sidecar already exists or during
+    ``--eval-only``. ``./start_over.sh --phase scenario_a`` parks the seed sidecar so the
+    next train re-probes instead of forking stale floors.
     """
-    if phase != PHASE_SCENARIO_A or args.eval_only or bool(getattr(args, "from_scratch", False)):
+    if phase != PHASE_SCENARIO_A or args.eval_only:
         return
+    from_scratch = bool(getattr(args, "from_scratch", False))
     curriculum_path = path_for_stem(save_stem)
     if curriculum_path.is_file():
         return
     scenarios = probe_catalog_scenario_keys()
     if not scenarios:
-        print("Expert scenario floor probe: catalog empty — skip", flush=True)
+        print("Scenario floor probe: catalog empty — skip", flush=True)
         return
+    probe_label = "Fresh-model scenario floor probe" if from_scratch else "Expert scenario floor probe"
     print(
-        f"Expert scenario floor probe ({len(scenarios)} drills, "
+        f"{probe_label} ({len(scenarios)} drills, "
         f"{SCENARIO_EVAL_GAMES} games/level, climb until fail)…",
         flush=True,
     )
@@ -2060,11 +2063,12 @@ def _maybe_probe_expert_scenario_floors(
         clear_focus(focus_path)
     save_levels(curriculum_path, levels)
     seed_curriculum = path_for_stem(EXPERT_SEED_ZIP.with_suffix(""))
-    if EXPERT_SEED_ZIP.is_file():
+    # Mirror expert-clone floors onto the seed stem; never write random-init floors there.
+    if not from_scratch and EXPERT_SEED_ZIP.is_file():
         save_levels(seed_curriculum, levels)
         print(f"  wrote expert floors → {curriculum_path.name} + {seed_curriculum.name}", flush=True)
     else:
-        print(f"  wrote expert floors → {curriculum_path.name}", flush=True)
+        print(f"  wrote floors → {curriculum_path.name}", flush=True)
     summary = ", ".join(f"{name}=d{level}" for name, level in sorted(levels.items()))
     print(f"  floors: {summary}", flush=True)
 
