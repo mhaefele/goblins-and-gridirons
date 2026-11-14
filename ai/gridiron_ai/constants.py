@@ -5,6 +5,8 @@ Owner: ``SCHEMA_VERSION`` + obs / legal-row pack widths shared by ``obs`` / ``ac
 semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
+# v25: cell pack drops menu-summary affordance/reach bbox; pitchX/Y/dist after hasBall;
+# legal-row cols reordered (actor/kind → source→target → ball → throw%/block → cards → faces).
 # v24: throwSuccessChancePercent (0..100; 0 = non-throw) + blockDiceCount on legal rows;
 # categorical absent → SENTINEL (-1); enums pack raw ordinal. Folded before dump used 24.
 # v23: legal-row actorHasBall / targetHasBall metadata; bonus column = full BonusPlay vocab
@@ -13,7 +15,7 @@ semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 # v22: cell pitchX / pitchY / distToBall on the wire (was Python feature synth).
 # v21: harness rewards.players + ballCoordinate (absolute); legal rows = LegalAction + flags.
 # Schema 15 is the only dual-path ONNX fork.
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 
 PLAY_WIDTH = 11
 PLAY_HEIGHT = 15
@@ -44,49 +46,40 @@ ACTOR_PLAYER_INDEX_COUNT = MAX_PLAYERS_PER_TEAM + 1  # emb rows: pad + 1..MAX
 ACTION_FACTOR_WIDTHS = [
     MAX_PLAYERS_PER_TEAM,  # actor 1..MAX (SENTINEL unused)
     LEGAL_ACTION_KIND_COUNT,
-    PLAY_WIDTH,  # targetX 0-based (SENTINEL unused)
-    PLAY_HEIGHT,  # targetY 0-based
+    PLAY_WIDTH,  # sourceX 0-based (SENTINEL unused)
+    PLAY_HEIGHT,  # sourceY
+    PLAY_WIDTH,  # targetX
+    PLAY_HEIGHT,  # targetY
+    2,  # actorHasBall (0/1)
+    2,  # targetHasBall (0/1)
+    101,  # throwSuccessChancePercent 0 = non-throw; 1..100 = P(success)×100
+    3,  # blockDiceCount 1..3 (SENTINEL non-block)
     ACTIVE_CHALLENGE_SLOTS,  # 0..2 (SENTINEL unused)
     BONUS_PLAY_COUNT,  # BonusPlay ordinal (SENTINEL none)
     BLOCK_FACE_PACK_SIZE,
     BLOCK_FACE_PACK_SIZE,
     BLOCK_FACE_PACK_SIZE,
-    PLAY_WIDTH,  # sourceX
-    PLAY_HEIGHT,  # sourceY
-    2,  # actorHasBall metadata (0/1)
-    2,  # targetHasBall metadata (0/1)
-    101,  # throwSuccessChancePercent 0 = non-throw; 1..100 = P(success)×100
-    3,  # blockDiceCount 1..3 (SENTINEL non-block)
 ]
 # Policy / ONNX output width: one score per padded legal-row slot.
 LEGAL_ROW_SCORE_WIDTH = MAX_LEGAL_MOVES
 
-# terrain, hasBall, + 19 player fields, + pitchX / pitchY / distToBall
-NUMBERS_PER_BOARD_CELL = 24
+# terrain, hasBall, pitchX/Y, distToBall, then occupant (playerIndex … canThrowTeammate)
+NUMBERS_PER_BOARD_CELL = 15
 CELL_CH_TERRAIN = 0
 CELL_CH_HAS_BALL = 1
-CELL_CH_PLAYER_INDEX = 2
-CELL_CH_TEAM_REL = 3
-CELL_CH_STATUS = 4
-CELL_CH_TURN_ENDED = 5
-CELL_CH_MOVE = 6
-CELL_CH_BLOCK_DICE = 7
-CELL_CH_THROW_STAT = 8
-CELL_CH_ARMOUR = 9
-CELL_CH_ABILITY = 10
-CELL_CH_CAN_THROW_TEAMMATE = 11
-CELL_CH_CAN_SCORE_TD = 12
-CELL_CH_MIGHT_CLAIM = 13
-CELL_CH_CERTAIN_CLAIM = 14
-CELL_CH_CAN_REACH_BALL = 15
-CELL_CH_CAN_PICKUP = 16
-CELL_CH_REACH_MIN_X = 17
-CELL_CH_REACH_MAX_X = 18
-CELL_CH_REACH_MIN_Y = 19
-CELL_CH_REACH_MAX_Y = 20
-CELL_CH_PITCH_X = 21
-CELL_CH_PITCH_Y = 22
-CELL_CH_DIST_TO_BALL = 23
+CELL_CH_PITCH_X = 2
+CELL_CH_PITCH_Y = 3
+CELL_CH_DIST_TO_BALL = 4
+CELL_CH_PLAYER_INDEX = 5
+CELL_CH_TEAM_REL = 6
+CELL_CH_STATUS = 7
+CELL_CH_TURN_ENDED = 8
+CELL_CH_MOVE = 9
+CELL_CH_BLOCK_DICE = 10
+CELL_CH_THROW_STAT = 11
+CELL_CH_ARMOUR = 12
+CELL_CH_ABILITY = 13
+CELL_CH_CAN_THROW_TEAMMATE = 14
 
 # Match scalars before challenges/deck/hand/heldCheck/cells (AiObsDto declaration order).
 SCALAR_COUNT = 17
@@ -104,7 +97,7 @@ OBSERVATION_VECTOR_LENGTH = (
     + HELD_CHECK_FIELD_COUNT
     + BOARD_SLOT_COUNT * NUMBERS_PER_BOARD_CELL
 )
-assert OBSERVATION_VECTOR_LENGTH == 4477
+assert OBSERVATION_VECTOR_LENGTH == 2812
 
 # Embedding row counts = enum size + 1 pad row (wire -1 → last emb row).
 # Sync with TurnPhase / AiTerrain / AiTeamRel / PlayerStatus / ChallengeClaimCondition /

@@ -11,12 +11,10 @@ import com.mhaefele.gridiron.model.catalog.PlayerAbility
 /**
  * Occupant of a board slot — only present when [AiCellObs.player] is non-null.
  *
- * Vectorize in **declaration order**; nested [AiCellPlayerObs.affordance] expands inline after stats.
- * When the cell’s `player` is `null`, emit the same number of values as this type’s fields, all
- * [AiObsLayout.SENTINEL].
+ * Flat pack (schema 25): [playerIndex] … [canThrowTeammate] only — nested [affordance] is **not**
+ * packed (menu summaries belong on legal rows if needed). Empty slot ⇒ full occupant-width SENTINEL.
  *
  * [move] / [throwStat] / [armour] are packed ints (domain types are sealed — [AiObsLayout]).
- * Always real values while this object exists; empty slot ⇒ [AiCellObs.player] is null (SENTINEL pack).
  */
 data class AiCellPlayerObs(
     /**
@@ -54,8 +52,8 @@ data class AiCellPlayerObs(
 /**
  * One board slot (pitch square **or** dugout slot): square facts + optional occupant.
  *
- * Append in declaration order: [terrain], [hasBall], [player] (expanded or absent), then
- * [pitchX], [pitchY], [distToBall].
+ * Flat pack order (schema 25): [terrain], [hasBall], [pitchX], [pitchY], [distToBall], then
+ * [player] occupant block (or SENTINEL width). Nested JSON may still carry [AiCellPlayerObs.affordance].
  */
 data class AiCellObs(
     /** Wire: 0-based [AiTerrain] ordinal. */

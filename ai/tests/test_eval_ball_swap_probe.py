@@ -13,7 +13,6 @@ from gridiron_ai.actions import (
     FACTOR_TARGET_Y,
 )
 from gridiron_ai.constants import (
-    CELL_CH_CAN_PICKUP,
     CELL_CH_DIST_TO_BALL,
     CELL_CH_HAS_BALL,
     FACTORS_PER_LEGAL_MOVE,
@@ -47,7 +46,6 @@ def _row(*, sx: int, sy: int, tx: int, ty: int, actor_ball: int, target_ball: in
 def _pitch_with_ball(y: int, x: int, *, legal_rows: list[list[int]] | None = None) -> dict[str, np.ndarray]:
     pitch = np.zeros((NUMBERS_PER_BOARD_CELL, PLAY_HEIGHT, PLAY_WIDTH), dtype=np.float32)
     pitch[CELL_CH_HAS_BALL, y, x] = 1.0
-    pitch[CELL_CH_CAN_PICKUP, y, x] = 1.0
     for yy in range(PLAY_HEIGHT):
         for xx in range(PLAY_WIDTH):
             pitch[CELL_CH_DIST_TO_BALL, yy, xx] = float(max(abs(xx - x), abs(yy - y)))
@@ -77,7 +75,6 @@ def test_relocate_ball_prefers_plus_one_x() -> None:
     pitch = obs[OBS_KEY_PITCH]
     assert float(pitch[CELL_CH_HAS_BALL, 2, 4]) == 0.0
     assert float(pitch[CELL_CH_HAS_BALL, 2, 5]) == 1.0
-    assert float(pitch[CELL_CH_CAN_PICKUP].max()) == 0.0
     assert float(pitch[CELL_CH_DIST_TO_BALL, 2, 5]) == 0.0
     assert float(pitch[CELL_CH_DIST_TO_BALL, 2, 4]) == 1.0
 

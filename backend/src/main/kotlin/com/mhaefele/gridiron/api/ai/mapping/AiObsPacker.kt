@@ -7,7 +7,6 @@ import com.mhaefele.gridiron.api.ai.dto.nested.AiCellPlayerObs
 import com.mhaefele.gridiron.api.ai.dto.nested.AiChallengeSlotObs
 import com.mhaefele.gridiron.api.ai.dto.nested.AiHeldCheckObs
 import com.mhaefele.gridiron.api.ai.dto.nested.AiNestedObsDto
-import com.mhaefele.gridiron.api.ai.dto.nested.AiPlayerAffordance
 import org.springframework.stereotype.Component
 
 /**
@@ -15,7 +14,10 @@ import org.springframework.stereotype.Component
  *
  * Concat order matches `ai/gridiron_ai/constants.py` / Python `obs_flat_to_dict` field count:
  * scalars → challenges → deck → hand → heldCheck → cells[0..184]
- * (each terrain, hasBall, player block, pitchX, pitchY, distToBall).
+ * (each: terrain, hasBall, pitchX, pitchY, distToBall, then occupant or SENTINEL block).
+ *
+ * Menu-summary [com.mhaefele.gridiron.api.ai.dto.nested.AiPlayerAffordance] stays on the nested
+ * DTO for tests / debug — it is **not** packed (schema 25).
  */
 @Component
 class AiObsPacker {
@@ -77,15 +79,15 @@ class AiObsPacker {
     private inline fun packCell(cell: AiCellObs, put: (Int) -> Unit) {
         put(AiObsEncoding.run { cell.terrain.toObsCode() })
         put(AiObsEncoding.run { cell.hasBall.toObsCode() })
+        put(cell.pitchX)
+        put(cell.pitchY)
+        put(cell.distToBall)
         val player = cell.player
         if (player == null) {
             packAbsentPlayer(put)
         } else {
             packPresentPlayer(player, put)
         }
-        put(cell.pitchX)
-        put(cell.pitchY)
-        put(cell.distToBall)
     }
 
     private inline fun packAbsentPlayer(put: (Int) -> Unit) {
@@ -99,7 +101,6 @@ class AiObsPacker {
         put(AiObsLayout.SENTINEL) // armour
         put(AiObsLayout.SENTINEL) // ability
         put(AiObsLayout.SENTINEL) // canThrowTeammate
-        packAbsentAffordance(put)
     }
 
     private inline fun packPresentPlayer(player: AiCellPlayerObs, put: (Int) -> Unit) {
@@ -113,30 +114,5 @@ class AiObsPacker {
         put(player.armour)
         put(AiObsEncoding.run { player.ability.toObsCode() })
         put(AiObsEncoding.run { player.canThrowTeammate.toObsCode() })
-        packAffordance(player.affordance, put)
-    }
-
-    private inline fun packAffordance(affordance: AiPlayerAffordance, put: (Int) -> Unit) {
-        put(AiObsEncoding.run { affordance.canScoreTouchdown.toObsCode() })
-        put(AiObsEncoding.run { affordance.mightClaimChallenge.toObsCode() })
-        put(AiObsEncoding.run { affordance.certainClaimChallenge.toObsCode() })
-        put(AiObsEncoding.run { affordance.canReachBallSquare.toObsCode() })
-        put(AiObsEncoding.run { affordance.canPickupBall.toObsCode() })
-        put(affordance.reachMinX)
-        put(affordance.reachMaxX)
-        put(affordance.reachMinY)
-        put(affordance.reachMaxY)
-    }
-
-    private inline fun packAbsentAffordance(put: (Int) -> Unit) {
-        put(AiObsLayout.SENTINEL) // canScoreTouchdown
-        put(AiObsLayout.SENTINEL) // mightClaimChallenge
-        put(AiObsLayout.SENTINEL) // certainClaimChallenge
-        put(AiObsLayout.SENTINEL) // canReachBallSquare
-        put(AiObsLayout.SENTINEL) // canPickupBall
-        put(AiObsLayout.SENTINEL) // reachMinX
-        put(AiObsLayout.SENTINEL) // reachMaxX
-        put(AiObsLayout.SENTINEL) // reachMinY
-        put(AiObsLayout.SENTINEL) // reachMaxY
     }
 }

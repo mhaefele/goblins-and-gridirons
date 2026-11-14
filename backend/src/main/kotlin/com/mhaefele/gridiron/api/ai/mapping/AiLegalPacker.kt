@@ -20,8 +20,8 @@ import org.springframework.stereotype.Component
  * Policy legal-row int matrix from harness rows — matches Python gym ``legal_moves``.
  *
  * Perspective + 0-based pitch packing stay here (not on the harness wire).
- * Identity: actor, kind, targetX, targetY, challengeSlot, attachedBonus, face0..2;
- * metadata: sourceX, sourceY, actorHasBall, targetHasBall, throwSuccessChancePercent, blockDiceCount.
+ * Pack order: actor, kind, sourceX/Y, targetX/Y, actorHasBall, targetHasBall,
+ * throwSuccessChancePercent, blockDiceCount, challengeSlot, attachedBonus, face0..2.
  * Absent axes: nullable → [AiObsEncoding.toObsCode] → [AiObsLayout.SENTINEL].
  */
 @Component
@@ -63,20 +63,20 @@ class AiLegalPacker(
         listOf(
             actorId?.let { gameState.aiPlayerIndex(it) }.toObsCode(),
             kind.ordinal,
-            target?.x.toObsCode(),
-            target?.y.toObsCode(),
-            challengeSlot.toObsCode(),
-            action.requiredBonusCard.toObsCode(),
-            orderedFaces?.getOrNull(0).toObsCode(),
-            orderedFaces?.getOrNull(1).toObsCode(),
-            orderedFaces?.getOrNull(2).toObsCode(),
             source?.x.toObsCode(),
             source?.y.toObsCode(),
+            target?.x.toObsCode(),
+            target?.y.toObsCode(),
             if (actorHasBall) 1 else 0,
             if (targetHasBall) 1 else 0,
             // Continuous 0..100 (0 = non-throw) — not SENTINEL; feature is /100 only.
             throwSuccessChancePercent(action),
             blockDiceCount(action).toObsCode(),
+            challengeSlot.toObsCode(),
+            action.requiredBonusCard.toObsCode(),
+            orderedFaces?.getOrNull(0).toObsCode(),
+            orderedFaces?.getOrNull(1).toObsCode(),
+            orderedFaces?.getOrNull(2).toObsCode(),
         )
     }
 

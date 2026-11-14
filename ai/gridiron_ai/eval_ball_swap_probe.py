@@ -28,8 +28,6 @@ from gridiron_ai.actions import (
     FACTOR_TARGET_Y,
 )
 from gridiron_ai.constants import (
-    CELL_CH_CAN_PICKUP,
-    CELL_CH_CAN_REACH_BALL,
     CELL_CH_DIST_TO_BALL,
     CELL_CH_HAS_BALL,
     FACTORS_PER_LEGAL_MOVE,
@@ -119,9 +117,8 @@ def rewrite_legal_row_ball_flags(legal_moves: np.ndarray, *, ball_x: int, ball_y
 def relocate_ball_nearby(policy_obs: dict[str, np.ndarray]) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
     """Copy obs; nudge pitch ``hasBall`` locally; refresh ``distToBall`` + row ball flags.
 
-    Clears ``canPickup`` / ``canReachBall`` on all pitch cells so stale affordances do not
-    still point at the old square. Rewrites packed ``actorHasBall`` / ``targetHasBall`` so
-    legal-row features match the lied ball square (join-score reads both).
+    Rewrites packed ``actorHasBall`` / ``targetHasBall`` so legal-row features match the
+    lied ball square (join-score reads both).
     """
     out = {key: np.asarray(value).copy() for key, value in policy_obs.items()}
     pitch = out[OBS_KEY_PITCH]
@@ -138,8 +135,6 @@ def relocate_ball_nearby(policy_obs: dict[str, np.ndarray]) -> tuple[dict[str, n
 
     pitch[CELL_CH_HAS_BALL].fill(0.0)
     pitch[CELL_CH_HAS_BALL, y1, x1] = 1.0
-    pitch[CELL_CH_CAN_PICKUP].fill(0.0)
-    pitch[CELL_CH_CAN_REACH_BALL].fill(0.0)
     for y in range(PLAY_HEIGHT):
         for x in range(PLAY_WIDTH):
             pitch[CELL_CH_DIST_TO_BALL, y, x] = float(max(abs(x - x1), abs(y - y1)))

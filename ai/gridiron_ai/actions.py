@@ -5,8 +5,8 @@ join-score over this step's legal menu (``legal_row_policy``). See
 ``ACTION_SAMPLING.md`` / ``ai/OWNERSHIP.md``.
 
 Schema 19+: gym action is ``Discrete(MAX_LEGAL_MOVES)`` — an index into
-``legal_moves[:legal_move_count]``. Each packed row is identity factors then
-metadata (Kotlin ``AiLegalPacker``) — see factor-slot comments below.
+``legal_moves[:legal_move_count]``. Pack column order = Kotlin ``AiLegalPacker``
+(schema 25) — see factor-slot comments below.
 """
 
 from __future__ import annotations
@@ -18,30 +18,27 @@ import numpy as np
 from gridiron_ai.constants import ACTION_FACTOR_WIDTHS, LEGAL_ROW_SCORE_WIDTH, MAX_LEGAL_MOVES
 from gridiron_ai.api.harness_wire import AiLegalChoiceDict, LegalActionDict
 
-# Canonical index in the factor tuple packed on each legal row.
-# Slots 0..8 = row identity (kind + free/sugar that distinguish the legal choice).
+# Canonical index in the factor tuple packed on each legal row (schema 25).
 # Who-id is roster Actor (playerIndex), not board coordinate — same id as cell occupant.
 FACTOR_ACTOR = 0
 FACTOR_KIND = 1
-FACTOR_TARGET_X = 2
-FACTOR_TARGET_Y = 3
-FACTOR_CHALLENGE_SLOT = 4
-FACTOR_ATTACHED_BONUS = 5
-FACTOR_FACE0 = 6
-FACTOR_FACE1 = 7
-FACTOR_FACE2 = 8
-# Metadata (pack tail): geometry + ball binding jammed onto the row (not identity).
-# Who = FACTOR_ACTOR; hasBall sense matches cell hasBall (0/1).
-FACTOR_SOURCE_X = 9
-FACTOR_SOURCE_Y = 10
-FACTOR_ACTOR_HAS_BALL = 11
-FACTOR_TARGET_HAS_BALL = 12
-FACTOR_THROW_SUCCESS_CHANCE = 13
-FACTOR_BLOCK_DICE_COUNT = 14
+FACTOR_SOURCE_X = 2
+FACTOR_SOURCE_Y = 3
+FACTOR_TARGET_X = 4
+FACTOR_TARGET_Y = 5
+FACTOR_ACTOR_HAS_BALL = 6
+FACTOR_TARGET_HAS_BALL = 7
+FACTOR_THROW_SUCCESS_CHANCE = 8
+FACTOR_BLOCK_DICE_COUNT = 9
+FACTOR_CHALLENGE_SLOT = 10
+FACTOR_ATTACHED_BONUS = 11
+FACTOR_FACE0 = 12
+FACTOR_FACE1 = 13
+FACTOR_FACE2 = 14
 
-# One legal move: fourteen ints in canonical slot order (identity…, then metadata).
+# One legal move: fifteen ints in canonical pack order.
 EncodedLegalMove: TypeAlias = tuple[
-    int, int, int, int, int, int, int, int, int, int, int, int, int, int
+    int, int, int, int, int, int, int, int, int, int, int, int, int, int, int
 ]
 
 # Legal moves this step — shape (n, FACTORS_PER_LEGAL_MOVE), dtype int64 (from packed HTTP / expert).

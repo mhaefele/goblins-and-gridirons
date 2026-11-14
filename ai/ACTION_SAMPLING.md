@@ -237,35 +237,39 @@ passing flags), expert `chosenFactors`, and the Discrete/ONNX **row index** shar
 order — no separate remap table. Join-score is seat-invariant (shared row scorer); shuffle
 was removed as non-load-bearing.
 
-Each packed row is **thirteen** ints (storage / ONNX legal-matrix input). Python
-`encode_legal_rows` embeds them the same way board channels are embedded
-(shared `player_index` / challenge / block-face embs + pitch xy + raw ball flags)
-— it does **not** re-pack:
+Each packed row is **fifteen** ints (`FACTORS_PER_LEGAL_MOVE`, schema 25 — storage /
+ONNX legal-matrix input). Python `encode_legal_rows` embeds them the same way board
+channels are embedded (shared `player_index` / challenge / block-face embs + pitch xy
++ ball flags + scaled throw % / block dice) — it does **not** re-pack. Strategy-facing
+tables: [`PPO_STRATEGY.md`](PPO_STRATEGY.md#packed-legal-row-factors-15).
 
-| Slot | Factor | Role | Width | Who uses it |
-|------|--------|------|------:|-------------|
-| 0 | actor | **identity (who)** | 11 | roster `playerIndex` — same id as cell occupant; `0` when kind has no free actor |
-| 1 | kind | identity | 41 | `AiLegalKind.ordinal` |
-| 2 | targetX | identity (dest) | 12 | 0-based pitch x from Kotlin (`0..10` + unused) |
-| 3 | targetY | identity (dest) | 16 | 0-based pitch y from Kotlin (`0..14` + unused) |
-| 4 | challengeSlot | identity | 4 | claim / replace |
-| 5 | attachedBonus | identity | 6 | Sprint/Weave/… twin (`0..4` + unused) |
-| 6..8 | face0..2 | identity | 6 each | Enforcer order pack codes (`0` unused; `1..5` = face) |
-| 9 | sourceX | **metadata** (tail) | 12 | 0-based pitch x from Kotlin (`0..10` + unused) |
-| 10 | sourceY | **metadata** (tail) | 16 | 0-based pitch y from Kotlin (`0..14` + unused) |
-| 11 | actorHasBall | **metadata** (tail) | 2 | `1` if actor holds the ball; `0` if no actor / no ball |
-| 12 | targetHasBall | **metadata** (tail) | 2 | `1` if dest square has ball (loose or carrier); `0` if no dest / no ball |
+| Slot | Factor | Role | Live width | Who uses it |
+|------|--------|------|----------:|-------------|
+| 0 | actor | **who** | 10 | roster `playerIndex` 1..MAX; `SENTINEL` when kind has no free actor |
+| 1 | kind | verb | 41 | `AiLegalKind.ordinal` |
+| 2 | sourceX | from | 11 | 0-based pitch x; `SENTINEL` unused |
+| 3 | sourceY | from | 15 | 0-based pitch y; `SENTINEL` unused |
+| 4 | targetX | to | 11 | 0-based pitch x (`0..10`); `SENTINEL` unused |
+| 5 | targetY | to | 15 | 0-based pitch y (`0..14`); `SENTINEL` unused |
+| 6 | actorHasBall | ball | 2 | `1` if actor holds the ball; `0` if no actor / no ball |
+| 7 | targetHasBall | ball | 2 | `1` if dest square has ball (loose or carrier); `0` if no dest / no ball |
+| 8 | throwSuccessChancePercent | outcome | 101 | `0` = non-throw; `1..100` = P(success)×100; feature `/100` |
+| 9 | blockDiceCount | outcome | 3 | `1..3` declare-time pool; `SENTINEL` non-block; feature `/3` |
+| 10 | challengeSlot | card | 3 | claim / replace `0..2`; `SENTINEL` unused |
+| 11 | attachedBonus | card | 20 | `BonusPlay` ordinal; `SENTINEL` none |
+| 12..14 | face0..2 | faces | 5 each | `BlockDieFace` ordinal; `SENTINEL` unused |
 
 Harness `legalRows` nest engine `LegalAction` (absolute coords) + AI flags only.
-Kotlin `AiLegalPacker` maps action + perspective → the thirteen pack ints; Python only
+Kotlin `AiLegalPacker` maps action + perspective → the fifteen pack ints; Python only
 pads for the gym Dict and embeds. Dest / source x/y in the pack are perspective
-0-based; dugout / no-actor → unused pads. **Who** on a path/throw/block row is
+0-based; dugout / no-actor → `SENTINEL`. **Who** on a path/throw/block row is
 always roster `actor`, never source coords. Obs `cells[]` still uses linear pitch
 indices — board layout packing, not the legal-row dest encoding. Harness reward
 board facts are `rewards.players` + single `ballCoordinate` (null if none on pitch).
 
-Unused axes on a packed row use unused sentinels; the packer maps from `LegalAction`.
-
+**Schema 25:** same 15 cols; pack order = actor/kind → source→target → ball → throw%/block →
+challenge/bonus → faces (cell affordance drop is separate).
+**Schema 24:** throw success % + block dice count on the row; `SENTINEL` absent pack.
 **Schema 21:** harness rewards = `players` + `ballCoordinate`; legal rows lean.
 **Schema 20:** harness rows wrap `LegalAction` + flags; pack still perspective xy.
 **Schema 19 (historical):** dest as pitch `(x,y)` on harness (drop linear index).
@@ -298,13 +302,14 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 | Enforcer face order | `ChooseBlockFaceOrder` | **Yes** — `face0..2` | `held_check` faces |
 | Soft-mask preferred row | training opening flag | **No** (parallel `soft_mask_legal`) | Logit bias only |
 | Passing / PASS-grade flag | training sidecar | **No** (harness / eval only) | — |
-| Potential challenge claims | `potentialChallengeClaims` | **No** | Player affordance might/certain claim |
-| Ball encounter (pickup/…) | `ballEncounter` on path | **No** (dest binding via `targetHasBall`) | Affordance `canPickupBall`; cell `hasBall` |
+| Potential challenge claims | `potentialChallengeClaims` | **No** — **candidate** (certainty on claim rows); cell menu-summary dropped schema 25 | — |
+| Ball encounter (pickup/…) | `ballEncounter` on path | **No** (`targetHasBall` only) — **candidate** pack PICK_UP | Cell `hasBall` |
 | Full path squares | `path` | **No** (end only as target) | — |
 | Throw check needed → success % | `ThrowTarget.throwCheckNeeded` | **Yes** — pack derives percent via `throwSuccessChancePercentFromNeeded` (schema 24); PPO `/100` | Cell `throwStat` is raw TV only |
 | Block dice pool | `LegalAction.Block.blockDiceCount` | **Yes** — pack `1..3` (schema 24 fold); PPO `/3` | Cell `blockDice` is raw stat only |
 | Available bonus cards (prompt set) | `availableBonusCards` | **No** | Hand tensor |
-| “This run scores a TD” | derived (carrier + EZ dest) | **No** | Affordance `canScoreTouchdown` on **player**; scoring EZ terrain + `hasBall` |
+| “This run scores a TD” | derived (carrier + EZ dest) | **No** — **candidate** per-row TD bit (cell `canScoreTouchdown` dropped schema 25) | Scoring EZ terrain + `hasBall` |
+| Reach bbox (player menu extent) | legal-dest aggregate | **No** — not a row feature; dropped from cell pack schema 25 | — |
 | Submit id | `legalActionId` | **No** (sidecar) | Resolve after Discrete index |
 
 ### Factor-width audit (row packing)

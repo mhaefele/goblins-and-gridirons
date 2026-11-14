@@ -4,7 +4,8 @@ import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 
 /**
  * Per-player highlights derived from the current legal menu (not multi-turn planning).
- * Nested on [AiCellPlayerObs]; vector pack expands [AiPlayerAffordance] fields inline after stats.
+ * Nested on [AiCellPlayerObs] for tests / debug JSON — **not** in the flat obs pack (schema 25).
+ * Prefer per-legal-row bits when the join needs “this choice scores / picks up / claims.”
  *
  * Reach bbox uses perspective **0-based** pitch coordinates (`0..PLAY_WIDTH-1` / `0..PLAY_HEIGHT-1`).
  * [AiObsLayout.SENTINEL] when the player has no run/sidestep/mark/reserves destinations.

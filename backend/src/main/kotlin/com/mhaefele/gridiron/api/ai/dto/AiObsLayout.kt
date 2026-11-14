@@ -67,8 +67,13 @@ object AiObsLayout {
      * v24: legal-row pack appends throwSuccessChancePercent + blockDiceCount; N/A on optional
      * axes is [SENTINEL] (`-1`) — same as board optional ints (pitch dest/source, challenge slot,
      * actor, bonus, faces, throw %, block dice). Folded before dump used 24.
+     * v25: cell pack drops menu-summary [AiPlayerAffordance] channels (TD/claim/pickup/reach bbox);
+     * pitchX/Y/distToBall move next to terrain/hasBall so occupant fields are last. Nested JSON
+     * may still carry affordance for tests; flat pack does not. Candidate row bits → PPO_STRATEGY.
+     * Legal-row pack reordered (same 15 cols): actor/kind → source→target → ball → throw%/blockDice
+     * → challenge/bonus → faces (folded before dump used 25).
      */
-    const val SCHEMA_VERSION = 24
+    const val SCHEMA_VERSION = 25
 
     const val PLAY_WIDTH = 11
     const val PLAY_HEIGHT = 15
@@ -93,9 +98,9 @@ object AiObsLayout {
     const val HELD_CHECK_FIELD_COUNT = 1 + 1 + MAX_HELD_BLOCK_FACES
 
     /**
-     * Packed legal-row width: identity (actor, kind, targetX, targetY, challengeSlot, attachedBonus,
-     * face0..2) then metadata (sourceX, sourceY, actorHasBall, targetHasBall, throwSuccessChancePercent,
-     * blockDiceCount). Who-id = roster actor, not source coords. Absent axes → [SENTINEL]
+     * Packed legal-row width (15): actor, kind, sourceX/Y, targetX/Y, actorHasBall, targetHasBall,
+     * throwSuccessChancePercent, blockDiceCount, challengeSlot, attachedBonus, face0..2.
+     * Who-id = roster actor, not source coords. Absent axes → [SENTINEL]
      * (not MultiDiscrete heads — join-score embeds like board).
      */
     const val ACTION_FACTOR_COUNT = 15
@@ -124,32 +129,38 @@ object AiObsLayout {
     /** Live [BlockDieFace.ordinal]s; absent → [SENTINEL]. */
     val BLOCK_FACE_PACK_SIZE: Int = 5
     /** Column live-value widths — must match `ai/gridiron_ai/constants.py` ACTION_FACTOR_WIDTHS. Not MultiDiscrete heads. */
-    val ACTION_FACTOR_WIDTHS: IntArray = intArrayOf(ACTOR_PACK_WIDTH, KIND_PACK_WIDTH, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, CHALLENGE_SLOT_PACK_WIDTH, ATTACHED_BONUS_PACK_WIDTH, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, BOOL_PACK_WIDTH, BOOL_PACK_WIDTH, THROW_SUCCESS_CHANCE_PACK_WIDTH, BLOCK_DICE_COUNT_PACK_WIDTH,)
+    val ACTION_FACTOR_WIDTHS: IntArray = intArrayOf(
+        ACTOR_PACK_WIDTH, KIND_PACK_WIDTH,
+        PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH,
+        BOOL_PACK_WIDTH, BOOL_PACK_WIDTH, THROW_SUCCESS_CHANCE_PACK_WIDTH, BLOCK_DICE_COUNT_PACK_WIDTH,
+        CHALLENGE_SLOT_PACK_WIDTH, ATTACHED_BONUS_PACK_WIDTH,
+        BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE,
+    )
     /** Pad width for the legal-row menu (Python ``MAX_LEGAL_MOVES``). */
     const val MAX_LEGAL_MOVES = 1024
     /** ONNX / policy output width — one score per padded legal-row slot. */
     const val LEGAL_ROW_SCORE_WIDTH: Int = MAX_LEGAL_MOVES
 
-    /** Identity — roster playerIndex (same id on the occupied cell). */
+    /** Who / verb — roster playerIndex (same id on the occupied cell). */
     const val FACTOR_ACTOR = 0
     const val FACTOR_KIND = 1
-    const val FACTOR_TARGET_X = 2
-    const val FACTOR_TARGET_Y = 3
-    const val FACTOR_CHALLENGE_SLOT = 4
-    const val FACTOR_ATTACHED_BONUS = 5
-    const val FACTOR_FACE0 = 6
-    const val FACTOR_FACE1 = 7
-    const val FACTOR_FACE2 = 8
-    /** Metadata only (pack tail) — actor’s current pitch x/y; not legal-choice identity. */
-    const val FACTOR_SOURCE_X = 9
-    const val FACTOR_SOURCE_Y = 10
-    /** Metadata — actor holds the ball / dest square has ball (loose or carrier); 0/1 when axes apply. */
-    const val FACTOR_ACTOR_HAS_BALL = 11
-    const val FACTOR_TARGET_HAS_BALL = 12
-    /** Metadata — throw P(success) as percent (`0` = non-throw; `100` = hand-off / certain). */
-    const val FACTOR_THROW_SUCCESS_CHANCE = 13
-    /** Metadata — block dice pool ([SENTINEL] if non-block; `1..3`). */
-    const val FACTOR_BLOCK_DICE_COUNT = 14
+    /** From → to pitch (0-based); not who-id. */
+    const val FACTOR_SOURCE_X = 2
+    const val FACTOR_SOURCE_Y = 3
+    const val FACTOR_TARGET_X = 4
+    const val FACTOR_TARGET_Y = 5
+    /** Ball on actor square / dest square (loose or carrier); 0/1 when axes apply. */
+    const val FACTOR_ACTOR_HAS_BALL = 6
+    const val FACTOR_TARGET_HAS_BALL = 7
+    /** Kind outcomes — throw P(success) percent (`0` = non-throw); block dice ([SENTINEL] if non-block). */
+    const val FACTOR_THROW_SUCCESS_CHANCE = 8
+    const val FACTOR_BLOCK_DICE_COUNT = 9
+    /** Cards / specials. */
+    const val FACTOR_CHALLENGE_SLOT = 10
+    const val FACTOR_ATTACHED_BONUS = 11
+    const val FACTOR_FACE0 = 12
+    const val FACTOR_FACE1 = 13
+    const val FACTOR_FACE2 = 14
 
     /**
      * Mid-turn hand capacity for obs: end-of-turn trim keeps 3, Clean Sweep allows 3 claims in one
@@ -160,8 +171,11 @@ object AiObsLayout {
     /** Match scalars on [AiNestedObsDto] before challenges / deck / hand / heldCheck / cells. */
     const val SCALAR_COUNT = 17
     const val DECK_FIELD_COUNT = 3
-    /** terrain + hasBall + 19 player fields + pitchX + pitchY + distToBall. */
-    const val NUMBERS_PER_BOARD_CELL = 24
+    /**
+     * terrain + hasBall + pitchX + pitchY + distToBall + 10 occupant fields
+     * (playerIndex … canThrowTeammate). No menu-summary affordance / reach bbox on the pack.
+     */
+    const val NUMBERS_PER_BOARD_CELL = 15
 
     /** Perspective 0-based pitch column from absolute playable coord. */
     fun pitchX0(absolute: Coordinate, perspectiveSeat: TeamSide): Int =

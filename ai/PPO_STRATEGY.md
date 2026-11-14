@@ -40,15 +40,15 @@ embeds and scores.
 
 ```text
 Dict obs
-  ├─ pitch (24,15,11) ──► per-cell emb ──► Conv2d×3 ──► GAP ──► 128-d
-  ├─ benches (2,10,24) ─► per-slot emb ──► flatten
+  ├─ pitch (15,15,11) ──► per-cell emb ──► Conv2d×3 ──► GAP ──► 128-d
+  ├─ benches (2,10,15) ─► per-slot emb ──► flatten
   ├─ scalars / challenges / deck / hand / held_check ─► emb + scaled floats
   └─ concat ──► Linear → ReLU → 512-d board latent
                     │
                     ├─ value head (empty pi/vf MLPs → latent_vf == features)
                     │
                     └─ for each live legal row:
-                         encode_legal_rows(row) → ~91-d
+                         encode_legal_rows(row) → 93-d
                          row_scorer([ latent_pi ‖ row_emb ]) → logit
                          + soft_mask_legal × SOFT_MASK_LOGIT_BIAS × soft_mask_strength
                          pad / illegal → −1e8
@@ -56,13 +56,18 @@ Dict obs
                     └─ MaskableCategorical over 1024 → row index
 ```
 
+Wire / pack widths: `gridiron_ai/constants.py` (`CELL_CH_*`, `ACTION_FACTOR_WIDTHS`,
+schema 25). Encoding: `features.py`. Deeper “engine knows vs pack exposes” inventory:
+[`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#legal-move-information-available-vs-exposed).
+
 ### Board trunk
 
-- Pitch is already spatial in the gym Dict: `(C,H,W) = (24, 15, 11)`.
+- Pitch is already spatial in the gym Dict: `(C,H,W) = (15, 15, 11)`.
 - Each cell is embedded (enums + pitch-axis ids + scaled stats) into an
-  `_OCCUPANT_WIDTH`-channel map, then a small **Conv2d** stack
+  `_OCCUPANT_WIDTH`-channel map (**64**), then a small **Conv2d** stack
   (`64 → 64 → 128`, `k=3`, pad 1) + **global average pool**.
-- Benches are **not** convolved — they are a dugout table, not pitch neighbors.
+- Benches are **not** convolved — they are a dugout table, not pitch neighbors
+  (same 15 channels per slot, emb + flatten).
 - Non-pitch tensors fuse with the CNN vector through one projection Linear to
   **512** (`_PROJECTED_FEATURES`).
 
@@ -74,16 +79,110 @@ Dict obs
 - No explicit intervening-lane / path features. Endpoint emb ids + global pool
   are not a lane model.
 
+#### Per-cell / bench channels (15)
+
+Same layout for every pitch square and every bench slot. Shared `EMBED_DIM = 8`.
+Pack = 1 float/int per channel; **Feat** = size after encode (**64** total).
+**Player?** = occupant-only (`SENTINEL` when empty). Square geometry + ball first;
+occupant fields last (schema 25).
+
+| Ch | Field | Player? | Definition | Encode | Vocab | Feat |
+|---:|-------|:-------:|------------|--------|------:|-----:|
+| 0 | terrain | no | Square type (pitch / EZ / bench / …) | emb | 7 | 8 |
+| 1 | hasBall | no | Ball on this square — loose **or** held by occupant (always false on bench) | 0/1 | — | 1 |
+| 2 | pitchX | no | This square’s perspective column `0..W-1` (`SENTINEL` on bench) | pitch-x emb | 12 | 8 |
+| 3 | pitchY | no | This square’s perspective row `0..H-1` (`SENTINEL` on bench) | pitch-y emb | 16 | 8 |
+| 4 | distToBall | no | Chebyshev steps to the on-pitch ball (`SENTINEL` if none / on bench) | `/max(W,H)` | — | 1 |
+| 5 | playerIndex | **yes** | Roster id `1..10`; same id as legal-row actor when this player acts | emb | 11 | 8 |
+| 6 | teamRel | **yes** | Us vs them relative to perspective seat | emb | 3 | 8 |
+| 7 | status | **yes** | Standing / prone / reserves (dugout usually reserves) | emb | 4 | 8 |
+| 8 | turnEnded | **yes** | This player already finished their action this team-turn | 0/1 | — | 1 |
+| 9 | move | **yes** | Move allowance (1..6 or random-d6 code) | `/10` | — | 1 |
+| 10 | blockDice | **yes** | Printed block-dice **stat** (not declare-time pool on a Block legal) | `/3` | — | 1 |
+| 11 | throwStat | **yes** | Printed throw threshold / unthrowable code (not P(success) on a throw legal) | `/10` | — | 1 |
+| 12 | armour | **yes** | Printed armour threshold / none code | `/10` | — | 1 |
+| 13 | ability | **yes** | Catalog ability enum (or absent) | emb | 32 | 8 |
+| 14 | canThrowTeammate | **yes** | Profile flag: allowed to declare Throw Team-mate | 0/1 | — | 1 |
+
+Pitch map: `165 × 64` → Conv → **128**-d GAP. Benches: `2 × 10 × 64` → flatten **1280**-d
+(before the shared projection with non-pitch).
+
+Dropped from the cell pack (schema 25) — were **player-level menu summaries**, not
+square facts. Nested JSON may still expose `AiPlayerAffordance` for tests.
+
+| Was | Already on legal row? | Legal-row schema candidate? |
+|-----|----------------------|-----------------------------|
+| `canScoreTouchdown` | **No** — join had to bind cell flag ↔ dest | **Yes** — per-row “this legal scores a TD” |
+| `mightClaimChallenge` | **No** (`challengeSlot` = which slot, not certainty) | **Yes** — POTENTIAL claim flag / certainty enum on claim rows |
+| `certainClaimChallenge` | **No** | **Yes** — CERTAIN claim (or fold with might into one certainty column) |
+| `canReachBallSquare` | **Partial** — `targetHasBall` when dest is the ball square | **No** — player aggregate; row already has dest ball bit |
+| `canPickupBall` | **Partial** — `targetHasBall` + kind; not `BallEncounter.PICK_UP` | **Yes** — pack `ballEncounter` / PICK_UP on the row |
+| reach Min/Max X/Y | **No** | **No** — bbox over *all* of a player’s legals; nonsense on one row |
+
+#### Non-pitch obs tensors
+
+| Tensor | Pack shape | Feat after encode | Contents |
+|--------|------------|------------------:|----------|
+| scalars | 17 | **24** (phase emb 8 + 16 scaled) | turn, **phase**, actionsLeft, scores, TDs, challenge cards, pointsVictoryTurns, reserves, claimsThisTurn, oppHandSize, HoldTheLine / GangUp / AllInTackle mods |
+| challenges | 3×2 | **27** (3 × (cond emb 8 + pts 1)) | condition + points `/5` per slot |
+| deck | 3 | **10** (cond emb 8 + 2 counts) | top condition + deckSize / discardSize `/30` |
+| hand | 6 | **48** (6 × emb 8) | own bonus-play codes |
+| held_check | 5 | **33** (kind 8 + d6 1 + 3× face 8) | OS / EP / Do-Over window |
+
 ### Legal-row join
 
-- Each packed row (13 ints): actor, kind, targetX/Y, challengeSlot, bonus,
-  faces, sourceX/Y, actorHasBall, targetHasBall.
-- `encode_legal_rows` reuses board emb tables (shared `pitch_x/y_emb`, kind,
-  player index, …).
-- `row_scorer`: `Linear(512 + row_dim → 512) → ReLU → Linear → 1`.
+- Each packed row is **15 ints** (`FACTORS_PER_LEGAL_MOVE`, schema 25).
+- `encode_legal_rows` → **93-d**; reuses board emb tables (`pitch_x/y_emb`, kind,
+  player index, challenge, bonus, faces).
+- `row_scorer`: `Linear(512 + 93 → 512) → ReLU → Linear → 1`.
 - Score only through this batch’s `legal_move_count.max()`; pad tail stays −1e8.
 - SB3 `net_arch = {pi: [], vf: []}` so stock `[64,64]` MLPs do **not** crush the
   512-d trunk before the join (`POLICY_NET_ARCH`).
+
+#### Packed legal-row factors (15)
+
+Absent axes use `SENTINEL` (`-1`). **Pack** = live `ACTION_FACTOR_WIDTHS` (wire int
+domain). **Feat** = size in the 93-d row vector (`EMBED_DIM = 8`).
+
+| Slot | Factor | Pack | Vocab | Encode | Feat | Definition |
+|-----:|--------|-----:|------:|--------|-----:|------------|
+| 0 | actor | 10 | 11 | emb | 8 | Who acts — roster id matching cell `playerIndex` (`SENTINEL` if kind has no free actor) |
+| 1 | kind | 41 | 41 | emb | 8 | Legal verb (`run` / `throw` / `block` / claim / …) |
+| 2 | sourceX | 11 | 12 | pitch-x emb | 8 | Actor’s current square x (not who-id) |
+| 3 | sourceY | 15 | 16 | pitch-y emb | 8 | Actor’s current square y |
+| 4 | targetX | 11 | 12 | pitch-x emb | 8 | Destination column (path end / throw / block target); `SENTINEL` if unused |
+| 5 | targetY | 15 | 16 | pitch-y emb | 8 | Destination row |
+| 6 | actorHasBall | 2 | — | 0/1 | 1 | Actor holds the ball right now (also on their cell `hasBall`) |
+| 7 | targetHasBall | 2 | — | 0/1 | 1 | Dest square has ball (loose or carrier) — LBR pickup / bounce cue |
+| 8 | throwSuccessChancePercent | 101 | — | `/100` | 1 | Throw P(success)×100; `0` = non-throw (not cell `throwStat`) |
+| 9 | blockDiceCount | 3 | — | `/3` | 1 | Declare-time Block dice pool `1..3`; `SENTINEL` / 0 feat if non-block |
+| 10 | challengeSlot | 3 | 16† | gather → cond emb + pts | 9 | Which active challenge this claim/replace targets (`SENTINEL` if not a claim row); † cond vocab |
+| 11 | attachedBonus | 20 | 21 | emb | 8 | Bonus card spent on this twin / Play* / Do-Over (`SENTINEL` if none) |
+| 12 | face0 | 5 | 6 | emb | 8 | Enforcer face-order slot 0 (`SENTINEL` unused) |
+| 13 | face1 | 5 | 6 | emb | 8 | Face-order slot 1 |
+| 14 | face2 | 5 | 6 | emb | 8 | Face-order slot 2 |
+
+Parallel (not pack columns): `soft_mask_legal` / `passing_legal` — length
+`MAX_LEGAL_MOVES` (1024) int8 flags; sampling / grade sidecars, not join features.
+
+#### What is *not* on the row (promote / schema candidates)
+
+Full inventory: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#legal-move-information-available-vs-exposed).
+After schema 25, cell menu-summaries are gone — prefer **row** bits for choice-level facts.
+
+| Signal | Today | Candidate? |
+|--------|-------|:----------:|
+| Soft-mask preferred row | Logit bias only | sampling lever (not a pack column) |
+| Passing / PASS-grade flag | Eval / reward sidecar | optional if soft-mask ≠ grade |
+| This legal scores a TD | Missing (was cell summary) | **yes** |
+| Claim certainty (potential / certain) | Missing (`challengeSlot` only) | **yes** |
+| `BallEncounter.PICK_UP` | Missing (`targetHasBall` only) | **yes** |
+| Full path / intervening lane | Missing | later / separate |
+| Available bonus prompt set | Hand tensor | no (not per-row) |
+| Reach bbox | Dropped | **no** |
+
+**Promote ≠ pack more by default.** Soft-mask tilts sampling; reward grades. New row
+bits when the join cannot bind board facts to the menu row (measure first).
 
 ### Three separate “mask” ideas (do not merge)
 
