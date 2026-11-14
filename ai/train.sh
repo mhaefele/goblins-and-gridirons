@@ -5,7 +5,7 @@
 #
 # Cascade when missing (presence only; stale files are not regenerated):
 #   dump (jsonl.gz) → pack (npz) → seed zip
-# ``--from-scratch`` skips that cascade (random scenario_a; expert artifacts unused).
+# Skipped when ``--from-scratch``, pipeline past scenario_a, or scenario_a zip exists.
 # Python then forks scenario_a → scenario_b → shaped profile checkpoints.
 #
 # Usage: ./train.sh --help

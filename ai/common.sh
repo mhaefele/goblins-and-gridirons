@@ -242,8 +242,10 @@ step_clone_seed() {
 
 # Build any missing shared artifacts (dump → pack → seed). Profile zips are forked in Python
 # from scenario_b — do not copy the expert seed onto shaped checkpoints here.
-# ``--from-scratch`` random-inits scenario_a: skip the expert chain even if seed is absent
-# (stale schema-23 npz must not block a from-scratch train).
+# Seed is only for forking scenario_a. Skip the expert chain when:
+#   - ``--from-scratch`` random-inits scenario_a
+#   - pipeline stage is past scenario_a (``scenario_b`` / ``profiles``)
+#   - pipeline stage is scenario_a and that long-running zip already exists
 ensure_train_prereqs() {
   ensure_python
 
@@ -260,6 +262,24 @@ ensure_train_prereqs() {
     return 0
   fi
 
+  local stage
+  stage="$(pipeline_stage)"
+  case "$stage" in
+    scenario_b|profiles)
+      log "Skipping expert dump/pack/clone (pipeline stage=$stage; seed not needed)"
+      return 0
+      ;;
+    scenario_a)
+      if [[ -f "$CHECKPOINT_DIR/scenario_a/${_LONG_RUNNING_STEM}.zip" ]]; then
+        log "Skipping expert dump/pack/clone (pipeline stage=scenario_a zip present)"
+        return 0
+      fi
+      ;;
+    *)
+      die "unexpected pipeline stage: $stage"
+      ;;
+  esac
+
   if [[ ! -f "$SEED_ZIP" ]]; then
     if [[ ! -f "$NPZ" ]]; then
       if [[ ! -f "$JSONL" ]]; then
@@ -275,6 +295,15 @@ ensure_train_prereqs() {
   else
     log "Reusing seed zip $SEED_ZIP"
   fi
+}
+
+# ``checkpoints/pipeline.json`` stage (default scenario_a when the file is missing).
+pipeline_stage() {
+  ensure_python
+  (
+    cd "$AI_ROOT"
+    "$PYTHON" -c "from gridiron_ai.persistence.pipeline import load_pipeline; print(load_pipeline().stage)"
+  )
 }
 
 # When true, wipe helpers park under ``START_OVER_TRASH`` instead of deleting.
