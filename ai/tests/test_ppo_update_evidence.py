@@ -38,7 +38,6 @@ def test_passed_drill_block_is_sequential() -> None:
         sequence="run(a)* [rank=12 p=0.080 reward=+0.25] → run(b)*! [reward=+4.75]",
         opening_label="run(a)*",
         opening_reward=0.25,
-        scoring_reward=4.75,
         p_before=0.08,
         p_after=0.11,
         rank_before=12,
@@ -46,8 +45,6 @@ def test_passed_drill_block_is_sequential() -> None:
         scenario="LOOSE_BALL_RUN",
         opening_buf_rew=0.12,
         opening_buf_adv=0.40,
-        scoring_buf_rew=1.85,
-        scoring_buf_adv=2.10,
     )
     lines = block.splitlines()
     assert lines[0] == "[gridiron] Passed the drill. [LOOSE_BALL_RUN]"
@@ -55,7 +52,7 @@ def test_passed_drill_block_is_sequential() -> None:
     assert "run(a)* [rank=9 p=0.110]" in lines[2]
     assert "env=+0.25" in lines[2] and "buf(rew=+0.1200 adv=+0.4000)" in lines[2]
     assert "mass 0.080000→0.110000 (Δ=+0.030000, rank 12→9)" in lines[2]
-    assert "env=+4.75" in lines[3] and "buf(rew=+1.8500 adv=+2.1000)" in lines[3]
+    assert "scoring:" not in block
     assert "approx_kl" not in block
 
 
@@ -124,6 +121,29 @@ def test_failed_drill_block_includes_opening_and_last() -> None:
     assert "mass 0.040000→0.030000 (Δ=-0.010000, rank 1→2)" in lines[3]
     assert "env=-0.50" in lines[4]
     assert "non-passing, softmask" in lines[3]
+
+
+def test_failed_drill_block_omits_last_when_same_as_opening() -> None:
+    block = format_failed_drill_block(
+        sequence="run(a) [rank=8 p=0.075 reward=-3]",
+        opening_label="run(a)",
+        opening_passing=False,
+        opening_reward=-3.0,
+        last_reward=-3.0,
+        p_before=0.075,
+        p_after=0.073,
+        rank_before=8,
+        rank_after=8,
+        scenario="LOOSE_BALL_RUN",
+        opening_buf_rew=-1.3353,
+        opening_buf_adv=-1.1442,
+        last_buf_rew=-1.3353,
+        last_buf_adv=-1.1442,
+        expected_moves="run(b)* [rank=1 p=0.105]",
+        opening_soft_mask=False,
+    )
+    assert "last:" not in block
+    assert "opening:" in block
 
 
 def test_mass_delta_keeps_sub_milli_moves() -> None:

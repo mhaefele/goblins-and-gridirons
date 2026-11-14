@@ -217,7 +217,6 @@ def format_passed_drill_block(
     sequence: str,
     opening_label: str,
     opening_reward: float | None,
-    scoring_reward: float | None,
     p_before: float | None,
     p_after: float | None,
     rank_before: float | None,
@@ -225,13 +224,14 @@ def format_passed_drill_block(
     scenario: str | None,
     opening_buf_rew: float | None = None,
     opening_buf_adv: float | None = None,
-    scoring_buf_rew: float | None = None,
-    scoring_buf_adv: float | None = None,
 ) -> str:
-    """One multi-line block for a US drill (PPO bits printed once per update separately)."""
+    """One multi-line block for a US drill (PPO bits printed once per update separately).
+
+    No separate ``scoring:`` line — on one-shot LBR passes opening *is* the score, and
+    multi-step rewards already sit on ``steps:`` via ``annotate_move_label``.
+    """
     tag = f" [{scenario}]" if scenario else ""
     open_r = "n/a" if opening_reward is None else f"{opening_reward:+.2f}"
-    score_r = "n/a" if scoring_reward is None else f"{scoring_reward:+.2f}"
     open_move = _annotate_opening_label(opening_label, p=p_after, rank=rank_after)
     return "\n".join(
         [
@@ -239,9 +239,25 @@ def format_passed_drill_block(
             f"  steps: {sequence}",
             f"  opening: {open_move} env={open_r} {_fmt_buf_pair(opening_buf_rew, opening_buf_adv)} "
             f"{_fmt_mass_rank(p_before, p_after, rank_before, rank_after)}",
-            f"  scoring: env={score_r} {_fmt_buf_pair(scoring_buf_rew, scoring_buf_adv)}",
         ]
     )
+
+
+def _terminal_differs_from_opening(
+    *,
+    opening_reward: float | None,
+    last_reward: float | None,
+    opening_buf_rew: float | None,
+    opening_buf_adv: float | None,
+    last_buf_rew: float | None,
+    last_buf_adv: float | None,
+) -> bool:
+    """True when episode-end env/buf is not just a copy of the opening step."""
+    if opening_reward != last_reward:
+        return True
+    if opening_buf_rew != last_buf_rew or opening_buf_adv != last_buf_adv:
+        return True
+    return False
 
 
 def format_failed_drill_block(
@@ -263,7 +279,11 @@ def format_failed_drill_block(
     expected_moves: str | None = None,
     opening_soft_mask: bool | None = None,
 ) -> str:
-    """One multi-line block for a THEM drill (PPO bits printed once per update separately)."""
+    """One multi-line block for a THEM drill (PPO bits printed once per update separately).
+
+    ``last:`` is the episode-terminal step (often window-loss −0.5). Omitted when it
+    matches the opening env/buf — common on one-shot LBR fails where the slap *is* the end.
+    """
     tag = f" [{scenario}]" if scenario else ""
     grade = "passing" if opening_passing else "non-passing"
     soft_bit = (
@@ -272,7 +292,6 @@ def format_failed_drill_block(
         else (", plain" if opening_soft_mask is False else "")
     )
     open_r = "n/a" if opening_reward is None else f"{opening_reward:+.2f}"
-    last_r = "n/a" if last_reward is None else f"{last_reward:+.2f}"
     open_move = _annotate_opening_label(opening_label, p=p_after, rank=rank_after)
     lines = [
         f"[gridiron] Failed the drill.{tag}",
@@ -280,14 +299,21 @@ def format_failed_drill_block(
     ]
     if expected_moves:
         lines.append(f"  expected: {expected_moves}")
-    lines.extend(
-        [
-            f"  opening: {open_move} ({grade}{soft_bit}) env={open_r} "
-            f"{_fmt_buf_pair(opening_buf_rew, opening_buf_adv)} "
-            f"{_fmt_mass_rank(p_before, p_after, rank_before, rank_after)}",
-            f"  last: env={last_r} {_fmt_buf_pair(last_buf_rew, last_buf_adv)}",
-        ]
+    lines.append(
+        f"  opening: {open_move} ({grade}{soft_bit}) env={open_r} "
+        f"{_fmt_buf_pair(opening_buf_rew, opening_buf_adv)} "
+        f"{_fmt_mass_rank(p_before, p_after, rank_before, rank_after)}"
     )
+    if _terminal_differs_from_opening(
+        opening_reward=opening_reward,
+        last_reward=last_reward,
+        opening_buf_rew=opening_buf_rew,
+        opening_buf_adv=opening_buf_adv,
+        last_buf_rew=last_buf_rew,
+        last_buf_adv=last_buf_adv,
+    ):
+        last_r = "n/a" if last_reward is None else f"{last_reward:+.2f}"
+        lines.append(f"  last: env={last_r} {_fmt_buf_pair(last_buf_rew, last_buf_adv)}")
     return "\n".join(lines)
 
 
@@ -545,11 +571,8 @@ class PpoUpdateEvidenceCallback(BaseCallback):
             if outcome == "US":
                 n_passed += 1
                 opening = _first_opening_lesson_step(raw_seq)
-                scoring = _scoring_step(raw_seq)
                 open_t = _buf_ts_at(buf_ts, _step_index(raw_seq, opening))
-                score_t = _buf_ts_at(buf_ts, _step_index(raw_seq, scoring))
                 open_buf_rew, open_buf_adv = _buf_rew_adv(snapshot, time_idx=open_t, env_idx=env_i)
-                score_buf_rew, score_buf_adv = _buf_rew_adv(snapshot, time_idx=score_t, env_idx=env_i)
                 print(
                     format_passed_drill_block(
                         sequence=sequence,
@@ -557,7 +580,6 @@ class PpoUpdateEvidenceCallback(BaseCallback):
                             (opening or {}).get("label") or row.get("label") or "?"
                         ),
                         opening_reward=_step_reward(opening),
-                        scoring_reward=_step_reward(scoring),
                         p_before=row.get("p_before"),
                         p_after=scored.get("p_chosen"),
                         rank_before=row.get("rank_before"),
@@ -565,8 +587,6 @@ class PpoUpdateEvidenceCallback(BaseCallback):
                         scenario=self.scenario,
                         opening_buf_rew=open_buf_rew,
                         opening_buf_adv=open_buf_adv,
-                        scoring_buf_rew=score_buf_rew,
-                        scoring_buf_adv=score_buf_adv,
                     ),
                     flush=True,
                 )
