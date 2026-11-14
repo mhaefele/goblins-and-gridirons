@@ -18,9 +18,8 @@ import com.mhaefele.gridiron.shared.TurnPhase
  * (`actingSeat`, `resultKind`, …) stay name strings.
  *
  * **Vector pack** ([AiObsEncoding] / [com.mhaefele.gridiron.api.ai.mapping.AiObsPacker]):
- * enums `null` → `0` else `ordinal + 1`; optional ints `null` → [AiObsLayout.SENTINEL];
- * booleans → `0`/`1`. A null [AiCellObs.player] still emits one code per [AiCellPlayerObs] field
- * (enums as 0, bools/ints as SENTINEL) — fixed width, no hole.
+ * absent (`null`) → [AiObsLayout.SENTINEL]; present enums → raw `ordinal`; booleans → `0`/`1`.
+ * A null [AiCellObs.player] still emits one [SENTINEL] per [AiCellPlayerObs] field — fixed width.
  */
 data class AiNestedObsDto(
     val turnNumber: Int,

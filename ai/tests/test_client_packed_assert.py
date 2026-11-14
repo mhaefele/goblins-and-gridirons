@@ -70,7 +70,7 @@ def _minimal_step(*, n: int = 1, ended: bool = False, **overrides: object) -> di
     base = {
         "schemaVersion": SCHEMA_VERSION,
         "obs": [0.0] * OBSERVATION_VECTOR_LENGTH,
-        "legalMoves": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]] * row_count,
+        "legalMoves": [[-1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, -1]] * row_count,
         "rewards": _rewards_view(),
         "legalRows": _legal_rows(n=row_count),
         **_harness_meta(ended=ended),
@@ -179,6 +179,6 @@ def test_assert_packed_submit_handoff_terminal_next() -> None:
 def test_assert_packed_submit_terminal_rejects_live_legals() -> None:
     result = _minimal_submit(terminal=True)
     result["next"]["legalRows"] = [_legal_row()]
-    result["next"]["legalMoves"] = [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
+    result["next"]["legalMoves"] = [[-1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, -1]]
     with pytest.raises(GridironApiError, match="terminal but legalMoves"):
         _assert_packed_submit(result)

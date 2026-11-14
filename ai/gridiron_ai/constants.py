@@ -5,10 +5,10 @@ Owner: ``SCHEMA_VERSION`` + obs / legal-row pack widths shared by ``obs`` / ``ac
 semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
-# v24: legal-row throwSuccessChancePercent (0 = non-throw; 1..100 = P(success)×100; hand-off=100)
-# + blockDiceCount (0 = non-block; 1..3). Folded before dump used 24 — do not bump.
+# v24: throwSuccessChancePercent (0..100; 0 = non-throw) + blockDiceCount on legal rows;
+# categorical absent → SENTINEL (-1); enums pack raw ordinal. Folded before dump used 24.
 # v23: legal-row actorHasBall / targetHasBall metadata; bonus column = full BonusPlay vocab
-# (hand codes) for requiredBonusCard (geometry + Play*/Do-Over); per-play kinds unchanged.
+# for requiredBonusCard (geometry + Play*/Do-Over); per-play kinds unchanged.
 # (No dump/regen used prior 23 shapes — fold bonus widen into 23, do not bump.)
 # v22: cell pitchX / pitchY / distToBall on the wire (was Python feature synth).
 # v21: harness rewards.players + ballCoordinate (absolute); legal rows = LegalAction + flags.
@@ -23,39 +23,40 @@ BENCH_SLOTS = MAX_PLAYERS_PER_TEAM
 BOARD_SLOT_COUNT = PITCH_SQUARE_COUNT + 2 * BENCH_SLOTS  # 185
 
 ACTIVE_CHALLENGE_SLOTS = 3
-# Legal-row / hand BonusPlay codes: 0 = none; 1..BONUS_PLAY_COUNT = ordinal+1.
+# Legal-row / hand BonusPlay: SENTINEL (-1) = none; 0..BONUS_PLAY_COUNT-1 = ordinal.
 BONUS_PLAY_COUNT = 20
-BLOCK_FACE_PACK_SIZE = 1 + 5  # unused + BlockDieFace.entries
+BLOCK_FACE_PACK_SIZE = 5  # live BlockDieFace ordinals; SENTINEL = unused
 # Mid-turn max: ≤3 after EOT trim + up to 3 claims (Clean Sweep); pad unused with null.
 BONUS_HAND_SLOTS = 6
-MISSING_OPTIONAL_FIELD = -1
+MISSING_OPTIONAL_FIELD = -1  # = Kotlin AiObsLayout.SENTINEL
 
 LEGAL_ACTION_KIND_COUNT = 41  # AiLegalKind.entries.size (must match Kotlin)
 # Pad legal row matrices in vec-env / rollout buffer. One route per destination (BFS), but
 # bonus-card twins (Sprint/Weave/…) multiply rows; live self-play has exceeded 512.
 MAX_LEGAL_MOVES = 1024
 
-# Actor playerIndex: 0 = unused (kind-only rows); 1..MAX_PLAYERS_PER_TEAM = roster slot + 1.
-ACTOR_PLAYER_INDEX_COUNT = MAX_PLAYERS_PER_TEAM + 1  # includes unused 0
+# Actor playerIndex: SENTINEL = unused; 1..MAX_PLAYERS_PER_TEAM = roster slot + 1.
+# Emb table still has a pad row at index 0 (wire -1 → emb 0).
+ACTOR_PLAYER_INDEX_COUNT = MAX_PLAYERS_PER_TEAM + 1  # emb rows: pad + 1..MAX
 
-# Legal-row factor packing (Kotlin AiLegalPacker) — column vocab widths for encode/pad,
-# not MultiDiscrete policy heads. Gym action is Discrete(MAX_LEGAL_MOVES) row index.
+# Legal-row factor packing (Kotlin AiLegalPacker) — live-value widths (SENTINEL outside).
+# Gym action is Discrete(MAX_LEGAL_MOVES) row index.
 ACTION_FACTOR_WIDTHS = [
-    ACTOR_PLAYER_INDEX_COUNT,
+    MAX_PLAYERS_PER_TEAM,  # actor 1..MAX (SENTINEL unused)
     LEGAL_ACTION_KIND_COUNT,
-    PLAY_WIDTH + 1,  # targetX identity (0-based + unused)
-    PLAY_HEIGHT + 1,  # targetY identity
-    ACTIVE_CHALLENGE_SLOTS + 1,
-    BONUS_PLAY_COUNT + 1,  # same vocab as hand / BONUS_PLAY_VOCAB
+    PLAY_WIDTH,  # targetX 0-based (SENTINEL unused)
+    PLAY_HEIGHT,  # targetY 0-based
+    ACTIVE_CHALLENGE_SLOTS,  # 0..2 (SENTINEL unused)
+    BONUS_PLAY_COUNT,  # BonusPlay ordinal (SENTINEL none)
     BLOCK_FACE_PACK_SIZE,
     BLOCK_FACE_PACK_SIZE,
     BLOCK_FACE_PACK_SIZE,
-    PLAY_WIDTH + 1,  # sourceX metadata; who-id = actor
-    PLAY_HEIGHT + 1,  # sourceY metadata
+    PLAY_WIDTH,  # sourceX
+    PLAY_HEIGHT,  # sourceY
     2,  # actorHasBall metadata (0/1)
     2,  # targetHasBall metadata (0/1)
-    101,  # throwSuccessChancePercent (0 unused; 1..100 = P(success)×100)
-    4,  # blockDiceCount (0 unused; 1..3)
+    101,  # throwSuccessChancePercent 0 = non-throw; 1..100 = P(success)×100
+    3,  # blockDiceCount 1..3 (SENTINEL non-block)
 ]
 # Policy / ONNX output width: one score per padded legal-row slot.
 LEGAL_ROW_SCORE_WIDTH = MAX_LEGAL_MOVES
@@ -105,7 +106,7 @@ OBSERVATION_VECTOR_LENGTH = (
 )
 assert OBSERVATION_VECTOR_LENGTH == 4477
 
-# Embedding row counts = 1 (empty/absent code 0) + Kotlin enum size.
+# Embedding row counts = enum size + 1 pad row (wire -1 → last emb row).
 # Sync with TurnPhase / AiTerrain / AiTeamRel / PlayerStatus / ChallengeClaimCondition /
 # BonusPlay / PlayerAbility / AiHeldCheckKind / BlockDieFace when those enums gain a value.
 TURN_PHASE_VOCAB = 7 + 1
@@ -115,7 +116,7 @@ PLAYER_STATUS_VOCAB = 3 + 1
 CHALLENGE_CONDITION_VOCAB = 15 + 1
 BONUS_PLAY_VOCAB = BONUS_PLAY_COUNT + 1
 PLAYER_ABILITY_VOCAB = 31 + 1
-# playerIndex 0..MAX (0 = empty); embedding rows match ACTOR_PLAYER_INDEX_COUNT.
+# playerIndex emb: row 0 = pad (wire -1); rows 1..MAX = roster.
 PLAYER_INDEX_VOCAB = ACTOR_PLAYER_INDEX_COUNT
 AI_HELD_CHECK_KIND_VOCAB = 3 + 1  # BLOCK_FACES / THROW_D6 / ARMOUR_D6
 BLOCK_DIE_FACE_VOCAB = 5 + 1  # SMASH / FLATTEN / SHOVE / TACKLE / MISS

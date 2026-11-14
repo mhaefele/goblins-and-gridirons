@@ -204,8 +204,8 @@ class AiStepApiTest : BaseApiTest() {
         assertThat(weaveChoice.action.requiredBonusCard).isEqualTo(BonusPlay.Weave)
         val sprintPacked = step.policy.legalMoves[step.harness.legalRows.indexOf(sprintChoice)]
         val weavePacked = step.policy.legalMoves[step.harness.legalRows.indexOf(weaveChoice)]
-        assertThat(sprintPacked[5]).isEqualTo(BonusPlay.Sprint.ordinal + 1)
-        assertThat(weavePacked[5]).isEqualTo(BonusPlay.Weave.ordinal + 1)
+        assertThat(sprintPacked[5]).isEqualTo(BonusPlay.Sprint.ordinal)
+        assertThat(weavePacked[5]).isEqualTo(BonusPlay.Weave.ordinal)
     }
 
     @Test
@@ -223,7 +223,7 @@ class AiStepApiTest : BaseApiTest() {
         assertThat(choice.action.requiredBonusCard).isEqualTo(BonusPlay.`Back on Your Feet`)
         val packed = step.policy.legalMoves[step.harness.legalRows.indexOf(choice)]
         assertThat(packed[1]).isEqualTo(AiLegalKind.playBackOnYourFeet.ordinal)
-        assertThat(packed[5]).isEqualTo(BonusPlay.`Back on Your Feet`.ordinal + 1)
+        assertThat(packed[5]).isEqualTo(BonusPlay.`Back on Your Feet`.ordinal)
     }
 
     @Test
@@ -305,8 +305,8 @@ class AiStepApiTest : BaseApiTest() {
         assertThat(shortPacked[AiObsLayout.FACTOR_THROW_SUCCESS_CHANCE])
             .isEqualTo(throwSuccessChancePercentFromNeeded(short.target.throwCheckNeeded))
         assertThat(runPacked[AiObsLayout.FACTOR_THROW_SUCCESS_CHANCE]).isEqualTo(0)
-        assertThat(handOffPacked[AiObsLayout.FACTOR_BLOCK_DICE_COUNT]).isEqualTo(0)
-        assertThat(runPacked[AiObsLayout.FACTOR_BLOCK_DICE_COUNT]).isEqualTo(0)
+        assertThat(handOffPacked[AiObsLayout.FACTOR_BLOCK_DICE_COUNT]).isEqualTo(AiObsLayout.SENTINEL)
+        assertThat(runPacked[AiObsLayout.FACTOR_BLOCK_DICE_COUNT]).isEqualTo(AiObsLayout.SENTINEL)
     }
 
     @Test
@@ -326,7 +326,7 @@ class AiStepApiTest : BaseApiTest() {
 
         assertThat(block.blockDiceCount).isEqualTo(1)
         assertThat(blockPacked[AiObsLayout.FACTOR_BLOCK_DICE_COUNT]).isEqualTo(1)
-        assertThat(nonBlockPacked[AiObsLayout.FACTOR_BLOCK_DICE_COUNT]).isEqualTo(0)
+        assertThat(nonBlockPacked[AiObsLayout.FACTOR_BLOCK_DICE_COUNT]).isEqualTo(AiObsLayout.SENTINEL)
         assertThat(blockPacked[AiObsLayout.FACTOR_THROW_SUCCESS_CHANCE]).isEqualTo(0)
     }
 

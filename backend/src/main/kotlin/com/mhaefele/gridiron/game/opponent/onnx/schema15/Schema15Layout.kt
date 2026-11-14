@@ -15,7 +15,7 @@ object Schema15Layout {
 
     const val PITCH_SQUARE_COUNT = AiObsLayout.PITCH_SQUARE_COUNT
     const val MAX_PLAYERS_PER_TEAM = AiObsLayout.MAX_PLAYERS_PER_TEAM
-    const val UNUSED_PLAYER_INDEX = AiObsLayout.UNUSED_PLAYER_INDEX
+    const val UNUSED_PLAYER_INDEX = AiObsLayout.SENTINEL
     const val ACTIVE_CHALLENGE_SLOTS = AiObsLayout.ACTIVE_CHALLENGE_SLOTS
 
     /** Packed legal-row width: actor×kind, boardTarget, challengeSlot. */

@@ -202,7 +202,7 @@ class AiGameStateMapper {
 
     private fun toAiChallengeSlots(cards: CardState): List<AiChallengeSlotObs> =
         cards.activeSlots.map { card ->
-            if (card == null) AiChallengeSlotObs(condition = null, points = 0)
+            if (card == null) AiChallengeSlotObs(condition = null, points = AiObsLayout.SENTINEL)
             else AiChallengeSlotObs(condition = card.challenge, points = card.points)
         }
 

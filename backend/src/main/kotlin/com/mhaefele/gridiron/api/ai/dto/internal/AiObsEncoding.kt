@@ -3,18 +3,16 @@ package com.mhaefele.gridiron.api.ai.dto.internal
 import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 
 /**
- * Numeric codes when flattening DTO fields into the obs vector.
+ * Sole null→vector step for packed obs / legal rows.
  *
- * Nested **JSON wire** uses 0-based ordinals ([AiEnumOrdinal]); this is the **vector** step:
- *
- * - Enums: JSON/`null` → `0`, else `ordinal + 1`
- * - Optional ints: `null` → [AiObsLayout.SENTINEL]
- * - Booleans: `false` → `0`, `true` → `1`
+ * Nested **JSON wire** uses 0-based ordinals ([AiEnumOrdinal]) or JSON null.
+ * Flat vector: **`null` → [AiObsLayout.SENTINEL]**; present enum → `ordinal`; present int → value;
+ * boolean → `0`/`1`.
  */
 object AiObsEncoding {
-    fun <E : Enum<E>> E?.toObsCode(): Int = if (this == null) 0 else ordinal + 1
+    fun <E : Enum<E>> E?.toObsCode(): Int = this?.ordinal ?: AiObsLayout.SENTINEL
 
-    fun wireOrdinalToObsCode(ordinal: Int?): Int = if (ordinal == null) 0 else ordinal + 1
+    fun wireOrdinalToObsCode(ordinal: Int?): Int = ordinal ?: AiObsLayout.SENTINEL
 
     fun Int?.toObsCode(): Int = this ?: AiObsLayout.SENTINEL
 

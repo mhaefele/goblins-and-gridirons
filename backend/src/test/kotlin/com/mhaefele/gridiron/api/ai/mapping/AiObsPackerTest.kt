@@ -31,7 +31,7 @@ class AiObsPackerTest {
         )
         val packed = packer.pack(obs)
         assertThat(packed[0]).isEqualTo(3f)
-        assertThat(packed[1]).isEqualTo((TurnPhase.PLAYER_ACTION.ordinal + 1).toFloat())
+        assertThat(packed[1]).isEqualTo(TurnPhase.PLAYER_ACTION.ordinal.toFloat())
         assertThat(packed[2]).isEqualTo(2f)
         assertThat(packed[3]).isEqualTo(4f)
         assertThat(packed[4]).isEqualTo(1f)
@@ -56,7 +56,7 @@ class AiObsPackerTest {
             modHoldTheLine = false,
             modGangUp = false,
             modAllInTackleProneAfterBlock = false,
-            challenges = List(AiObsLayout.ACTIVE_CHALLENGE_SLOTS) { AiChallengeSlotObs(null, 0) },
+            challenges = List(AiObsLayout.ACTIVE_CHALLENGE_SLOTS) { AiChallengeSlotObs(null, AiObsLayout.SENTINEL) },
             deckTopCondition = null,
             deckSize = 0,
             discardSize = 0,

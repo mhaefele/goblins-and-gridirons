@@ -68,7 +68,7 @@ class AiObsPacker {
 
     private inline fun packHeldCheck(held: AiHeldCheckObs, put: (Int) -> Unit) {
         put(AiObsEncoding.run { held.kind.toObsCode() })
-        put(held.d6 ?: 0)
+        put(AiObsEncoding.run { held.d6.toObsCode() })
         for (face in held.blockFaces) {
             put(AiObsEncoding.run { face.toObsCode() })
         }
@@ -89,15 +89,15 @@ class AiObsPacker {
     }
 
     private inline fun packAbsentPlayer(put: (Int) -> Unit) {
-        put(AiObsLayout.UNUSED_PLAYER_INDEX)
-        put(0) // teamRel
-        put(0) // status
+        put(AiObsLayout.SENTINEL) // playerIndex
+        put(AiObsLayout.SENTINEL) // teamRel
+        put(AiObsLayout.SENTINEL) // status
         put(AiObsLayout.SENTINEL) // turnEnded
         put(AiObsLayout.SENTINEL) // move
         put(AiObsLayout.SENTINEL) // blockDice
         put(AiObsLayout.SENTINEL) // throwStat
         put(AiObsLayout.SENTINEL) // armour
-        put(0) // ability
+        put(AiObsLayout.SENTINEL) // ability
         put(AiObsLayout.SENTINEL) // canThrowTeammate
         packAbsentAffordance(put)
     }

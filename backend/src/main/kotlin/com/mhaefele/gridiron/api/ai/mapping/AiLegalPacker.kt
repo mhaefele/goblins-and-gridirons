@@ -4,13 +4,15 @@ import com.mhaefele.gridiron.api.ai.dto.AiLegalChoiceDto
 import com.mhaefele.gridiron.api.ai.dto.AiLegalKind
 import com.mhaefele.gridiron.api.ai.dto.AiObsLayout
 import com.mhaefele.gridiron.api.ai.dto.AiPitchSquare
+import com.mhaefele.gridiron.api.ai.dto.internal.AiObsEncoding
 import com.mhaefele.gridiron.api.dto.response.LegalAction
+import com.mhaefele.gridiron.game.dice.throwSuccessChancePercentFromNeeded
 import com.mhaefele.gridiron.model.MatchState
 import com.mhaefele.gridiron.model.board.BoardSquare
 import com.mhaefele.gridiron.model.board.PlayerStatus
+import com.mhaefele.gridiron.model.catalog.BonusPlay
 import com.mhaefele.gridiron.shared.Coordinate
 import com.mhaefele.gridiron.shared.PlayerId
-import com.mhaefele.gridiron.game.dice.throwSuccessChancePercentFromNeeded
 import com.mhaefele.gridiron.shared.TeamSide
 import org.springframework.stereotype.Component
 
@@ -20,11 +22,16 @@ import org.springframework.stereotype.Component
  * Perspective + 0-based pitch packing stay here (not on the harness wire).
  * Identity: actor, kind, targetX, targetY, challengeSlot, attachedBonus, face0..2;
  * metadata: sourceX, sourceY, actorHasBall, targetHasBall, throwSuccessChancePercent, blockDiceCount.
+ * Absent axes: nullable → [AiObsEncoding.toObsCode] → [AiObsLayout.SENTINEL].
  */
 @Component
 class AiLegalPacker(
     private val gameState: AiGameStateMapper,
 ) {
+    init {
+        check(BonusPlay.entries.size == AiObsLayout.BONUS_PLAY_COUNT) { "BonusPlay.entries=${BonusPlay.entries.size} != AiObsLayout.BONUS_PLAY_COUNT=${AiObsLayout.BONUS_PLAY_COUNT}" }
+    }
+
     fun legalMoves(
         choices: List<AiLegalChoiceDto>,
         state: MatchState,
@@ -36,62 +43,56 @@ class AiLegalPacker(
         action: LegalAction,
         state: MatchState,
         perspectiveSeat: TeamSide,
-    ): List<Int> {
+    ): List<Int> = AiObsEncoding.run {
         val kind = packKind(action)
         val actorId = actorPlayerId(action)
-        val actor = actorId?.let { gameState.aiPlayerIndex(it) } ?: AiObsLayout.UNUSED_PLAYER_INDEX
         val dest = destCoordinate(action)
         val target = dest?.let { gameState.perspectivePitchXy0(it, perspectiveSeat) }
         val source = sourcePitch(actorId, state, perspectiveSeat)
         val challengeSlot = when (action) {
             is LegalAction.ClaimChallenge   -> action.slotIndex
             is LegalAction.ReplaceChallenge -> action.slotIndex
-            else                            -> AiObsLayout.ACTIVE_CHALLENGE_SLOTS
+            else                            -> null
         }
-        val attachedBonus = action.requiredBonusCard?.let { AttachedBonusEncoding.indexFor(it) }
-            ?: AiObsLayout.ATTACHED_BONUS_UNUSED
-        val faces = IntArray(AiObsLayout.MAX_HELD_BLOCK_FACES) { AiObsLayout.BLOCK_FACE_PACK_UNUSED }
-        if (action is LegalAction.ChooseBlockFaceOrder) {
-            require(action.orderedFaces.size <= AiObsLayout.MAX_HELD_BLOCK_FACES) { "FaceOrder length ${action.orderedFaces.size} > ${AiObsLayout.MAX_HELD_BLOCK_FACES}" }
-            for (i in action.orderedFaces.indices) {
-                faces[i] = action.orderedFaces[i].ordinal + 1
-            }
+        val orderedFaces = (action as? LegalAction.ChooseBlockFaceOrder)?.orderedFaces
+        if (orderedFaces != null) {
+            require(orderedFaces.size <= AiObsLayout.MAX_HELD_BLOCK_FACES) { "FaceOrder length ${orderedFaces.size} > ${AiObsLayout.MAX_HELD_BLOCK_FACES}" }
         }
-        // Same sense as AiCellObs.hasBall: actor holds / dest square has loose or carrier ball.
         val actorHasBall = actorId != null && state.board.player(actorId).holdsBall()
         val targetHasBall = dest != null && squareHasBall(state.board.squareAt(dest), state)
-        return listOf(
-            actor,
+        listOf(
+            actorId?.let { gameState.aiPlayerIndex(it) }.toObsCode(),
             kind.ordinal,
-            target?.x ?: AiObsLayout.TARGET_X_UNUSED,
-            target?.y ?: AiObsLayout.TARGET_Y_UNUSED,
-            challengeSlot,
-            attachedBonus,
-            faces[0],
-            faces[1],
-            faces[2],
-            source?.x ?: AiObsLayout.SOURCE_X_UNUSED,
-            source?.y ?: AiObsLayout.SOURCE_Y_UNUSED,
+            target?.x.toObsCode(),
+            target?.y.toObsCode(),
+            challengeSlot.toObsCode(),
+            action.requiredBonusCard.toObsCode(),
+            orderedFaces?.getOrNull(0).toObsCode(),
+            orderedFaces?.getOrNull(1).toObsCode(),
+            orderedFaces?.getOrNull(2).toObsCode(),
+            source?.x.toObsCode(),
+            source?.y.toObsCode(),
             if (actorHasBall) 1 else 0,
             if (targetHasBall) 1 else 0,
-            packThrowSuccessChancePercent(action),
-            packBlockDiceCount(action),
+            // Continuous 0..100 (0 = non-throw) — not SENTINEL; feature is /100 only.
+            throwSuccessChancePercent(action),
+            blockDiceCount(action).toObsCode(),
         )
     }
 
-    /** From [ThrowTarget.throwCheckNeeded] — Kotlin owns P(success); Python only `/100`. */
-    private fun packThrowSuccessChancePercent(action: LegalAction): Int =
+    /** From [ThrowTarget.throwCheckNeeded] — Kotlin owns P(success); Python only `/100`. `0` = non-throw. */
+    private fun throwSuccessChancePercent(action: LegalAction): Int =
         when (action) {
             is LegalAction.Throw             -> throwSuccessChancePercentFromNeeded(action.target.throwCheckNeeded)
             is LegalAction.ThrowTeammate     -> throwSuccessChancePercentFromNeeded(action.target.throwCheckNeeded)
             is LegalAction.QuickReleaseThrow -> throwSuccessChancePercentFromNeeded(action.target.throwCheckNeeded)
-            else                             -> AiObsLayout.THROW_SUCCESS_CHANCE_UNUSED
+            else                             -> 0
         }
 
-    private fun packBlockDiceCount(action: LegalAction): Int =
+    private fun blockDiceCount(action: LegalAction): Int? =
         when (action) {
             is LegalAction.Block -> action.blockDiceCount
-            else                 -> AiObsLayout.BLOCK_DICE_COUNT_UNUSED
+            else                 -> null
         }
 
     private fun squareHasBall(square: BoardSquare, state: MatchState): Boolean =

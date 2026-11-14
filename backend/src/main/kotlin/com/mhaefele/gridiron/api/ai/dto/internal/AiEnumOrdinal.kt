@@ -17,8 +17,8 @@ import tools.jackson.databind.ser.std.StdSerializer
  *
  * Apply on AI DTO properties only — never put ordinal `@JsonValue` on shared domain enums.
  *
- * Packable obs still use [AiObsEncoding] in the harness: JSON `null` → vector `0`,
- * else `ordinal + 1`. Wire `null` stays JSON null (not `0`).
+ * Packable obs still use [AiObsEncoding] in the harness: JSON `null` → vector [AiObsLayout.SENTINEL],
+ * else raw `ordinal`. Wire `null` stays JSON null.
  */
 @Target(AnnotationTarget.PROPERTY, AnnotationTarget.PROPERTY_GETTER, AnnotationTarget.FIELD)
 @Retention(AnnotationRetention.RUNTIME)

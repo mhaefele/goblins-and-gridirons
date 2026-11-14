@@ -64,10 +64,9 @@ object AiObsLayout {
      * [AiCellObs.hasBall]); bonus column = full [BonusPlay] vocab (hand codes) for any
      * [com.mhaefele.gridiron.api.dto.response.LegalAction.requiredBonusCard] (geometry twins
      * and Play* / Do-Over); per-play [AiLegalKind]s unchanged — folded before any dump used 23.
-     * v24: legal-row pack appends throwSuccessChancePercent metadata (`0` = non-throw;
-     * `1..100` from [ThrowTarget.throwCheckNeeded] via throwSuccessChancePercentFromNeeded;
-     * hand-off needed=`0` → 100). Python only `/100`. Also appends blockDiceCount (`0` =
-     * non-block; `1..3` from [LegalAction.Block.blockDiceCount]) — folded before dump used 24.
+     * v24: legal-row pack appends throwSuccessChancePercent + blockDiceCount; N/A on optional
+     * axes is [SENTINEL] (`-1`) — same as board optional ints (pitch dest/source, challenge slot,
+     * actor, bonus, faces, throw %, block dice). Folded before dump used 24.
      */
     const val SCHEMA_VERSION = 24
 
@@ -83,10 +82,10 @@ object AiObsLayout {
     const val BOARD_SLOT_COUNT = PITCH_SQUARE_COUNT + 2 * BENCH_SLOTS // 185
 
     /**
-     * Wire / MultiDiscrete actor pad: no free actor on this kind.
-     * Occupied cells use `1 .. MAX_PLAYERS_PER_TEAM` (roster slot + 1).
+     * Absent / unused on the packed vector — [com.mhaefele.gridiron.api.ai.dto.internal.AiObsEncoding]
+     * maps `null` → this. Present enums = raw ordinal; present ints = the value.
      */
-    const val UNUSED_PLAYER_INDEX = 0
+    const val SENTINEL = -1
 
     /** Cap on block-die faces in one pool (Underdog / assisted max). */
     const val MAX_HELD_BLOCK_FACES = 3
@@ -96,7 +95,7 @@ object AiObsLayout {
     /**
      * Packed legal-row width: identity (actor, kind, targetX, targetY, challengeSlot, attachedBonus,
      * face0..2) then metadata (sourceX, sourceY, actorHasBall, targetHasBall, throwSuccessChancePercent,
-     * blockDiceCount). Who-id = roster actor, not source coords. Unused axes use pad sentinels
+     * blockDiceCount). Who-id = roster actor, not source coords. Absent axes → [SENTINEL]
      * (not MultiDiscrete heads — join-score embeds like board).
      */
     const val ACTION_FACTOR_COUNT = 15
@@ -104,43 +103,27 @@ object AiObsLayout {
     const val ACTIVE_CHALLENGE_SLOTS = 3
     /** [com.mhaefele.gridiron.model.catalog.BonusPlay.entries] — hand + legal-row bonus column. */
     const val BONUS_PLAY_COUNT = 20
-    /**
-     * Legal-row bonus column / hand share codes: [ATTACHED_BONUS_UNUSED]=0 none;
-     * `1..BONUS_PLAY_COUNT` = ordinal+1 ([AttachedBonusEncoding]).
-     */
-    const val ATTACHED_BONUS_UNUSED = 0
-    /** Face pack: `0` unused; `1..BlockDieFace.entries` = ordinal+1. */
-    const val BLOCK_FACE_PACK_UNUSED = 0
     /** Boolean pack vocab (`0`/`1`) — same codes as [AiObsEncoding] `Boolean.toObsCode()`. */
     val BOOL_PACK_WIDTH: Int = 2
-    /**
-     * Throw success-chance pack: `0` = non-throw; `1..100` = P(success)×100 derived from
-     * [com.mhaefele.gridiron.api.dto.response.ThrowTarget.throwCheckNeeded] (hand-off = 100).
-     */
-    const val THROW_SUCCESS_CHANCE_UNUSED: Int = 0
+    /** Throw P(success)×100 on the wire (`0` = non-throw; `1..100` = chance). Not SENTINEL. */
     val THROW_SUCCESS_CHANCE_PACK_WIDTH: Int = 101
-    /** Block dice pack: `0` = non-block; `1..3` = [LegalAction.Block.blockDiceCount]. */
-    const val BLOCK_DICE_COUNT_UNUSED: Int = 0
-    val BLOCK_DICE_COUNT_PACK_WIDTH: Int = 4
+    /** Live block dice (`1..3`); absent → [SENTINEL]. */
+    val BLOCK_DICE_COUNT_PACK_WIDTH: Int = 3
 
-    /** Free actor playerIndex pad — `0` unused, `1..MAX_PLAYERS_PER_TEAM` roster. */
-    val ACTOR_PACK_WIDTH: Int = MAX_PLAYERS_PER_TEAM + 1
+    /** Live actor codes `1..MAX`; absent → [SENTINEL] — emb pad row is separate. */
+    val ACTOR_PACK_WIDTH: Int = MAX_PLAYERS_PER_TEAM
     /** [AiLegalKind.entries] — packed as ordinal on each legal row. */
     val KIND_PACK_WIDTH: Int = AiLegalKind.entries.size
-    /** 0-based pitch x/y + pad — dest identity and source metadata share these widths. */
-    val PITCH_X_PACK_WIDTH: Int = PLAY_WIDTH + 1
-    val PITCH_Y_PACK_WIDTH: Int = PLAY_HEIGHT + 1
-    /** Pack pad when no pitch dest / source (kind-only / dugout / claim rows). */
-    const val TARGET_X_UNUSED: Int = PLAY_WIDTH
-    const val TARGET_Y_UNUSED: Int = PLAY_HEIGHT
-    const val SOURCE_X_UNUSED: Int = PLAY_WIDTH
-    const val SOURCE_Y_UNUSED: Int = PLAY_HEIGHT
-    /** Challenge slots + pad (unused axis). */
-    val CHALLENGE_SLOT_PACK_WIDTH: Int = ACTIVE_CHALLENGE_SLOTS + 1
-    val ATTACHED_BONUS_PACK_WIDTH: Int = BONUS_PLAY_COUNT + 1
-    /** `0` unused + one code per [com.mhaefele.gridiron.game.dice.dto.BlockDieFace]. */
-    val BLOCK_FACE_PACK_SIZE: Int = 1 + 5
-    /** Column vocab widths on each legal row — must match `ai/gridiron_ai/constants.py` ACTION_FACTOR_WIDTHS. Not MultiDiscrete heads. */
+    /** Live 0-based pitch x/y (`0..W-1` / `0..H-1`); absent → [SENTINEL]. */
+    val PITCH_X_PACK_WIDTH: Int = PLAY_WIDTH
+    val PITCH_Y_PACK_WIDTH: Int = PLAY_HEIGHT
+    /** Live challenge slots `0..ACTIVE_CHALLENGE_SLOTS-1`; absent → [SENTINEL]. */
+    val CHALLENGE_SLOT_PACK_WIDTH: Int = ACTIVE_CHALLENGE_SLOTS
+    /** Live [BonusPlay.ordinal]s; absent → [SENTINEL]. */
+    val ATTACHED_BONUS_PACK_WIDTH: Int = BONUS_PLAY_COUNT
+    /** Live [BlockDieFace.ordinal]s; absent → [SENTINEL]. */
+    val BLOCK_FACE_PACK_SIZE: Int = 5
+    /** Column live-value widths — must match `ai/gridiron_ai/constants.py` ACTION_FACTOR_WIDTHS. Not MultiDiscrete heads. */
     val ACTION_FACTOR_WIDTHS: IntArray = intArrayOf(ACTOR_PACK_WIDTH, KIND_PACK_WIDTH, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, CHALLENGE_SLOT_PACK_WIDTH, ATTACHED_BONUS_PACK_WIDTH, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, BOOL_PACK_WIDTH, BOOL_PACK_WIDTH, THROW_SUCCESS_CHANCE_PACK_WIDTH, BLOCK_DICE_COUNT_PACK_WIDTH,)
     /** Pad width for the legal-row menu (Python ``MAX_LEGAL_MOVES``). */
     const val MAX_LEGAL_MOVES = 1024
@@ -160,12 +143,12 @@ object AiObsLayout {
     /** Metadata only (pack tail) — actor’s current pitch x/y; not legal-choice identity. */
     const val FACTOR_SOURCE_X = 9
     const val FACTOR_SOURCE_Y = 10
-    /** Metadata — actor holds the ball / dest square has ball (loose or carrier); 0 when no actor/dest. */
+    /** Metadata — actor holds the ball / dest square has ball (loose or carrier); 0/1 when axes apply. */
     const val FACTOR_ACTOR_HAS_BALL = 11
     const val FACTOR_TARGET_HAS_BALL = 12
-    /** Metadata — throw P(success) as percent (`0` unused; `100` = hand-off / certain). */
+    /** Metadata — throw P(success) as percent (`0` = non-throw; `100` = hand-off / certain). */
     const val FACTOR_THROW_SUCCESS_CHANCE = 13
-    /** Metadata — block dice pool (`0` unused; `1..3`). */
+    /** Metadata — block dice pool ([SENTINEL] if non-block; `1..3`). */
     const val FACTOR_BLOCK_DICE_COUNT = 14
 
     /**
@@ -180,9 +163,6 @@ object AiObsLayout {
     /** terrain + hasBall + 19 player fields + pitchX + pitchY + distToBall. */
     const val NUMBERS_PER_BOARD_CELL = 24
 
-    /** [AiCellObs.distToBall] when no ball is on pitch (or for bench slots) — max Chebyshev on this board. */
-    val DIST_TO_BALL_ABSENT: Int = maxOf(PLAY_HEIGHT, PLAY_WIDTH)
-
     /** Perspective 0-based pitch column from absolute playable coord. */
     fun pitchX0(absolute: Coordinate, perspectiveSeat: TeamSide): Int =
         toPerspectivePitchXy0(absolute, perspectiveSeat).x
@@ -191,9 +171,9 @@ object AiObsLayout {
     fun pitchY0(absolute: Coordinate, perspectiveSeat: TeamSide): Int =
         toPerspectivePitchXy0(absolute, perspectiveSeat).y
 
-    /** Chebyshev steps; [DIST_TO_BALL_ABSENT] when [ball] is null. */
+    /** Chebyshev steps; [SENTINEL] when [ball] is null. */
     fun distToBall(cell: Coordinate, ball: Coordinate?): Int {
-        if (ball == null) return DIST_TO_BALL_ABSENT
+        if (ball == null) return SENTINEL
         return maxOf(kotlin.math.abs(cell.x - ball.x), kotlin.math.abs(cell.y - ball.y))
     }
 
@@ -202,9 +182,6 @@ object AiObsLayout {
      * Must match `ai/gridiron_ai/constants.py` `OBSERVATION_VECTOR_LENGTH`.
      */
     const val OBSERVATION_VECTOR_LENGTH = SCALAR_COUNT + ACTIVE_CHALLENGE_SLOTS * 2 + DECK_FIELD_COUNT + BONUS_HAND_SLOTS + HELD_CHECK_FIELD_COUNT + BOARD_SLOT_COUNT * NUMBERS_PER_BOARD_CELL
-
-    /** Vector pack for absent optional **ints** (`Int?` on the DTO → this code). Not used for enums. */
-    const val SENTINEL = -1
 
     // --- move pack (sealed MoveValue): 1..6 fixed; 7 = RandomD6 ---
     const val MOVE_RANDOM_D6 = 7

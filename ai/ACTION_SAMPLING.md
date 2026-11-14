@@ -313,14 +313,14 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 |------|------:|----------------------|---------|
 | actor | 11 | `0..10` roster pad | Exact. |
 | kind | 41 | `AiLegalKind.entries` | Exact. |
-| targetX / targetY | 12 / 16 | Pitch W/H + unused | 0-based pitch dest (+ pad). |
-| challengeSlot | 4 | 3 active challenges + unused | Exact. |
-| attachedBonus | 21 | `BonusPlay` + none (hand codes) | Exact (schema 23). |
-| face0..2 | 6 each | unused + 5 `BlockDieFace` | Exact; pad short perms with unused. |
-| sourceX / sourceY | 12 / 16 | Pitch W/H + unused | 0-based pitch metadata (+ pad). |
-| actorHasBall / targetHasBall | 2 each | boolean 0/1 | Same sense as cell `hasBall`; 0 when no actor/dest. |
-| throwSuccessChancePercent | 101 | `0` unused; `1..100` = P(success)×100 | Exact (schema 24); feature = `n/100`. |
-| blockDiceCount | 4 | `0` unused; `1..3` = declare-time pool | Exact (schema 24 fold); feature = `n/3`. |
+| targetX / targetY | 11 / 15 | Pitch W/H live | 0-based pitch dest; `SENTINEL` unused. |
+| challengeSlot | 3 | 3 active challenges | Live `0..2`; `SENTINEL` unused. |
+| attachedBonus | 20 | `BonusPlay` ordinals | `SENTINEL` none; else ordinal (schema 24). |
+| face0..2 | 5 each | `BlockDieFace` ordinals | `SENTINEL` unused; else ordinal. |
+| sourceX / sourceY | 11 / 15 | Pitch W/H live | 0-based pitch metadata; `SENTINEL` unused. |
+| actorHasBall / targetHasBall | 2 each | boolean 0/1 | Same sense as cell `hasBall`. |
+| throwSuccessChancePercent | 101 | `0` = non-throw; `1..100` = P(success)×100 | Continuous on the wire; feature = `n/100`. |
+| blockDiceCount | 3 | `1..3` = declare-time pool | `SENTINEL` non-block; feature = `n/3`. |
 
 **playerIndex:** `0` = empty / no free actor; `1..10` = roster slot + 1 (catalog max 10). Same id on the occupied cell (`AiCellPlayerObs.playerIndex`) and on `AiFactor.Actor`. Both teams reuse `1..10`; `teamRel` on the cell separates us/them.
 
@@ -427,7 +427,7 @@ How we map today — candidates to treat as separate buckets in stats.
 
 ### Pad / unused on the wire
 
-Harness always emits **thirteen** ints; axes a kind does not use get unused sentinels
-(bonus/face `0`, actor `0`, target/source unused = pitch W/H, …).
+Harness emits one int per factor; axes a kind does not use get `SENTINEL` (`-1`).
+Present enums = raw ordinal (no `+1`).
 Soft-mask may further **boost** preferred **rows** (never removes a legal row).
 Actor `0` means “no free actor” (kind-only / target-only free rows).

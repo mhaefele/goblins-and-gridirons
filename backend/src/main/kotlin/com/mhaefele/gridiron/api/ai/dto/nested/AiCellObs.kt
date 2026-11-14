@@ -12,8 +12,8 @@ import com.mhaefele.gridiron.model.catalog.PlayerAbility
  * Occupant of a board slot — only present when [AiCellObs.player] is non-null.
  *
  * Vectorize in **declaration order**; nested [AiCellPlayerObs.affordance] expands inline after stats.
- * When the cell’s `player` is `null`, emit the same number of values as this type’s fields, all absent:
- * enums → `0`, bools/ints → [AiObsLayout.SENTINEL].
+ * When the cell’s `player` is `null`, emit the same number of values as this type’s fields, all
+ * [AiObsLayout.SENTINEL].
  *
  * [move] / [throwStat] / [armour] are packed ints (domain types are sealed — [AiObsLayout]).
  * Always real values while this object exists; empty slot ⇒ [AiCellObs.player] is null (SENTINEL pack).
@@ -22,7 +22,7 @@ data class AiCellPlayerObs(
     /**
      * Stable roster id for this occupant (`1 .. MAX_PLAYERS_PER_TEAM`).
      * Same value as the packed legal-row actor when this player is the actor.
-     * Empty cells pack [AiObsLayout.UNUSED_PLAYER_INDEX] (0).
+     * Empty cells pack [AiObsLayout.SENTINEL].
      */
     val playerIndex: Int,
     /** Relative to [com.mhaefele.gridiron.api.ai.dto.AiHarnessStepDto.perspectiveSeat]. Wire: 0-based ordinal. */
@@ -78,9 +78,9 @@ data class AiCellObs(
     val pitchY: Int = AiObsLayout.SENTINEL,
     /**
      * Chebyshev steps to the single on-pitch ball (`0 .. max(H,W)`).
-     * [AiObsLayout.DIST_TO_BALL_ABSENT] when no ball is on a playable square (and on benches).
+     * [AiObsLayout.SENTINEL] when no ball is on a playable square (and on benches).
      */
-    val distToBall: Int = AiObsLayout.DIST_TO_BALL_ABSENT,
+    val distToBall: Int = AiObsLayout.SENTINEL,
 ) {
     init {
         if (pitchX != AiObsLayout.SENTINEL) {
@@ -89,7 +89,8 @@ data class AiCellObs(
         if (pitchY != AiObsLayout.SENTINEL) {
             require(pitchY in 0 until AiObsLayout.PLAY_HEIGHT) { "pitchY=$pitchY out of range" }
         }
-        require(distToBall in 0..AiObsLayout.DIST_TO_BALL_ABSENT) { "distToBall=$distToBall out of range" }
+        val maxDist = maxOf(AiObsLayout.PLAY_HEIGHT, AiObsLayout.PLAY_WIDTH)
+        require(distToBall == AiObsLayout.SENTINEL || distToBall in 0..maxDist) { "distToBall=$distToBall out of range" }
     }
 
     companion object {
@@ -97,7 +98,7 @@ data class AiCellObs(
             terrain: AiTerrain,
             pitchX: Int = AiObsLayout.SENTINEL,
             pitchY: Int = AiObsLayout.SENTINEL,
-            distToBall: Int = AiObsLayout.DIST_TO_BALL_ABSENT,
+            distToBall: Int = AiObsLayout.SENTINEL,
         ): AiCellObs =
             AiCellObs(
                 terrain = terrain,
@@ -117,6 +118,6 @@ data class AiChallengeSlotObs(
     /** Wire: 0-based [ChallengeClaimCondition] ordinal, or JSON null. */
     @get:AiEnumOrdinal
     val condition: ChallengeClaimCondition?,
-    /** Points when [condition] is set; `0` if empty. */
+    /** Points when [condition] is set; [AiObsLayout.SENTINEL] if empty. */
     val points: Int,
 )

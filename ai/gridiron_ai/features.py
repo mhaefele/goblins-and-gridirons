@@ -77,7 +77,7 @@ from gridiron_ai.constants import (
 
 # Small shared width for every enum / player-index / pitch-axis embedding.
 EMBED_DIM = 8
-# Kotlin unused pad ids (AiObsLayout.TARGET_*_UNUSED): x=PLAY_WIDTH, y=PLAY_HEIGHT.
+# Pitch emb: live 0..W-1 / 0..H-1; last row = pad for wire SENTINEL (-1).
 PITCH_X_VOCAB = PLAY_WIDTH + 1
 PITCH_Y_VOCAB = PLAY_HEIGHT + 1
 # Scale true magnitudes into ~0..1 (coords are embedded, not scaled).
@@ -216,12 +216,13 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         source_ys = legal_moves[..., 10].long()
         actor_has_ball = legal_moves[..., 11].float().clamp(0.0, 1.0).unsqueeze(-1)
         target_has_ball = legal_moves[..., 12].float().clamp(0.0, 1.0).unsqueeze(-1)
-        # Kotlin derived P(success) from throwCheckNeeded; wire is percent 0..100 — scale only.
+        # Throw: Kotlin packs 0..100 (0 = non-throw) — scale only.
         throw_success = (legal_moves[..., 13].float().clamp(0.0, 100.0) / 100.0).unsqueeze(-1)
-        # Kotlin owns declare-time pool size; wire is 0..3 — scale only.
-        block_dice = (legal_moves[..., 14].float().clamp(0.0, 3.0) / 3.0).unsqueeze(-1)
+        # Block dice: SENTINEL (-1) = non-block; else scale only.
+        block_raw = legal_moves[..., 14].float()
+        block_dice = th.where(block_raw < 0, th.zeros_like(block_raw), block_raw.clamp(0.0, 3.0) / 3.0).unsqueeze(-1)
 
-        actor_e = self.player_index_emb(self._enum_index(actors.clamp(min=0).float(), PLAYER_INDEX_VOCAB))
+        actor_e = self.player_index_emb(self._roster_index(actors))
         kind_e = self.kind_emb(kinds.clamp(min=0, max=LEGAL_ACTION_KIND_COUNT - 1))
         target_feat = th.cat([self._embed_pitch_x(target_xs), self._embed_pitch_y(target_ys)], dim=-1)
         source_feat = th.cat([self._embed_pitch_x(source_xs), self._embed_pitch_y(source_ys)], dim=-1)
@@ -231,18 +232,18 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         slot_idx = safe_s.unsqueeze(-1).expand(-1, -1, 2)
         gathered = th.gather(challenges, 1, slot_idx)
         cond_e = self.challenge_emb(self._enum_index(gathered[..., 0], CHALLENGE_CONDITION_VOCAB))
-        points = (gathered[..., 1:2].float() / _CHALLENGE_POINTS_NORM).clamp(0.0, 1.0)
+        points = (gathered[..., 1:2].float().clamp(min=0.0) / _CHALLENGE_POINTS_NORM).clamp(0.0, 1.0)
         gate_c = has_challenge.to(dtype=cond_e.dtype).unsqueeze(-1)
         challenge_feat = th.cat([cond_e, points], dim=-1) * gate_c
 
-        has_bonus = (bonuses > 0) & (bonuses < BONUS_PLAY_VOCAB)
-        bonus_e = self.bonus_emb(bonuses.clamp(min=0, max=BONUS_PLAY_VOCAB - 1))
+        has_bonus = bonuses >= 0
+        bonus_e = self.bonus_emb(self._enum_index(bonuses.float(), BONUS_PLAY_VOCAB))
         bonus_feat = bonus_e * has_bonus.to(dtype=bonus_e.dtype).unsqueeze(-1)
 
-        # Face pack codes: 0 unused; 1..5 → block_face_emb rows (same vocab as held-check faces).
-        has_face = (faces > 0) & (faces < BLOCK_FACE_PACK_SIZE)
-        face_codes = faces.clamp(min=0, max=BLOCK_DIE_FACE_VOCAB - 1)
-        face_e = self.block_face_emb(face_codes) * has_face.to(dtype=bonus_e.dtype).unsqueeze(-1)
+        # Face pack: SENTINEL unused; 0..4 = BlockDieFace.ordinal (same vocab as held-check).
+        has_face = faces >= 0
+        face_e = self.block_face_emb(self._enum_index(faces.float(), BLOCK_DIE_FACE_VOCAB))
+        face_e = face_e * has_face.to(dtype=face_e.dtype).unsqueeze(-1)
         face_feat = face_e.flatten(-2, -1)
 
         return th.cat(
@@ -303,7 +304,7 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
     def _encode_occupants(self, cell_last: th.Tensor) -> th.Tensor:
         """cell_last: (..., 24) channel-last packed cell. Shared by pitch squares and bench slots."""
         terrain = self.terrain_emb(self._enum_index(cell_last[..., CELL_CH_TERRAIN], AI_TERRAIN_VOCAB))
-        player_index = self.player_index_emb(self._enum_index(cell_last[..., CELL_CH_PLAYER_INDEX], PLAYER_INDEX_VOCAB))
+        player_index = self.player_index_emb(self._roster_index(cell_last[..., CELL_CH_PLAYER_INDEX]))
         team = self.team_emb(self._enum_index(cell_last[..., CELL_CH_TEAM_REL], AI_TEAM_REL_VOCAB))
         status = self.status_emb(self._enum_index(cell_last[..., CELL_CH_STATUS], PLAYER_STATUS_VOCAB))
         ability = self.ability_emb(self._enum_index(cell_last[..., CELL_CH_ABILITY], PLAYER_ABILITY_VOCAB))
@@ -326,7 +327,7 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         reach_max_y = self._embed_pitch_y(cell_last[..., CELL_CH_REACH_MAX_Y])
         pitch_x = self._embed_pitch_x(cell_last[..., CELL_CH_PITCH_X])
         pitch_y = self._embed_pitch_y(cell_last[..., CELL_CH_PITCH_Y])
-        dist_to_ball = (cell_last[..., CELL_CH_DIST_TO_BALL].unsqueeze(-1) / _DIST_TO_BALL_NORM).clamp(0.0, 1.0)
+        dist_to_ball = (cell_last[..., CELL_CH_DIST_TO_BALL].clamp(min=0.0).unsqueeze(-1) / _DIST_TO_BALL_NORM).clamp(0.0, 1.0)
         return th.cat(
             [
                 terrain,
@@ -358,20 +359,29 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         )
 
     def _embed_pitch_x(self, xs: th.Tensor) -> th.Tensor:
-        """Perspective 0-based x (or SENTINEL / unused) → shared pitch-x embedding."""
+        """Perspective 0-based x (or SENTINEL) → shared pitch-x embedding (last row = pad)."""
         xi = xs.round().long()
         valid = (xi >= 0) & (xi < PLAY_WIDTH)
         idx = th.where(valid, xi, th.full_like(xi, PLAY_WIDTH))
         return self.pitch_x_emb(idx)
 
     def _embed_pitch_y(self, ys: th.Tensor) -> th.Tensor:
-        """Perspective 0-based y (or SENTINEL / unused) → shared pitch-y embedding."""
+        """Perspective 0-based y (or SENTINEL) → shared pitch-y embedding (last row = pad)."""
         yi = ys.round().long()
         valid = (yi >= 0) & (yi < PLAY_HEIGHT)
         idx = th.where(valid, yi, th.full_like(yi, PLAY_HEIGHT))
         return self.pitch_y_emb(idx)
 
     @staticmethod
+    def _roster_index(codes: th.Tensor) -> th.Tensor:
+        """Wire roster id: SENTINEL → emb 0 (pad); 1..MAX → same row."""
+        c = codes.round().long()
+        return th.where(c < 0, th.zeros_like(c), c.clamp(0, PLAYER_INDEX_VOCAB - 1))
+
+    @staticmethod
     def _enum_index(codes: th.Tensor, vocab: int) -> th.Tensor:
-        """Packed obs enum codes (0 = absent) → embedding rows. Clamp so a new ordinal cannot crash a run."""
-        return codes.round().long().clamp(0, vocab - 1)
+        """Wire SENTINEL (-1) / ordinal 0..n-1 → emb rows (last row = pad)."""
+        c = codes.round().long()
+        pad = vocab - 1
+        live_max = max(vocab - 2, 0)
+        return th.where(c < 0, th.full_like(c, pad), c.clamp(0, live_max))
