@@ -10,6 +10,7 @@ import com.mhaefele.gridiron.model.board.BoardSquare
 import com.mhaefele.gridiron.model.board.PlayerStatus
 import com.mhaefele.gridiron.shared.Coordinate
 import com.mhaefele.gridiron.shared.PlayerId
+import com.mhaefele.gridiron.game.dice.throwSuccessChancePercentFromNeeded
 import com.mhaefele.gridiron.shared.TeamSide
 import org.springframework.stereotype.Component
 
@@ -18,7 +19,7 @@ import org.springframework.stereotype.Component
  *
  * Perspective + 0-based pitch packing stay here (not on the harness wire).
  * Identity: actor, kind, targetX, targetY, challengeSlot, attachedBonus, face0..2;
- * metadata: sourceX, sourceY, actorHasBall, targetHasBall.
+ * metadata: sourceX, sourceY, actorHasBall, targetHasBall, throwSuccessChancePercent.
  */
 @Component
 class AiLegalPacker(
@@ -73,8 +74,18 @@ class AiLegalPacker(
             source?.y ?: AiObsLayout.SOURCE_Y_UNUSED,
             if (actorHasBall) 1 else 0,
             if (targetHasBall) 1 else 0,
+            packThrowSuccessChancePercent(action),
         )
     }
+
+    /** From [ThrowTarget.throwCheckNeeded] — Kotlin owns P(success); Python only `/100`. */
+    private fun packThrowSuccessChancePercent(action: LegalAction): Int =
+        when (action) {
+            is LegalAction.Throw             -> throwSuccessChancePercentFromNeeded(action.target.throwCheckNeeded)
+            is LegalAction.ThrowTeammate     -> throwSuccessChancePercentFromNeeded(action.target.throwCheckNeeded)
+            is LegalAction.QuickReleaseThrow -> throwSuccessChancePercentFromNeeded(action.target.throwCheckNeeded)
+            else                             -> AiObsLayout.THROW_SUCCESS_CHANCE_UNUSED
+        }
 
     private fun squareHasBall(square: BoardSquare, state: MatchState): Boolean =
         square.looseBallId != null || state.board.playerAt(square.coordinate)?.holdsBall() == true

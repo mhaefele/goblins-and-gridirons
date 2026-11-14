@@ -9,7 +9,6 @@ import com.mhaefele.gridiron.model.board.Player
 import com.mhaefele.gridiron.shared.PlayerId
 import com.mhaefele.gridiron.model.board.PlayerStatus
 import com.mhaefele.gridiron.shared.TeamSide
-import com.mhaefele.gridiron.shared.ThrowRange
 import com.mhaefele.gridiron.api.dto.response.BallEncounter
 import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.game.action.utils.isAssistedBlock
@@ -168,11 +167,10 @@ class ScriptedOpponentStrategy : OpponentStrategy {
         val bestRunProgress = bestRun?.let { forwardProgress(team, it.path.squares.last()) } ?: carrierProgress
 
         val bestThrow = buckets.throws.filter { it.playerId == carrierId }
-            .filter { !it.target.obstructed }
             .filter { isTowardScoringEndZone(team, board.findSquare(carrierId).coordinate, it.target.destination) }
             .maxWithOrNull(
                 compareBy<LegalAction.Throw> { forwardProgress(team, it.target.destination) }
-                    .thenBy { throwRangeRank(it.target.range) },
+                    .thenBy { -it.target.throwCheckNeeded },
             )
 
         if (bestThrow != null) {
@@ -335,13 +333,6 @@ class ScriptedOpponentStrategy : OpponentStrategy {
             TeamSide.HOME -> to.y > from.y
             TeamSide.AWAY -> to.y < from.y
         }
-
-    /** Prefer safer/shorter throws when forward progress ties (closer-range / open-receiver drills). */
-    private fun throwRangeRank(range: ThrowRange): Int = when (range) {
-        ThrowRange.HAND_OFF -> 0
-        ThrowRange.SHORT    -> 1
-        ThrowRange.LONG     -> 2
-    }
 
     /** One BFS from [origin]; reused for every candidate landing square in a branch. */
     private fun distancesFrom(origin: BoardSquare, board: Board): Map<Coordinate, Int> {

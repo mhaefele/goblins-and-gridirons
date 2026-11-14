@@ -11,6 +11,8 @@ import com.mhaefele.gridiron.model.catalog.BonusPlay
 import com.mhaefele.gridiron.shared.Coordinate
 import com.mhaefele.gridiron.shared.LegalActionId
 import com.mhaefele.gridiron.shared.TeamSide
+import com.mhaefele.gridiron.game.dice.throwSuccessChancePercentFromNeeded
+import com.mhaefele.gridiron.shared.ThrowRange
 import com.mhaefele.gridiron.support.PlacedPlayer
 import com.mhaefele.gridiron.support.TestProfiles
 import org.assertj.core.api.Assertions.assertThat
@@ -280,6 +282,29 @@ class AiStepApiTest : BaseApiTest() {
         val carrierPacked = carrierStep.policy.legalMoves[carrierStep.harness.legalRows.indexOf(carrierRun)]
         assertThat(carrierPacked[AiObsLayout.FACTOR_ACTOR_HAS_BALL]).isEqualTo(1)
         assertThat(carrierPacked[AiObsLayout.FACTOR_TARGET_HAS_BALL]).isEqualTo(0)
+    }
+
+    @Test
+    fun `packed throw rows derive success percent from throwCheckNeeded`() {
+        val match = match {
+            holdingBall(addPlayer(5, 6))
+            addPlayer(5, 7) // adjacent hand-off
+            addPlayer(5, 10) // short throw
+        }
+        val step = api.aiStep(match)
+        val handOff = step.harness.legalRows.map { it.action }.filterIsInstance<LegalAction.Throw>()
+            .first { it.target.range == ThrowRange.HAND_OFF }
+        val short = step.harness.legalRows.map { it.action }.filterIsInstance<LegalAction.Throw>()
+            .first { it.target.range == ThrowRange.SHORT }
+        val handOffPacked = step.policy.legalMoves[step.harness.legalRows.indexOfFirst { it.action == handOff }]
+        val shortPacked = step.policy.legalMoves[step.harness.legalRows.indexOfFirst { it.action == short }]
+        val runPacked = step.policy.legalMoves[step.harness.legalRows.indexOfFirst { it.action is LegalAction.Run }]
+
+        assertThat(handOff.target.throwCheckNeeded).isEqualTo(0)
+        assertThat(handOffPacked[AiObsLayout.FACTOR_THROW_SUCCESS_CHANCE]).isEqualTo(100)
+        assertThat(shortPacked[AiObsLayout.FACTOR_THROW_SUCCESS_CHANCE])
+            .isEqualTo(throwSuccessChancePercentFromNeeded(short.target.throwCheckNeeded))
+        assertThat(runPacked[AiObsLayout.FACTOR_THROW_SUCCESS_CHANCE]).isEqualTo(0)
     }
 
     @Test

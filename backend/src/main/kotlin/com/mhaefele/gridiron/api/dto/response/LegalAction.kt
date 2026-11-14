@@ -626,9 +626,22 @@ fun playBonusLegalAction(bonus: BonusPlay): LegalAction.PlayBonusCard =
         BonusPlay.Weave, BonusPlay.Press, BonusPlay.`Ice Cold`, BonusPlay.`Do-Over` -> error("$bonus uses attached geometry or Adjust*ByDoOver, not a Play* pause")
     }
 
-/** Query-only throw geometry . */
+/**
+ * Query-only throw geometry plus effective check target.
+ *
+ * [throwCheckNeeded] — `0` = hand-off; `2..6` = minimum natural (same codes as cell `throwStat`).
+ * Long / obstruction / Hail Mary / Dead Eye are already baked in. P(success) is derived at pack /
+ * rank via [com.mhaefele.gridiron.game.dice.throwSuccessChanceFromNeeded] — not a second wire field.
+ */
 data class ThrowTarget(
     val destination: Coordinate,
     val range: ThrowRange,
     val obstructed: Boolean,
-)
+    val throwCheckNeeded: Int,
+) {
+    init {
+        require(throwCheckNeeded == 0 || throwCheckNeeded in 2..6) {
+            "throwCheckNeeded must be 0 (hand-off) or 2..6, was $throwCheckNeeded"
+        }
+    }
+}

@@ -1,6 +1,7 @@
 package com.mhaefele.gridiron.game.action.utils
 
 import com.mhaefele.gridiron.api.dto.response.ThrowTarget
+import com.mhaefele.gridiron.game.dice.throwCheckNeeded
 import com.mhaefele.gridiron.model.board.Board
 import com.mhaefele.gridiron.model.board.BoardSquare
 import com.mhaefele.gridiron.shared.Coordinate
@@ -74,14 +75,24 @@ fun throwRange(from: BoardSquare, to: BoardSquare): ThrowRange {
     return if (length <= THROW_RULER_SHORT_MAX) ThrowRange.SHORT else ThrowRange.LONG
 }
 
-fun throwTarget(thrower: Player, catcher: Player, board: Board): ThrowTarget {
+fun throwTarget(thrower: Player, catcher: Player, board: Board, hailMary: Boolean = false): ThrowTarget {
     val throwerSquare = board.findSquare(thrower.id)
     val catcherSquare = board.findSquare(catcher.id)
     val adjacent = distance(throwerSquare, catcherSquare, board) == 1
+    val range = when {
+        hailMary -> ThrowRange.LONG
+        adjacent -> ThrowRange.HAND_OFF
+        else     -> throwRange(throwerSquare, catcherSquare)
+    }
+    val obstructed = when {
+        hailMary || adjacent -> false
+        else                 -> throwObstructed(thrower, catcher, board)
+    }
     return ThrowTarget(
         destination = catcherSquare.coordinate,
-        range = if (adjacent) ThrowRange.HAND_OFF else throwRange(throwerSquare, catcherSquare),
-        obstructed = if (adjacent) false else throwObstructed(thrower, catcher, board),
+        range = range,
+        obstructed = obstructed,
+        throwCheckNeeded = throwCheckNeeded(thrower.profile.stats.throwStat, range, obstructed, hailMary = hailMary),
     )
 }
 

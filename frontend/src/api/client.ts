@@ -127,7 +127,13 @@ export type PlayBonusWire = LegalActionCommon & BonusCardChoiceFields & { kind: 
 
 export type ForcedBonusPlayWire = PlayBonusWire | AdjustDoOverWire;
 
-type ThrowTargetWire = { destination: Coordinate; range: ThrowRange; obstructed: boolean };
+type ThrowTargetWire = {
+    destination: Coordinate;
+    range: ThrowRange;
+    obstructed: boolean;
+    /** Effective min natural roll (`0` = hand-off; `2..6` = same codes as cell throwStat). */
+    throwCheckNeeded: number;
+};
 
 export type LegalActionWire =
     | (BoardTargetedLegalActionBase & { kind: "run"; path: Coordinate[] })

@@ -1,12 +1,15 @@
 package com.mhaefele.gridiron.game.legalmoves
 
 import com.mhaefele.gridiron.api.dto.response.LegalAction
+import com.mhaefele.gridiron.api.dto.response.ThrowTarget
 import com.mhaefele.gridiron.game.action.ability.lobberBlock
 import com.mhaefele.gridiron.game.action.utils.isAssistedBlock
+import com.mhaefele.gridiron.game.dice.throwCheckNeeded
 import com.mhaefele.gridiron.model.CardState
 import com.mhaefele.gridiron.model.TurnBonusModifiers
 import com.mhaefele.gridiron.model.board.Board
 import com.mhaefele.gridiron.model.catalog.BonusPlay
+import com.mhaefele.gridiron.model.catalog.ThrowStat
 import com.mhaefele.gridiron.shared.TeamSide
 import com.mhaefele.gridiron.shared.ThrowRange
 
@@ -34,9 +37,9 @@ internal object ActionAttachedBonuses {
             is LegalAction.Run                 -> action.copy(requiredBonusCard = bonus)
             is LegalAction.Mark                -> action.copy(requiredBonusCard = bonus)
             is LegalAction.Sidestep            -> action.copy(requiredBonusCard = bonus)
-            is LegalAction.Throw               -> action.copy(requiredBonusCard = bonus)
+            is LegalAction.Throw               -> action.copy(requiredBonusCard = bonus, target = action.target.withRequiredThrowBonus(bonus))
             is LegalAction.ThrowTeammateSelect -> action.copy(requiredBonusCard = bonus)
-            is LegalAction.ThrowTeammate       -> action.copy(requiredBonusCard = bonus)
+            is LegalAction.ThrowTeammate       -> action.copy(requiredBonusCard = bonus, target = action.target.withRequiredThrowBonus(bonus))
             is LegalAction.Block               -> action.copy(requiredBonusCard = bonus)
             is LegalAction.Foul                -> action.copy(requiredBonusCard = bonus)
             is LegalAction.DeclareRun          -> action.copy(requiredBonusCard = bonus)
@@ -44,6 +47,16 @@ internal object ActionAttachedBonuses {
             is LegalAction.Reserves            -> action.copy(requiredBonusCard = bonus)
             else                               -> action
         }
+
+    /** Hail Mary / Dead Eye rewrite the check — keep [ThrowTarget.throwCheckNeeded] aligned with resolve. */
+    private fun ThrowTarget.withRequiredThrowBonus(bonus: BonusPlay): ThrowTarget {
+        val rewritten = when (bonus) {
+            BonusPlay.`Hail Mary Pass` -> ThrowStat.Threshold(4)
+            BonusPlay.`Dead Eye`       -> ThrowStat.Threshold(2)
+            else                       -> return this
+        }
+        return copy(throwCheckNeeded = throwCheckNeeded(rewritten, ThrowRange.SHORT, obstructed = false))
+    }
 
     fun withAvailableBonuses(action: LegalAction, bonuses: List<BonusPlay>): LegalAction {
         if (bonuses.isEmpty()) return action

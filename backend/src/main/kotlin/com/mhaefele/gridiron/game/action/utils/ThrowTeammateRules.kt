@@ -1,6 +1,7 @@
 package com.mhaefele.gridiron.game.action.utils
 
 import com.mhaefele.gridiron.api.dto.response.ThrowTarget
+import com.mhaefele.gridiron.game.dice.throwCheckNeeded
 import com.mhaefele.gridiron.model.board.Board
 import com.mhaefele.gridiron.model.board.BoardSquare
 import com.mhaefele.gridiron.model.board.OutOfBoundsSquare
@@ -30,11 +31,13 @@ fun throwTeammateLandingTarget(thrower: Player, destination: Coordinate, board: 
     val to = board.squareAt(destination)
     require(to !is OutOfBoundsSquare) { "Throw Team-mate landing must be on the pitch, was $destination" }
     require(from.coordinate != destination) { "Cannot throw a team-mate onto the thrower's square" }
-    val range = if(distance(from, to, board) == 1) ThrowRange.SHORT else throwRange(from, to)
+    val range = if (distance(from, to, board) == 1) ThrowRange.SHORT else throwRange(from, to)
+    val obstructed = throwTeammatePathObstructed(thrower.team, from, to, board)
     return ThrowTarget(
         destination = destination,
         range = range,
-        obstructed = throwTeammatePathObstructed(thrower.team, from, to, board),
+        obstructed = obstructed,
+        throwCheckNeeded = throwCheckNeeded(thrower.profile.stats.throwStat, range, obstructed),
     )
 }
 

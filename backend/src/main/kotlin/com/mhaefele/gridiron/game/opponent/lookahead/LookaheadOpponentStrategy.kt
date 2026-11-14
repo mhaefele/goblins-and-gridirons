@@ -264,13 +264,10 @@ class LookaheadOpponentStrategy(
         val throws = legal.filterIsInstance<LegalAction.Throw>()
             .filter { it.playerId == carrier.id && board.squareAt(it.target.destination).isEndZone(ez) }
         if (throws.isEmpty()) return null
-        throws.filter { it.target.range == ThrowRange.SHORT && standingStatus(it.target.destination, board) == StandingStatus.OPEN }.minWithOrNull(compareBy<LegalAction.Throw>({ if (it.target.obstructed) 1 else 0 }))?.let { return it }
-        return throws.minWithOrNull(
-            compareBy<LegalAction.Throw>(
-                { throwRangeRank(it.target.range) },
-                { if (it.target.obstructed) 1 else 0 },
-            ),
-        )
+        throws.filter { it.target.throwCheckNeeded in 1..3 && standingStatus(it.target.destination, board) == StandingStatus.OPEN }
+            .minByOrNull { it.target.throwCheckNeeded }
+            ?.let { return it }
+        return throws.minByOrNull { it.target.throwCheckNeeded }
     }
 
     /** Long bomb annotated for an active Thread the Needle card. */
@@ -402,26 +399,15 @@ class LookaheadOpponentStrategy(
             ?: chosen
     }
 
-    private fun throwRangeRank(range: ThrowRange): Int = when (range) {
-        ThrowRange.HAND_OFF -> 0
-        ThrowRange.SHORT    -> 1
-        ThrowRange.LONG     -> 2
-    }
-
-    /** Prefer hand-off/short scoring throws over long bombs when both reach the end zone. */
+    /** Prefer easier scoring throws (lower [ThrowTarget.throwCheckNeeded]) when both reach the end zone. */
     private fun preferScoringThrow(chosen: LegalAction, legal: List<LegalAction>, state: MatchState): LegalAction {
         if (chosen !is LegalAction.Throw) return chosen
         val ez = state.currentTurnState.activeCoach.opposite()
         val board = state.board
         val better = legal.filterIsInstance<LegalAction.Throw>()
             .filter { it.playerId == chosen.playerId && board.squareAt(it.target.destination).isEndZone(ez) }
-            .minWithOrNull(
-                compareBy<LegalAction.Throw>(
-                    { throwRangeRank(it.target.range) },
-                    { if (it.target.obstructed) 1 else 0 },
-                ),
-            )
-        if (better != null && (chosen.target.range == ThrowRange.LONG || throwRangeRank(better.target.range) < throwRangeRank(chosen.target.range))) {
+            .minByOrNull { it.target.throwCheckNeeded }
+        if (better != null && better.target.throwCheckNeeded < chosen.target.throwCheckNeeded) {
             return better
         }
         return chosen

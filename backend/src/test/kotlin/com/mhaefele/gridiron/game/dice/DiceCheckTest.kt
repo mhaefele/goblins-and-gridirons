@@ -77,6 +77,32 @@ class DiceCheckTest {
     }
 
     @Test
+    fun `throwCheckNeeded is hand-off zero and bakes long obstruction and bonus rewrites`() {
+        val tv3 = ThrowStat.Threshold(3)
+        assertThat(throwCheckNeeded(tv3, ThrowRange.HAND_OFF, obstructed = false)).isEqualTo(0)
+        assertThat(throwCheckNeeded(tv3, ThrowRange.SHORT, obstructed = false)).isEqualTo(3)
+        assertThat(throwCheckNeeded(tv3, ThrowRange.LONG, obstructed = false)).isEqualTo(4)
+        assertThat(throwCheckNeeded(tv3, ThrowRange.SHORT, obstructed = true)).isEqualTo(4)
+        assertThat(throwCheckNeeded(tv3, ThrowRange.LONG, obstructed = true)).isEqualTo(4)
+        assertThat(throwCheckNeeded(tv3, ThrowRange.LONG, obstructed = true, hailMary = true)).isEqualTo(4)
+        assertThat(throwCheckNeeded(tv3, ThrowRange.SHORT, obstructed = false, deadEye = true)).isEqualTo(2)
+    }
+
+    @Test
+    fun `throwSuccessChanceFromNeeded matches face count for throwCheckNeeded`() {
+        assertThat(throwSuccessChanceFromNeeded(0)).isEqualTo(1.0)
+        assertThat(throwSuccessChanceFromNeeded(2)).isEqualTo(5.0 / 6.0)
+        assertThat(throwSuccessChanceFromNeeded(3)).isEqualTo(4.0 / 6.0)
+        assertThat(throwSuccessChanceFromNeeded(4)).isEqualTo(3.0 / 6.0)
+        assertThat(throwSuccessChancePercentFromNeeded(0)).isEqualTo(100)
+        assertThat(throwSuccessChancePercentFromNeeded(3)).isEqualTo(67)
+        val tv3 = ThrowStat.Threshold(3)
+        assertThat(throwSuccessChanceFromNeeded(throwCheckNeeded(tv3, ThrowRange.SHORT, obstructed = false))).isEqualTo(4.0 / 6.0)
+        assertThat(throwSuccessChanceFromNeeded(throwCheckNeeded(tv3, ThrowRange.LONG, obstructed = false))).isEqualTo(3.0 / 6.0)
+        assertThat(throwSuccessChanceFromNeeded(throwCheckNeeded(tv3, ThrowRange.SHORT, obstructed = false, deadEye = true))).isEqualTo(5.0 / 6.0)
+    }
+
+    @Test
     fun `armour no armour auto fails without rolling`() {
         assertThat(armourCheck(6, ArmourStat.NoArmour)).isEqualTo(ArmourCheckOutcome.NoArmour)
     }

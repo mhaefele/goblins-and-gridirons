@@ -52,7 +52,7 @@ class ChallengeClaimDrillStatusTest {
         )
         val expectedThrow = LegalAction.Throw(
             playerId = PlayerId("home-1"),
-            target = ThrowTarget(Coordinate(3, 3), ThrowRange.SHORT, obstructed = false),
+            target = ThrowTarget(Coordinate(3, 3), ThrowRange.SHORT, obstructed = false, throwCheckNeeded = 3),
             potentialChallengeClaims = listOf(focusClaim),
         )
         val otherThrow = expectedThrow.copy(

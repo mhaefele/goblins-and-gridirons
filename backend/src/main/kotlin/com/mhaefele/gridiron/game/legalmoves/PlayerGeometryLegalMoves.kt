@@ -126,13 +126,7 @@ fun throwTargets(player: Player, board: Board, hailMary: Boolean = false): List<
     }
     return if (hailMary) {
         // Hail Mary: any teammate on the board (range/obstruction ignored for target list).
-        teammates.map { teammate ->
-            ThrowTarget(
-                destination = board.findSquare(teammate.id).coordinate,
-                range = ThrowRange.LONG,
-                obstructed = false,
-            )
-        }
+        teammates.map { teammate -> throwTarget(player, teammate, board, hailMary = true) }
     } else {
         val throwerSquare = board.findSquare(player.id)
         teammates

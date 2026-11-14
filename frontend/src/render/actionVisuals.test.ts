@@ -165,7 +165,7 @@ describe("ballEncounter cues", () => {
                 playerId: "p1",
                 actionType: "THROW",
                 targetCoordinate: { x: 4, y: 6 },
-                target: { destination: { x: 4, y: 6 }, range: "HAND_OFF", obstructed: false },
+                target: { destination: { x: 4, y: 6 }, range: "HAND_OFF", obstructed: false, throwCheckNeeded: 0 },
             },
         ]).get("4,6");
         expect(handOff?.throwDifficulty).toBe("handOff");
@@ -178,7 +178,7 @@ describe("ballEncounter cues", () => {
                 actionType: "THROW_TEAMMATE",
                 teammateId: "gob",
                 targetCoordinate: { x: 5, y: 6 },
-                target: { destination: { x: 5, y: 6 }, range: "SHORT", obstructed: false },
+                target: { destination: { x: 5, y: 6 }, range: "SHORT", obstructed: false, throwCheckNeeded: 3 },
             },
         ]).get("5,6");
         expect(shortClear?.throwDifficulty).toBe("short");
@@ -190,7 +190,7 @@ describe("ballEncounter cues", () => {
                 playerId: "p1",
                 actionType: "THROW",
                 targetCoordinate: { x: 6, y: 6 },
-                target: { destination: { x: 6, y: 6 }, range: "LONG", obstructed: false },
+                target: { destination: { x: 6, y: 6 }, range: "LONG", obstructed: false, throwCheckNeeded: 4 },
             },
         ]).get("6,6");
         expect(hardLong?.throwDifficulty).toBe("hard");
@@ -202,7 +202,7 @@ describe("ballEncounter cues", () => {
                 playerId: "p1",
                 actionType: "THROW",
                 targetCoordinate: { x: 7, y: 6 },
-                target: { destination: { x: 7, y: 6 }, range: "SHORT", obstructed: true },
+                target: { destination: { x: 7, y: 6 }, range: "SHORT", obstructed: true, throwCheckNeeded: 4 },
             },
         ]).get("7,6");
         expect(hardObstructed?.throwDifficulty).toBe("hard");
@@ -238,7 +238,7 @@ describe("abilityBannerDecline", () => {
         playerId: "carrier",
         actionType: "QUICK_RELEASE_THROW",
         targetCoordinate: { x: 1, y: 0 },
-        target: { destination: { x: 1, y: 0 }, range: "SHORT", obstructed: false },
+        target: { destination: { x: 1, y: 0 }, range: "SHORT", obstructed: false, throwCheckNeeded: 3 },
     };
     const continueBlock: LegalActionWire = {
         kind: "continueBlock",

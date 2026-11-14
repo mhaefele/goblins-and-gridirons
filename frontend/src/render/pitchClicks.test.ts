@@ -18,7 +18,7 @@ function throwToReceiver(): LegalActionWire {
         playerId: thrower,
         actionType: "THROW",
         targetCoordinate: receiverAt,
-        target: { destination: receiverAt, range: "SHORT", obstructed: false },
+        target: { destination: receiverAt, range: "SHORT", obstructed: false, throwCheckNeeded: 3 },
     };
 }
 

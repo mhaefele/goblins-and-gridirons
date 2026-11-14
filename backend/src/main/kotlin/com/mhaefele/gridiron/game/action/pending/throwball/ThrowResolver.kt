@@ -13,6 +13,7 @@ import com.mhaefele.gridiron.game.cards.DoOverRoll
 import com.mhaefele.gridiron.game.dice.DiceRoller
 import com.mhaefele.gridiron.game.dice.ThrowCheckOutcome
 import com.mhaefele.gridiron.game.dice.throwCheck
+import com.mhaefele.gridiron.game.dice.throwCheckNeeded
 import com.mhaefele.gridiron.game.turn.MatchMutator
 import com.mhaefele.gridiron.model.pending.ThrowContinuation
 import com.mhaefele.gridiron.model.board.Player
@@ -228,7 +229,12 @@ class ThrowResolver(
                 session.playBonusCard(session.activeCoach, command.bonusPlay)
                 ongoingThrow.hailMary = true
                 // Declared target used ruler geometry. The card ignores range and obstruction.
-                ongoingThrow.target = ThrowTarget(ongoingThrow.target.destination, ThrowRange.LONG, obstructed = false)
+                ongoingThrow.target = ThrowTarget(
+                    destination = ongoingThrow.target.destination,
+                    range = ThrowRange.LONG,
+                    obstructed = false,
+                    throwCheckNeeded = throwCheckNeeded(ThrowStat.Threshold(4), ThrowRange.SHORT, obstructed = false),
+                )
             }
             else                        -> error("ThrowTargetChosen expects PlayDeadEye, PlayHailMary, or DeclineBonus, was ${command::class.simpleName}")
         }

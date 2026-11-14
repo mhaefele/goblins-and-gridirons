@@ -1,17 +1,17 @@
 package com.mhaefele.gridiron.game.opponent.lookahead
 
 import com.mhaefele.gridiron.api.dto.response.LegalAction
-import com.mhaefele.gridiron.model.MatchState
-import com.mhaefele.gridiron.model.board.Board
 import com.mhaefele.gridiron.game.action.utils.isAssistedBlock
 import com.mhaefele.gridiron.game.action.utils.standingStatus
+import com.mhaefele.gridiron.game.dice.throwSuccessChanceFromNeeded
+import com.mhaefele.gridiron.model.MatchState
+import com.mhaefele.gridiron.model.board.Board
 import com.mhaefele.gridiron.model.board.PlayerStatus
 import com.mhaefele.gridiron.model.catalog.canHoldBall
 import com.mhaefele.gridiron.shared.Coordinate
 import com.mhaefele.gridiron.shared.PlayerId
 import com.mhaefele.gridiron.shared.StandingStatus
 import com.mhaefele.gridiron.shared.TeamSide
-import com.mhaefele.gridiron.shared.ThrowRange
 import kotlin.math.abs
 
 /**
@@ -59,12 +59,7 @@ object LookaheadCandidateRanker {
             }
             is LegalAction.Throw            -> {
                 w += 10.0
-                when (action.target.range) {
-                    ThrowRange.HAND_OFF -> w += 22.0
-                    ThrowRange.SHORT    -> w += 16.0
-                    ThrowRange.LONG     -> w += 4.0
-                }
-                if (!action.target.obstructed) w += 18.0
+                w += throwSuccessChanceFromNeeded(action.target.throwCheckNeeded) * 36.0
                 w += progress(action.target.destination, ctx) * 2.0
                 if (ctx.board.squareAt(action.target.destination).isEndZone(ctx.team.opposite())) w += 80.0
                 // Hand/throw to a teammate closer to the scoring end zone.

@@ -28,7 +28,7 @@ export const ACTION_TYPE_COLORS: Partial<Record<LegalActionType, ActionTypeColor
     REPLACE_CHALLENGE: { fill: "#f87171", stroke: "#b91c1c", label: "Replace challenge" },
 };
 
-/** Pitch tint for throw check difficulty — Long and/or obstructed share −1 (capped). */
+/** Pitch tint from [ThrowTarget.throwCheckNeeded] — do not recompute from range/obstruction. */
 export type ThrowDifficulty = "handOff" | "short" | "hard";
 
 export const THROW_DIFFICULTY_COLORS: Record<ThrowDifficulty, { fill: string; stroke: string }> = {
@@ -90,9 +90,10 @@ export function throwDifficultyForAction(action: LegalActionWire): ThrowDifficul
     if (action.kind !== "throw" && action.kind !== "throwTeammate" && action.kind !== "quickReleaseThrow") {
         return null;
     }
-    if (action.target.range === "HAND_OFF") return "handOff";
-    if (action.target.range === "LONG" || action.target.obstructed) return "hard";
-    return "short";
+    const needed = action.target.throwCheckNeeded;
+    if (needed === 0) return "handOff";
+    if (needed <= 3) return "short";
+    return "hard";
 }
 
 function hardestThrowDifficulty(actions: LegalActionWire[]): ThrowDifficulty | undefined {

@@ -33,7 +33,7 @@ class ChallengePursuitTest {
         LegalAction.Run(pid, Path(listOf(at, Coordinate(x, y))))
 
     private fun throwTo(x: Int, y: Int) =
-        LegalAction.Throw(pid, ThrowTarget(Coordinate(x, y), ThrowRange.SHORT, obstructed = false))
+        LegalAction.Throw(pid, ThrowTarget(Coordinate(x, y), ThrowRange.SHORT, obstructed = false, throwCheckNeeded = 3))
 
     private fun blockAt(x: Int, y: Int) =
         LegalAction.Block(pid, Coordinate(x, y))

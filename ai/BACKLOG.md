@@ -2,7 +2,7 @@
 
 Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) defers here.
 
-**Status:** Open. Live contract is **schema 23** ([`constants.py`](gridiron_ai/constants.py)). Train/eval still HTTP packed JSON against `./dev.sh` `:18080`. AI1 shipped — [archive](../archive/BACKLOG-done.md).
+**Status:** Open. Live contract is **schema 24** ([`constants.py`](gridiron_ai/constants.py)). Train/eval still HTTP packed JSON against `./dev.sh` `:18080`. AI1 shipped — [archive](../archive/BACKLOG-done.md).
 
 **Near-term (product):** [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) scenarios · [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) · [AI2.6](#ai26--onnx-export--kotlin-compute-opponent) regen · [AI2.5](#ai25--multi-team-curriculum).
 
@@ -49,7 +49,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [ ] [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) — Blind-spot remediation
 - [ ] [AI2.18](#ai218--one-bonus-play-action-kind-retrain) — One bonus-play action kind *(bundle with next layout bump)*
 - [ ] [AI2.19](#ai219--fold-ai-action-vocabulary-investigate) — Shared wire kind on `LegalAction` *(investigate)*
-- [ ] [AI2.31](#ai231--legal-action-success-chance-in-packed-rows) — Success chance on packed legal rows *(throws first; block/foul follow)*
+- [x] [AI2.31](#ai231--legal-action-success-chance-in-packed-rows) — Throw check needed on packed legal rows *(throws done; block/foul follow)*
 
 ### Open — hygiene
 
@@ -60,6 +60,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 - [ ] [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) — Packed `Box` obs
 - [x] [AI2.29](#ai229--retune-ppo-after-factor-heads--join-score) — Re-tune PPO after factor heads → join-score
 - [ ] [AI2.30](#ai230--binary-http-packed-step--submit) — Binary body on HTTP `/…/packed` (not UDS)
+- [ ] [AI2.32](#ai232--reinvestigate-kotlinpython-legal-row-pack) — Reinvestigate Kotlin→Python legal-row pack
 
 ---
 
@@ -539,13 +540,28 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 | Field | Detail |
 |-------|--------|
-| **Status** | Open — product; **throws first**. |
-| **Problem** | Throw difficulty lives only as `range` / `obstructed` on [`LegalAction`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt); packed legal rows omit it ([`ACTION_SAMPLING.md`](ACTION_SAMPLING.md)). Policy / GUI / Lookahead re-derive or approximate instead of reading one engine value. |
-| **Goal** | When root [Quick TODO](../BACKLOG.md#quick-todo) lands success chance on throw-shaped (then block / foul) legal actions, **pack that field** into AI step / join-score rows (schema bump). Harness nested `legalRows` already wraps `LegalAction` — nested JSON gets it for free; packed ints/floats must copy the wire value. **Do not recalculate** in Python or Kotlin ONNX packing once present. |
-| **Depends on** | Root Quick TODO: throw success chance on the legal action (GUI + AI + model); block / foul odds items follow the same pack path. |
-| **Files** | `AiLegalPacker` / layout / `constants.py` / `ACTION_SAMPLING.md`; encoder input if a new row channel; ONNX regen with schema. |
-| **Acceptance** | Packed rows expose throw success chance; model consumes it; no dual path that recomputes from TV + range. Block/foul packed when those LegalAction fields exist. |
-| **Rulebook** | digest § Throw / Block / Foul (probability only — engine already owns the check). |
+| **Status** | **Partial** — throws done (schema 24); block / foul still open (root Quick TODO). |
+| **Problem** | Throw difficulty lived only as `range` / `obstructed`; packed rows omitted it. |
+| **Goal** | Wire **roll needed** (`throwCheckNeeded`) on throw-shaped [`ThrowTarget`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt). Pack / Lookahead derive P(success) via `throwSuccessChanceFromNeeded` → percent column; Python only `/100`. Block/foul follow later. |
+| **Depends on** | — |
+| **Files** | `ThrowTarget` / `throwCheckNeeded` / `throwSuccessChanceFromNeeded` / `AiLegalPacker` / `AiObsLayout` / `constants.py` / `features.py` / GUI / Lookahead. |
+| **Acceptance** | DTO has needed only; pack percent from needed; feature = `n/100`; no Python face/modifier logic. |
+| **Rulebook** | digest § Throw (Block / Foul still open). |
+
+---
+
+## AI2.32 — Reinvestigate Kotlin→Python legal-row pack
+
+| Field | Detail |
+|-------|--------|
+| **Status** | Open — hygiene / architecture; sparked by throw `successChance` percent packing (schema 24). |
+| **Problem** | Packed `legalMoves` is `List<List<Int>>` + mirrored `FACTOR_*` column indexes. That is **not** strong typing — meaning lives in conventions on both sides. Python `encode_legal_rows` assigns semantics by index (embed categorical codes vs scale continuous). Continuous values (e.g. throw P(success)) get quantized to ints (percent) only so the matrix stays homogeneous, then Python `/100` undoes it — packaging theater, not rule ownership. Kotlin ONNX seats feed the **same raw int matrix** into a graph that **exports the feature-extractor conversion** (embs + scales). Exporting that conversion into ONNX gives the heebie-jeebies: seat-time “encoding” is frozen PyTorch graph, not an explicit Kotlin/Python pack step you can read. |
+| **Thoughts to revisit** | (1) Positional int rows + mirrored indexes ≈ compact tensor contract, not typed wire. (2) Engine owns *game* facts on DTOs (`throwCheckNeeded`); pack owns *how they become model input* — keep that split clear. (3) Float/percent in an int matrix is a transport hack; alternatives: sixths, float sidecar, or typed row fields packed at the last mile. (4) Prefer named / typed features at the harness boundary, dense tensor only at the policy boundary. (5) **ONNX:** reinvestigate whether feature encoding should stay outside the graph (Kotlin or shared packer produces floats the net consumes) so seat inference doesn’t depend on opaque exported preprocessing. |
+| **Goal** | Decide a pack story we can live with: typed wire → last-mile tensor, and/or seat path that doesn’t bake feature conversion into ONNX by accident of `torch.onnx.export`. Document the choice in [`DESIGN.md`](DESIGN.md) / [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md). |
+| **Depends on** | None hard; pairs with [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) / [AI2.30](#ai230--binary-http-packed-step--submit) if reshaping wire. |
+| **Files** | `AiLegalPacker` / `AiObsLayout` / `features.py` / `export_onnx.py` / `OnnxPolicySession` / DESIGN. |
+| **Acceptance** | Written decision (keep status quo with eyes open, or land an alternative); ONNX seat path called out explicitly either way. |
+| **Rulebook** | n/a |
 
 ---
 

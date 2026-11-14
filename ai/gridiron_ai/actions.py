@@ -36,10 +36,11 @@ FACTOR_SOURCE_X = 9
 FACTOR_SOURCE_Y = 10
 FACTOR_ACTOR_HAS_BALL = 11
 FACTOR_TARGET_HAS_BALL = 12
+FACTOR_THROW_SUCCESS_CHANCE = 13
 
-# One legal move: thirteen ints in canonical slot order (identity…, then metadata).
+# One legal move: fourteen ints in canonical slot order (identity…, then metadata).
 EncodedLegalMove: TypeAlias = tuple[
-    int, int, int, int, int, int, int, int, int, int, int, int, int
+    int, int, int, int, int, int, int, int, int, int, int, int, int, int
 ]
 
 # Legal moves this step — shape (n, FACTORS_PER_LEGAL_MOVE), dtype int64 (from packed HTTP / expert).

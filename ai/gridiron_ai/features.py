@@ -115,13 +115,14 @@ _OCCUPANT_WIDTH = (
     + 12
     + 1
 )
-# Legal row: actor + kind + dest x/y embs + source x/y embs + ball flags + challenge + bonus + faces.
+# Legal row: actor + kind + dest x/y embs + source x/y embs + ball flags + throw P(success) + challenge + bonus + faces.
 LEGAL_ROW_FEATURE_DIM = (
     EMBED_DIM  # actor
     + EMBED_DIM  # kind
     + 2 * EMBED_DIM  # target x/y ids
     + 2 * EMBED_DIM  # source x/y ids
     + 2  # actorHasBall + targetHasBall (0/1)
+    + 1  # throwSuccessChancePercent / 100 (from throwCheckNeeded in Kotlin; hand-off = 1.0)
     + (EMBED_DIM + 1)  # challenge condition + scaled points
     + EMBED_DIM  # attached bonus
     + MAX_HELD_BLOCK_FACES * EMBED_DIM  # face0..2
@@ -197,8 +198,8 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
     def encode_legal_rows(self, legal_moves: th.Tensor, challenges: th.Tensor) -> th.Tensor:
         """Encode each legal-row int tuple like board channels — shared embs + pitch xy ids.
 
-        ``legal_moves``: (N, R, 13) actor, kind, targetX, targetY, challengeSlot, attachedBonus,
-        face0..2, sourceX, sourceY, actorHasBall, targetHasBall (−1 pad rows).
+        ``legal_moves``: (N, R, 14) actor, kind, targetX, targetY, challengeSlot, attachedBonus,
+        face0..2, sourceX, sourceY, actorHasBall, targetHasBall, throwSuccessChancePercent (−1 pad rows).
         ``challenges``: (N, 3, 2) board challenge slots. Unused axes → unused emb row.
         """
         actors = legal_moves[..., 0].long()
@@ -212,6 +213,8 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         source_ys = legal_moves[..., 10].long()
         actor_has_ball = legal_moves[..., 11].float().clamp(0.0, 1.0).unsqueeze(-1)
         target_has_ball = legal_moves[..., 12].float().clamp(0.0, 1.0).unsqueeze(-1)
+        # Kotlin derived P(success) from throwCheckNeeded; wire is percent 0..100 — scale only.
+        throw_success = (legal_moves[..., 13].float().clamp(0.0, 100.0) / 100.0).unsqueeze(-1)
 
         actor_e = self.player_index_emb(self._enum_index(actors.clamp(min=0).float(), PLAYER_INDEX_VOCAB))
         kind_e = self.kind_emb(kinds.clamp(min=0, max=LEGAL_ACTION_KIND_COUNT - 1))
@@ -238,7 +241,7 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         face_feat = face_e.flatten(-2, -1)
 
         return th.cat(
-            [actor_e, kind_e, target_feat, source_feat, actor_has_ball, target_has_ball, challenge_feat, bonus_feat, face_feat],
+            [actor_e, kind_e, target_feat, source_feat, actor_has_ball, target_has_ball, throw_success, challenge_feat, bonus_feat, face_feat],
             dim=-1,
         )
 
