@@ -4,6 +4,7 @@ import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.api.dto.response.ThrowTarget
 import com.mhaefele.gridiron.game.action.ability.isBlockTargetLegal
 import com.mhaefele.gridiron.game.action.utils.ThrowRulerOffsets
+import com.mhaefele.gridiron.game.action.utils.blockDiceCountForTarget
 import com.mhaefele.gridiron.game.action.utils.canMakeThrowTeammateAction
 import com.mhaefele.gridiron.game.action.utils.distance
 import com.mhaefele.gridiron.game.action.utils.inThrowRulerRange
@@ -47,8 +48,10 @@ fun markMoves(player: Player, board: Board, bonuses: PathBonusFlags = PathBonusF
 fun sidestepMoves(player: Player, board: Board): List<LegalAction> =
     pathMoves(player.id, sidestepPaths(player, board), LegalAction::Sidestep)
 
-fun blockMoves(player: Player, board: Board): List<LegalAction> =
-    blockTargets(player, board).map { LegalAction.Block(player.id, it) }
+fun blockMoves(player: Player, board: Board, bonuses: PathBonusFlags = PathBonusFlags()): List<LegalAction> =
+    blockTargets(player, board).map { dest ->
+        LegalAction.Block(player.id, dest, blockDiceCount = blockDiceCountForTarget(player, dest, board, bonuses.gangUp))
+    }
 
 fun foulMoves(player: Player, board: Board): List<LegalAction> =
     foulTargets(player, board).map { LegalAction.Foul(player.id, it) }

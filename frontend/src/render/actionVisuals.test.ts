@@ -40,6 +40,7 @@ describe("describeAction challenge cues", () => {
             actionType: "BLOCK",
             targetCoordinate: { x: 6, y: 8 },
             destination: { x: 6, y: 8 },
+            blockDiceCount: 1,
             potentialChallengeClaims: [
                 {
                     claimCondition: "DROP_THEM",
@@ -56,6 +57,7 @@ describe("describeAction challenge cues", () => {
             actionType: "BLOCK",
             targetCoordinate: { x: 6, y: 8 },
             destination: { x: 6, y: 8 },
+            blockDiceCount: 1,
         };
         expect(describeAction(tagged)).toContain("may earn Drop Them! (+2)");
         expect(describeAction(plain)).not.toContain("earn");

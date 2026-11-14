@@ -36,7 +36,7 @@ class ChallengePursuitTest {
         LegalAction.Throw(pid, ThrowTarget(Coordinate(x, y), ThrowRange.SHORT, obstructed = false, throwCheckNeeded = 3))
 
     private fun blockAt(x: Int, y: Int) =
-        LegalAction.Block(pid, Coordinate(x, y))
+        LegalAction.Block(pid, Coordinate(x, y), blockDiceCount = 1)
 
     private fun cardsWithActives(vararg deckIndexes: Int): CardState {
         val actives = deckIndexes.map { ChallengeCardCatalog.card(it) }

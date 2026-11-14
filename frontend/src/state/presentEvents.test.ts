@@ -141,6 +141,7 @@ describe("buildDiceBeats", () => {
             actionType: "BLOCK",
             targetCoordinate: { x: 5, y: 6 },
             destination: { x: 5, y: 6 },
+            blockDiceCount: 1,
         };
         expect(diceAnchorFromEvents(events, submitted)).toEqual({ x: 5, y: 6 });
         expect(buildDiceBeats(events, submitted)[0]!.anchor).toEqual({ x: 5, y: 6 });
@@ -372,6 +373,7 @@ describe("flashCoordsFromEvents", () => {
             actionType: "BLOCK",
             targetCoordinate: { x: 5, y: 5 },
             destination: { x: 5, y: 5 },
+            blockDiceCount: 1,
         };
         const flashes = flashCoordsFromEvents(events, submitted);
         expect(flashes).toEqual(

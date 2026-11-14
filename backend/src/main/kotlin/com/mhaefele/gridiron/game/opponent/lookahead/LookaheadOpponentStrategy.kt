@@ -3,11 +3,9 @@ package com.mhaefele.gridiron.game.opponent.lookahead
 import com.mhaefele.gridiron.api.ai.AiSubmitTiming
 import com.mhaefele.gridiron.api.dto.response.BallEncounter
 import com.mhaefele.gridiron.api.dto.response.LegalAction
-import com.mhaefele.gridiron.game.action.utils.isAssistedBlock
 import com.mhaefele.gridiron.game.action.utils.neighbors
 import com.mhaefele.gridiron.game.action.utils.standingStatus
 import com.mhaefele.gridiron.model.MatchState
-import com.mhaefele.gridiron.model.board.Board
 import com.mhaefele.gridiron.model.catalog.ChallengeClaimCondition
 import com.mhaefele.gridiron.game.opponent.OpponentStrategy
 import com.mhaefele.gridiron.game.opponent.scripted.ScriptedOpponentStrategy
@@ -228,7 +226,7 @@ class LookaheadOpponentStrategy(
         val cleared = preferClearThrow(chosen, heurPick, searchable)
         val opened = preferOpenThrow(cleared, heurPick, searchable, state)
         val scored = preferScoringThrow(opened, searchable, state)
-        val assisted = preferAssistedBlock(scored, heurPick, searchable, state.board)
+        val assisted = preferAssistedBlock(scored, heurPick, searchable)
         val onCarrier = preferBlockOnOpponentCarrier(assisted, heurPick, searchable, state, team)
         return preferClaimAnnotated(onCarrier, heurPick, searchable)
     }
@@ -311,16 +309,10 @@ class LookaheadOpponentStrategy(
     }
 
     private fun obviousAssistedBlock(state: MatchState, legal: List<LegalAction>): LegalAction? {
-        val board = state.board
-        val assisted = legal.filterIsInstance<LegalAction.Block>().filter { block ->
-            val blocker = board.player(block.playerId)
-            val targetId = board.squareAt(block.destination).playerId ?: return@filter false
-            val target = board.player(targetId)
-            isAssistedBlock(blocker, target, board)
-        }
-        if (assisted.isEmpty()) return null
-        val solo = legal.filterIsInstance<LegalAction.Block>().filter { it !in assisted }
-        return if (solo.isNotEmpty()) assisted.first() else null
+        val blocks = legal.filterIsInstance<LegalAction.Block>()
+        val multi = blocks.filter { it.blockDiceCount > 1 }
+        if (multi.isEmpty()) return null
+        return if (blocks.any { it.blockDiceCount == 1 }) multi.first() else null
     }
 
     /** Block the opponent guarding a contested loose ball before chasing bounce paths. */
@@ -367,20 +359,14 @@ class LookaheadOpponentStrategy(
         chosen: LegalAction,
         heurPick: LegalAction,
         legal: List<LegalAction>,
-        board: Board,
     ): LegalAction {
-        fun assisted(action: LegalAction.Block): Boolean {
-            val blocker = board.player(action.playerId)
-            val targetId = board.squareAt(action.destination).playerId ?: return false
-            val target = board.player(targetId)
-            return isAssistedBlock(blocker, target, board)
-        }
-        if (chosen is LegalAction.Block && assisted(chosen)) return chosen
-        val assistedBlocks = legal.filterIsInstance<LegalAction.Block>().filter(::assisted)
-        if (assistedBlocks.isEmpty()) return chosen
-        if (chosen is LegalAction.Block && !assisted(chosen)) {
-            (heurPick as? LegalAction.Block)?.takeIf(::assisted)?.let { return it }
-            return assistedBlocks.first()
+        fun multiDie(action: LegalAction.Block): Boolean = action.blockDiceCount > 1
+        if (chosen is LegalAction.Block && multiDie(chosen)) return chosen
+        val multiBlocks = legal.filterIsInstance<LegalAction.Block>().filter(::multiDie)
+        if (multiBlocks.isEmpty()) return chosen
+        if (chosen is LegalAction.Block && !multiDie(chosen)) {
+            (heurPick as? LegalAction.Block)?.takeIf(::multiDie)?.let { return it }
+            return multiBlocks.first()
         }
         return chosen
     }

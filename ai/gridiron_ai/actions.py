@@ -37,6 +37,7 @@ FACTOR_SOURCE_Y = 10
 FACTOR_ACTOR_HAS_BALL = 11
 FACTOR_TARGET_HAS_BALL = 12
 FACTOR_THROW_SUCCESS_CHANCE = 13
+FACTOR_BLOCK_DICE_COUNT = 14
 
 # One legal move: fourteen ints in canonical slot order (identity…, then metadata).
 EncodedLegalMove: TypeAlias = tuple[

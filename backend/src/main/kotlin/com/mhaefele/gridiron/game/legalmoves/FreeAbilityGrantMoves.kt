@@ -2,6 +2,7 @@ package com.mhaefele.gridiron.game.legalmoves
 
 import com.mhaefele.gridiron.api.dto.response.LegalAction
 import com.mhaefele.gridiron.game.action.ability.isBlockTargetLegal
+import com.mhaefele.gridiron.game.action.utils.blockDiceCountForTarget
 import com.mhaefele.gridiron.game.action.utils.neighbors
 import com.mhaefele.gridiron.game.action.utils.playerMarksOpponent
 import com.mhaefele.gridiron.game.action.utils.standingStatus
@@ -42,7 +43,10 @@ fun freeBlockMoves(player: Player, board: Board): List<LegalAction> {
         .mapNotNull { neighbor -> neighbor.playerId?.let { board.players.getValue(it) } }
         .filter { target -> playerMarksOpponent(player, target, board) }
         .filter { target -> isBlockTargetLegal(player, target, board) }
-        .map { target -> LegalAction.Block(player.id, board.findSquare(target.id).coordinate) }
+        .map { target ->
+            val dest = board.findSquare(target.id).coordinate
+            LegalAction.Block(player.id, dest, blockDiceCount = blockDiceCountForTarget(player, dest, board))
+        }
 }
 
 fun freeStrikeAndFadeMoves(player: Player, board: Board): List<LegalAction> {

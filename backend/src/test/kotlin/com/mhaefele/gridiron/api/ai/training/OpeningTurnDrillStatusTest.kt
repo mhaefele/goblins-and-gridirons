@@ -69,7 +69,7 @@ class OpeningTurnDrillStatusTest {
         )
         val before = matchState(trainingEpisode = episode)
         val after = before.copy(progress = before.progress.addTouchdown(TeamSide.HOME))
-        val action = LegalAction.Block(PlayerId("home-1"), Coordinate(9, 15))
+        val action = LegalAction.Block(PlayerId("home-1"), Coordinate(9, 15), blockDiceCount = 1)
 
         assertThat(tdRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.DISTRACTED)
         assertThat(markedRun.drillStatus(before, after, action)).isEqualTo(TrainingDrillStatus.DISTRACTED)
@@ -88,7 +88,7 @@ class OpeningTurnDrillStatusTest {
             openingTurnNumber = 1,
         )
         val before = matchState(trainingEpisode = episode).withTurnNumber(2)
-        val action = LegalAction.Block(PlayerId("home-1"), Coordinate(3, 3))
+        val action = LegalAction.Block(PlayerId("home-1"), Coordinate(3, 3), blockDiceCount = 1)
 
         assertThat(isTrainerOpeningTurn(before)).isFalse()
         assertThat(gradeDrillStatus(stripAndScore, before, before, action, episode)).isEqualTo(TrainingDrillStatus.STILL_IN_PROGRESS)

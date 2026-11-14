@@ -540,13 +540,13 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 
 | Field | Detail |
 |-------|--------|
-| **Status** | **Partial** — throws done (schema 24); block / foul still open (root Quick TODO). |
-| **Problem** | Throw difficulty lived only as `range` / `obstructed`; packed rows omitted it. |
-| **Goal** | Wire **roll needed** (`throwCheckNeeded`) on throw-shaped [`ThrowTarget`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt). Pack / Lookahead derive P(success) via `throwSuccessChanceFromNeeded` → percent column; Python only `/100`. Block/foul follow later. |
+| **Status** | **Partial** — throws + block dice count done (schema 24 fold); foul / block face odds still open (root Quick TODO). |
+| **Problem** | Throw difficulty lived only as `range` / `obstructed`; block pool lived only as board recompute; packed rows omitted both. |
+| **Goal** | Wire **roll needed** (`throwCheckNeeded`) on throw-shaped [`ThrowTarget`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt) and **dice pool** (`blockDiceCount`) on [`LegalAction.Block`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/dto/response/LegalAction.kt). Pack / Lookahead use wire; Python only scale (`/100`, `/3`). Foul / face-odds follow later. |
 | **Depends on** | — |
-| **Files** | `ThrowTarget` / `throwCheckNeeded` / `throwSuccessChanceFromNeeded` / `AiLegalPacker` / `AiObsLayout` / `constants.py` / `features.py` / GUI / Lookahead. |
-| **Acceptance** | DTO has needed only; pack percent from needed; feature = `n/100`; no Python face/modifier logic. |
-| **Rulebook** | digest § Throw (Block / Foul still open). |
+| **Files** | `ThrowTarget` / `throwCheckNeeded` / `LegalAction.Block.blockDiceCount` / `throwSuccessChanceFromNeeded` / `AiLegalPacker` / `AiObsLayout` / `constants.py` / `features.py` / GUI / Lookahead. |
+| **Acceptance** | DTO has needed / dice count; pack columns from wire; features scale only; no Python face/modifier / assist recompute for those columns. |
+| **Rulebook** | digest § Throw / Block (Foul still open). |
 
 ---
 
@@ -556,7 +556,7 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 |-------|--------|
 | **Status** | Open — hygiene / architecture; sparked by throw `successChance` percent packing (schema 24). |
 | **Problem** | Packed `legalMoves` is `List<List<Int>>` + mirrored `FACTOR_*` column indexes. That is **not** strong typing — meaning lives in conventions on both sides. Python `encode_legal_rows` assigns semantics by index (embed categorical codes vs scale continuous). Continuous values (e.g. throw P(success)) get quantized to ints (percent) only so the matrix stays homogeneous, then Python `/100` undoes it — packaging theater, not rule ownership. Kotlin ONNX seats feed the **same raw int matrix** into a graph that **exports the feature-extractor conversion** (embs + scales). Exporting that conversion into ONNX gives the heebie-jeebies: seat-time “encoding” is frozen PyTorch graph, not an explicit Kotlin/Python pack step you can read. |
-| **Thoughts to revisit** | (1) Positional int rows + mirrored indexes ≈ compact tensor contract, not typed wire. (2) Engine owns *game* facts on DTOs (`throwCheckNeeded`); pack owns *how they become model input* — keep that split clear. (3) Float/percent in an int matrix is a transport hack; alternatives: sixths, float sidecar, or typed row fields packed at the last mile. (4) Prefer named / typed features at the harness boundary, dense tensor only at the policy boundary. (5) **ONNX:** reinvestigate whether feature encoding should stay outside the graph (Kotlin or shared packer produces floats the net consumes) so seat inference doesn’t depend on opaque exported preprocessing. |
+| **Thoughts to revisit** | (1) Positional int rows + mirrored indexes ≈ compact tensor contract, not typed wire. (2) Engine owns *game* facts on DTOs (`throwCheckNeeded`); pack owns *how they become model input* — keep that split clear. (3) Float/percent in an int matrix is a transport hack; alternatives: sixths, float sidecar, or typed row fields packed at the last mile. (4) Prefer named / typed features at the harness boundary, dense tensor only at the policy boundary. (5) **ONNX:** reinvestigate whether feature encoding should stay outside the graph (Kotlin or shared packer produces floats the net consumes) so seat inference doesn’t depend on opaque exported preprocessing. (6) Pitch `TARGET_*` / `SOURCE_*` unused = `PLAY_W/H` end-pad vs `0` elsewhere — root Quick TODO. (7) Split [`AiObsLayout`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/dto/AiObsLayout.kt) into board/obs vs legal-row pack files (shared constants) — root Quick TODO. |
 | **Goal** | Decide a pack story we can live with: typed wire → last-mile tensor, and/or seat path that doesn’t bake feature conversion into ONNX by accident of `torch.onnx.export`. Document the choice in [`DESIGN.md`](DESIGN.md) / [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md). |
 | **Depends on** | None hard; pairs with [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) / [AI2.30](#ai230--binary-http-packed-step--submit) if reshaping wire. |
 | **Files** | `AiLegalPacker` / `AiObsLayout` / `features.py` / `export_onnx.py` / `OnnxPolicySession` / DESIGN. |

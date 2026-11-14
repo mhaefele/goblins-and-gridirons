@@ -243,12 +243,17 @@ sealed interface LegalAction {
     data class Block(
         override val playerId: PlayerId,
         val destination: Coordinate,
+        /** Dice to roll if this Block is taken now (stat + assist / Gang Up, cap 3). Underdog is optional later. */
+        val blockDiceCount: Int,
         override val requiredBonusCard: BonusPlay? = null,
         override val availableBonusCards: List<BonusPlay> = emptyList(),
         override val potentialChallengeClaims: List<PotentialChallengeClaim> = emptyList(),
     ) : BasicPlayerAction {
         override val actionType: ActionType = ActionType.BLOCK
         override val targetCoordinate: Coordinate get() = destination
+        init {
+            require(blockDiceCount in 1..3) { "blockDiceCount must be 1..3, was $blockDiceCount" }
+        }
     }
 
     /** Open player fouls an adjacent Prone opposition player (digest § Foul). */

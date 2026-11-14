@@ -66,7 +66,8 @@ object AiObsLayout {
      * and Play* / Do-Over); per-play [AiLegalKind]s unchanged — folded before any dump used 23.
      * v24: legal-row pack appends throwSuccessChancePercent metadata (`0` = non-throw;
      * `1..100` from [ThrowTarget.throwCheckNeeded] via throwSuccessChancePercentFromNeeded;
-     * hand-off needed=`0` → 100). Python only `/100`.
+     * hand-off needed=`0` → 100). Python only `/100`. Also appends blockDiceCount (`0` =
+     * non-block; `1..3` from [LegalAction.Block.blockDiceCount]) — folded before dump used 24.
      */
     const val SCHEMA_VERSION = 24
 
@@ -94,11 +95,11 @@ object AiObsLayout {
 
     /**
      * Packed legal-row width: identity (actor, kind, targetX, targetY, challengeSlot, attachedBonus,
-     * face0..2) then metadata (sourceX, sourceY, actorHasBall, targetHasBall, throwSuccessChancePercent).
-     * Who-id = roster actor, not source coords. Unused axes use pad sentinels (not MultiDiscrete
-     * heads — join-score embeds like board).
+     * face0..2) then metadata (sourceX, sourceY, actorHasBall, targetHasBall, throwSuccessChancePercent,
+     * blockDiceCount). Who-id = roster actor, not source coords. Unused axes use pad sentinels
+     * (not MultiDiscrete heads — join-score embeds like board).
      */
-    const val ACTION_FACTOR_COUNT = 14
+    const val ACTION_FACTOR_COUNT = 15
 
     const val ACTIVE_CHALLENGE_SLOTS = 3
     /** [com.mhaefele.gridiron.model.catalog.BonusPlay.entries] — hand + legal-row bonus column. */
@@ -118,6 +119,9 @@ object AiObsLayout {
      */
     const val THROW_SUCCESS_CHANCE_UNUSED: Int = 0
     val THROW_SUCCESS_CHANCE_PACK_WIDTH: Int = 101
+    /** Block dice pack: `0` = non-block; `1..3` = [LegalAction.Block.blockDiceCount]. */
+    const val BLOCK_DICE_COUNT_UNUSED: Int = 0
+    val BLOCK_DICE_COUNT_PACK_WIDTH: Int = 4
 
     /** Free actor playerIndex pad — `0` unused, `1..MAX_PLAYERS_PER_TEAM` roster. */
     val ACTOR_PACK_WIDTH: Int = MAX_PLAYERS_PER_TEAM + 1
@@ -137,7 +141,7 @@ object AiObsLayout {
     /** `0` unused + one code per [com.mhaefele.gridiron.game.dice.dto.BlockDieFace]. */
     val BLOCK_FACE_PACK_SIZE: Int = 1 + 5
     /** Column vocab widths on each legal row — must match `ai/gridiron_ai/constants.py` ACTION_FACTOR_WIDTHS. Not MultiDiscrete heads. */
-    val ACTION_FACTOR_WIDTHS: IntArray = intArrayOf(ACTOR_PACK_WIDTH, KIND_PACK_WIDTH, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, CHALLENGE_SLOT_PACK_WIDTH, ATTACHED_BONUS_PACK_WIDTH, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, BOOL_PACK_WIDTH, BOOL_PACK_WIDTH, THROW_SUCCESS_CHANCE_PACK_WIDTH,)
+    val ACTION_FACTOR_WIDTHS: IntArray = intArrayOf(ACTOR_PACK_WIDTH, KIND_PACK_WIDTH, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, CHALLENGE_SLOT_PACK_WIDTH, ATTACHED_BONUS_PACK_WIDTH, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, BOOL_PACK_WIDTH, BOOL_PACK_WIDTH, THROW_SUCCESS_CHANCE_PACK_WIDTH, BLOCK_DICE_COUNT_PACK_WIDTH,)
     /** Pad width for the legal-row menu (Python ``MAX_LEGAL_MOVES``). */
     const val MAX_LEGAL_MOVES = 1024
     /** ONNX / policy output width — one score per padded legal-row slot. */
@@ -161,6 +165,8 @@ object AiObsLayout {
     const val FACTOR_TARGET_HAS_BALL = 12
     /** Metadata — throw P(success) as percent (`0` unused; `100` = hand-off / certain). */
     const val FACTOR_THROW_SUCCESS_CHANCE = 13
+    /** Metadata — block dice pool (`0` unused; `1..3`). */
+    const val FACTOR_BLOCK_DICE_COUNT = 14
 
     /**
      * Mid-turn hand capacity for obs: end-of-turn trim keeps 3, Clean Sweep allows 3 claims in one

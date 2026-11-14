@@ -5,13 +5,15 @@ import com.mhaefele.gridiron.model.TurnBonusModifiers
 /**
  * Ephemeral pathfinding / allowance flags for one legal-move generate call.
  * Not turn gamestate — Sprint / Weave / Press come from hand expansion
- * ([ActionAttachedBonuses]); [holdTheLine] is copied from [TurnBonusModifiers].
+ * ([ActionAttachedBonuses]); [holdTheLine] / [gangUp] are copied from [TurnBonusModifiers]
+ * ([gangUp] feeds declare-time [com.mhaefele.gridiron.api.dto.response.LegalAction.Block.blockDiceCount]).
  */
 data class PathBonusFlags(
     val sprint: Boolean = false,
     val weave: Boolean = false,
     val press: Boolean = false,
     val holdTheLine: Boolean = false,
+    val gangUp: Boolean = false,
 )
 
 fun TurnBonusModifiers.toPathFlags(
@@ -24,6 +26,7 @@ fun TurnBonusModifiers.toPathFlags(
         weave = weave,
         press = press,
         holdTheLine = holdTheLine,
+        gangUp = gangUp,
     )
 
 /** Sprint adds 2 to Move for a Sprint-tagged opening Run or HANDLE_SPRINT commit (baked into budget). */

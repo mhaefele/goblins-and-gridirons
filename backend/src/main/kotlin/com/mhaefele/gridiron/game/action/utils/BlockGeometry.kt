@@ -1,5 +1,6 @@
 package com.mhaefele.gridiron.game.action.utils
 
+import com.mhaefele.gridiron.game.dice.dto.blockDiceCount
 import com.mhaefele.gridiron.model.board.Board
 import com.mhaefele.gridiron.model.board.Player
 import com.mhaefele.gridiron.model.board.PlayerStatus
@@ -20,6 +21,17 @@ fun isAssistedBlock(blocker: Player, target: Player, board: Board): Boolean {
             playerMarksOpponent(teammate, target, board) &&
             !isAdjacentToDefensiveOpposition(teammate, board)
     }
+}
+
+/**
+ * Declare-time dice pool for a Block legal (stat + assist / Gang Up, cap 3).
+ * Matches [com.mhaefele.gridiron.game.action.pending.block.BlockResolver] before Underdog / Brace.
+ */
+fun blockDiceCountForTarget(blocker: Player, destination: Coordinate, board: Board, gangUp: Boolean = false): Int {
+    val targetId = board.squareAt(destination).playerId ?: error("Block target square empty: $destination")
+    val target = board.players.getValue(targetId)
+    val assisted = gangUp || isAssistedBlock(blocker, target, board)
+    return blockDiceCount(blocker.profile.stats.blockDiceCount, assisted)
 }
 
 /**

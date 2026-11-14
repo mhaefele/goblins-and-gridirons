@@ -29,6 +29,7 @@ function blockFoe(): LegalActionWire {
         actionType: "BLOCK",
         targetCoordinate: foeAt,
         destination: foeAt,
+        blockDiceCount: 1,
     };
 }
 

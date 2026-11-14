@@ -150,7 +150,12 @@ export type LegalActionWire =
           target: ThrowTargetWire;
       })
     | (PlayerLegalActionBase & { kind: "cancelThrowTeammate" })
-    | (BoardTargetedLegalActionBase & { kind: "block"; destination: Coordinate })
+    | (BoardTargetedLegalActionBase & {
+          kind: "block";
+          destination: Coordinate;
+          /** Declare-time dice pool (stat + assist / Gang Up, cap 3). */
+          blockDiceCount: number;
+      })
     | (BoardTargetedLegalActionBase & { kind: "foul"; destination: Coordinate })
     | (BoardTargetedLegalActionBase & { kind: "standUp" })
     | (BoardTargetedLegalActionBase & { kind: "reserves"; placement: Coordinate })

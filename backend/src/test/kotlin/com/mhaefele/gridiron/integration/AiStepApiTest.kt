@@ -305,6 +305,29 @@ class AiStepApiTest : BaseApiTest() {
         assertThat(shortPacked[AiObsLayout.FACTOR_THROW_SUCCESS_CHANCE])
             .isEqualTo(throwSuccessChancePercentFromNeeded(short.target.throwCheckNeeded))
         assertThat(runPacked[AiObsLayout.FACTOR_THROW_SUCCESS_CHANCE]).isEqualTo(0)
+        assertThat(handOffPacked[AiObsLayout.FACTOR_BLOCK_DICE_COUNT]).isEqualTo(0)
+        assertThat(runPacked[AiObsLayout.FACTOR_BLOCK_DICE_COUNT]).isEqualTo(0)
+    }
+
+    @Test
+    fun `packed block rows carry declare-time blockDiceCount`() {
+        val foeAt = Coordinate(5, 7)
+        val match = match {
+            addPlayer(5, 6, profile = TestProfiles.withMove(4))
+            addPlayer(foeAt.x, foeAt.y, team = TeamSide.AWAY)
+        }
+        val step = api.aiStep(match)
+        val block = step.harness.legalRows.map { it.action }.filterIsInstance<LegalAction.Block>()
+            .first { it.destination == foeAt }
+        val blockPacked = step.policy.legalMoves[step.harness.legalRows.indexOfFirst { it.action == block }]
+        val nonBlockIdx = step.harness.legalRows.indexOfFirst { it.action !is LegalAction.Block }
+        assertThat(nonBlockIdx).isGreaterThanOrEqualTo(0)
+        val nonBlockPacked = step.policy.legalMoves[nonBlockIdx]
+
+        assertThat(block.blockDiceCount).isEqualTo(1)
+        assertThat(blockPacked[AiObsLayout.FACTOR_BLOCK_DICE_COUNT]).isEqualTo(1)
+        assertThat(nonBlockPacked[AiObsLayout.FACTOR_BLOCK_DICE_COUNT]).isEqualTo(0)
+        assertThat(blockPacked[AiObsLayout.FACTOR_THROW_SUCCESS_CHANCE]).isEqualTo(0)
     }
 
     @Test

@@ -25,7 +25,7 @@ class StripAndScoreDrillStatusTest {
             openingTurnNumber = 1,
         )
         val before = matchState(trainingEpisode = episode).withTurnNumber(2)
-        val action = LegalAction.Block(PlayerId("home-1"), Coordinate(3, 3))
+        val action = LegalAction.Block(PlayerId("home-1"), Coordinate(3, 3), blockDiceCount = 1)
 
         assertThat(isTrainerOpeningTurn(before)).isFalse()
         assertThat(gradeDrillStatus(scenario, before, before, action, episode))

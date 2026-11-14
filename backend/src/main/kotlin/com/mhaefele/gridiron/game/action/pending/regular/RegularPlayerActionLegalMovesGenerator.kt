@@ -95,7 +95,7 @@ class RegularPlayerActionLegalMovesGenerator(
             ActionType.RUN            -> runMoves(player, board, bonuses)
             ActionType.MARK           -> markMoves(player, board, bonuses)
             ActionType.SIDESTEP       -> sidestepMoves(player, board)
-            ActionType.BLOCK          -> blockMoves(player, board)
+            ActionType.BLOCK          -> blockMoves(player, board, bonuses)
             ActionType.FOUL           -> foulMoves(player, board)
             ActionType.THROW          -> throwMoves(player, board, hailMary)
             ActionType.THROW_TEAMMATE -> throwTeammateSelectMoves(player, board)

@@ -52,7 +52,7 @@ def test_attach_packed_legals_clamps_soft_mask_to_01() -> None:
     }
     packed = attach_packed_legals(
         game,
-        legal_moves=[[0, 1, 0, 0, -1, -1, -1, -1, -1, -1, -1, 0, 0]],
+        legal_moves=[[0, 1, 0, 0, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0]],
         soft_mask_legal=[2.0],
     )
     assert packed[OBS_KEY_SOFT_MASK_LEGAL].dtype == np.int8

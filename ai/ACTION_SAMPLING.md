@@ -302,6 +302,7 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 | Ball encounter (pickup/…) | `ballEncounter` on path | **No** (dest binding via `targetHasBall`) | Affordance `canPickupBall`; cell `hasBall` |
 | Full path squares | `path` | **No** (end only as target) | — |
 | Throw check needed → success % | `ThrowTarget.throwCheckNeeded` | **Yes** — pack derives percent via `throwSuccessChancePercentFromNeeded` (schema 24); PPO `/100` | Cell `throwStat` is raw TV only |
+| Block dice pool | `LegalAction.Block.blockDiceCount` | **Yes** — pack `1..3` (schema 24 fold); PPO `/3` | Cell `blockDice` is raw stat only |
 | Available bonus cards (prompt set) | `availableBonusCards` | **No** | Hand tensor |
 | “This run scores a TD” | derived (carrier + EZ dest) | **No** | Affordance `canScoreTouchdown` on **player**; scoring EZ terrain + `hasBall` |
 | Submit id | `legalActionId` | **No** (sidecar) | Resolve after Discrete index |
@@ -319,6 +320,7 @@ row** / **board obs** actually see. Soft-mask is sampling bias, not a row featur
 | sourceX / sourceY | 12 / 16 | Pitch W/H + unused | 0-based pitch metadata (+ pad). |
 | actorHasBall / targetHasBall | 2 each | boolean 0/1 | Same sense as cell `hasBall`; 0 when no actor/dest. |
 | throwSuccessChancePercent | 101 | `0` unused; `1..100` = P(success)×100 | Exact (schema 24); feature = `n/100`. |
+| blockDiceCount | 4 | `0` unused; `1..3` = declare-time pool | Exact (schema 24 fold); feature = `n/3`. |
 
 **playerIndex:** `0` = empty / no free actor; `1..10` = roster slot + 1 (catalog max 10). Same id on the occupied cell (`AiCellPlayerObs.playerIndex`) and on `AiFactor.Actor`. Both teams reuse `1..10`; `teamRel` on the cell separates us/them.
 

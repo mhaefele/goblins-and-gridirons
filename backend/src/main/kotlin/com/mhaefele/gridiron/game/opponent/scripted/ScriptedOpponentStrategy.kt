@@ -11,7 +11,6 @@ import com.mhaefele.gridiron.model.board.PlayerStatus
 import com.mhaefele.gridiron.shared.TeamSide
 import com.mhaefele.gridiron.api.dto.response.BallEncounter
 import com.mhaefele.gridiron.api.dto.response.LegalAction
-import com.mhaefele.gridiron.game.action.utils.isAssistedBlock
 import com.mhaefele.gridiron.game.action.utils.neighbors
 import com.mhaefele.gridiron.game.dice.dto.bestEnforcerOrder
 import com.mhaefele.gridiron.game.opponent.OpponentStrategy
@@ -200,11 +199,7 @@ class ScriptedOpponentStrategy : OpponentStrategy {
         val distFromCarrier = distancesFrom(board.findSquare(carrier.id), board)
 
         buckets.blocks.filter { it.destination == carrierAt }
-            .maxByOrNull { action ->
-                val blocker = board.players.getValue(action.playerId)
-                val target = board.players.getValue(carrier.id)
-                if (isAssistedBlock(blocker, target, board)) 1 else 0
-            }
+            .maxByOrNull { it.blockDiceCount }
             ?.let { return it }
 
         buckets.marks.filter { isAdjacent(it.path.squares.last(), carrierAt, distFromCarrier) }
@@ -263,7 +258,7 @@ class ScriptedOpponentStrategy : OpponentStrategy {
     private fun fallback(buckets: Buckets, board: Board): LegalAction {
         // Prefer actions that bank an active challenge over dumping Reserves onto an empty pitch.
         buckets.claimAnnotated()?.let { return it }
-        assistedBlock(buckets.blocks, board)?.let { return it }
+        assistedBlock(buckets.blocks)?.let { return it }
         return buckets.standUps.firstOrNull()
             ?: buckets.marks.firstOrNull()
             ?: buckets.blocks.firstOrNull()
@@ -274,14 +269,12 @@ class ScriptedOpponentStrategy : OpponentStrategy {
             ?: buckets.any
     }
 
-    /** Prefer assisted Blocks when both assisted and solo targets exist (ASSISTED_BLOCK drill). */
-    private fun assistedBlock(blocks: List<LegalAction.Block>, board: Board): LegalAction? =
-        blocks.firstOrNull { block ->
-            val blocker = board.player(block.playerId)
-            val targetId = board.squareAt(block.destination).playerId ?: return@firstOrNull false
-            val target = board.player(targetId)
-            isAssistedBlock(blocker, target, board)
-        }
+    /** Prefer multi-die Blocks when both multi-die and 1-die targets exist (ASSISTED_BLOCK drill). */
+    private fun assistedBlock(blocks: List<LegalAction.Block>): LegalAction? {
+        val multi = blocks.filter { it.blockDiceCount > 1 }
+        if (multi.isEmpty()) return null
+        return if (blocks.any { it.blockDiceCount == 1 }) multi.first() else null
+    }
 
     /** Loose ball square, else carrier square — null when no ball is on the pitch. */
     private fun ballCoordinate(board: Board): Coordinate? {

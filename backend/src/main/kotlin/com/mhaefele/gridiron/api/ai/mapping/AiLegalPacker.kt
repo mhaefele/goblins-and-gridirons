@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component
  *
  * Perspective + 0-based pitch packing stay here (not on the harness wire).
  * Identity: actor, kind, targetX, targetY, challengeSlot, attachedBonus, face0..2;
- * metadata: sourceX, sourceY, actorHasBall, targetHasBall, throwSuccessChancePercent.
+ * metadata: sourceX, sourceY, actorHasBall, targetHasBall, throwSuccessChancePercent, blockDiceCount.
  */
 @Component
 class AiLegalPacker(
@@ -75,6 +75,7 @@ class AiLegalPacker(
             if (actorHasBall) 1 else 0,
             if (targetHasBall) 1 else 0,
             packThrowSuccessChancePercent(action),
+            packBlockDiceCount(action),
         )
     }
 
@@ -85,6 +86,12 @@ class AiLegalPacker(
             is LegalAction.ThrowTeammate     -> throwSuccessChancePercentFromNeeded(action.target.throwCheckNeeded)
             is LegalAction.QuickReleaseThrow -> throwSuccessChancePercentFromNeeded(action.target.throwCheckNeeded)
             else                             -> AiObsLayout.THROW_SUCCESS_CHANCE_UNUSED
+        }
+
+    private fun packBlockDiceCount(action: LegalAction): Int =
+        when (action) {
+            is LegalAction.Block -> action.blockDiceCount
+            else                 -> AiObsLayout.BLOCK_DICE_COUNT_UNUSED
         }
 
     private fun squareHasBall(square: BoardSquare, state: MatchState): Boolean =

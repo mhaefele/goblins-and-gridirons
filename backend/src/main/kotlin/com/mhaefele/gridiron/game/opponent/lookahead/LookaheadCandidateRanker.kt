@@ -1,7 +1,6 @@
 package com.mhaefele.gridiron.game.opponent.lookahead
 
 import com.mhaefele.gridiron.api.dto.response.LegalAction
-import com.mhaefele.gridiron.game.action.utils.isAssistedBlock
 import com.mhaefele.gridiron.game.action.utils.standingStatus
 import com.mhaefele.gridiron.game.dice.throwSuccessChanceFromNeeded
 import com.mhaefele.gridiron.model.MatchState
@@ -71,10 +70,8 @@ object LookaheadCandidateRanker {
             }
             is LegalAction.Block            -> {
                 w += 12.0
-                val blocker = ctx.board.players[action.playerId]
-                val targetId = ctx.board.squareAt(action.destination).playerId
-                val target = targetId?.let { ctx.board.players[it] }
-                if (blocker != null && target != null && isAssistedBlock(blocker, target, ctx.board)) w += 35.0
+                // Extra dice beyond 1 (assist / Gang Up / high Block stat) — wire owns the count.
+                w += (action.blockDiceCount - 1) * 35.0
                 ctx.ballAt?.let { ball ->
                     if (chebyshev(action.destination, ball) == 1) {
                         val occupant = ctx.board.squareAt(action.destination).playerId?.let { ctx.board.players[it] }
