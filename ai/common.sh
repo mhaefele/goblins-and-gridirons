@@ -126,7 +126,8 @@ Options:
                                      (already at profiles: sticky full-game unlock)
   --from-scratch                     scenario_a only: random-init PPO — no expert
                                      clone weights. Opposite of the default fork from
-                                     maskable_ppo_seed.zip. Keeps that zip on disk.
+                                     maskable_ppo_seed.zip. Skips dump/pack/clone even
+                                     when the seed zip is missing; does not delete it.
                                      ./start_over.sh --phase scenario_a --from-scratch …
                                      (want expert prior after a shape change? wipe --phase seed)
 
@@ -241,8 +242,23 @@ step_clone_seed() {
 
 # Build any missing shared artifacts (dump → pack → seed). Profile zips are forked in Python
 # from scenario_b — do not copy the expert seed onto shaped checkpoints here.
+# ``--from-scratch`` random-inits scenario_a: skip the expert chain even if seed is absent
+# (stale schema-23 npz must not block a from-scratch train).
 ensure_train_prereqs() {
   ensure_python
+
+  local from_scratch=false
+  local arg
+  for arg in ${TRAIN_CLI_FORWARD[@]+"${TRAIN_CLI_FORWARD[@]}"}; do
+    if [[ "$arg" == "--from-scratch" ]]; then
+      from_scratch=true
+      break
+    fi
+  done
+  if [[ "$from_scratch" == true ]]; then
+    log "Skipping expert dump/pack/clone (--from-scratch; random scenario_a init)"
+    return 0
+  fi
 
   if [[ ! -f "$SEED_ZIP" ]]; then
     if [[ ! -f "$NPZ" ]]; then

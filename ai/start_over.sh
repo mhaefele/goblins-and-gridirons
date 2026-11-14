@@ -31,8 +31,9 @@
 #   Default fork (NO --from-scratch): scenario_a starts by copying maskable_ppo_seed.zip
 #   (behavioral clone of expert moves). That is the normal “keep the expert prior” path.
 #   --from-scratch: wipe scenario_a onward, then train a brand-new random MaskablePPO —
-#   expert moves are NOT in the weights. Keeps the seed zip on disk; never deletes or
-#   re-clones it. Use only when you want a clean random baseline.
+#   expert moves are NOT in the weights. Keeps any seed zip on disk; never deletes it;
+#   train.sh skips dump/pack/clone so a missing/stale npz cannot block. Use only when
+#   you want a clean random baseline.
 #
 # After a policy/obs shape change (need a new seed zip that matches current code):
 #   ./start_over.sh --phase seed          # re-clone expert → new seed, then scenario_a from that
@@ -101,7 +102,7 @@ fi
 
 echo "start_over: root=$ROOT phase=$PHASE profile=$TRAIN_PROFILE"
 if [[ "$_from_scratch" == true ]]; then
-  echo "start_over: --from-scratch → fresh MaskablePPO for scenario_a (seed zip kept)"
+  echo "start_over: --from-scratch → fresh MaskablePPO for scenario_a (skip expert dump/pack/clone)"
 fi
 printf 'Wipe from phase=%s (profile=%s) and retrain? [y/N] ' "$PHASE" "$TRAIN_PROFILE"
 read -r _confirm

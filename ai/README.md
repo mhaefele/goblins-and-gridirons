@@ -52,7 +52,7 @@ Advanced (other scripts):
 ./start_over.sh --phase seed --profile general    # wipe seed + scenario phases + general checkpoint
 ./start_over.sh --phase seed                      # re-clone expert → seed, then scenario_a from that prior
 ./start_over.sh --phase scenario_a                # wipe scenario_a onward (re-fork from existing expert seed)
-./start_over.sh --phase scenario_a --from-scratch # same wipe; random PPO — no expert weights (keeps seed zip)
+./start_over.sh --phase scenario_a --from-scratch # same wipe; random PPO — skips dump/pack/clone
 ./start_over.sh --phase scenario_b                # wipe scenario_b + profiles
 ./start_over.sh --phase checkpoint --profile td   # wipe td only, then train td
 ./start_over.sh --phase pack --cycles 3           # wipe pack onward, then train with same flags as train.sh
