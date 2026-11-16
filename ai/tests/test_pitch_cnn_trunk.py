@@ -1,4 +1,4 @@
-"""Pitch CNN keeps a spatial map; join flattens it; value path GAPs to 512."""
+"""Pitch CNN keeps a spatial map; policy consumes map+non_pitch; value GAPs."""
 
 from __future__ import annotations
 
@@ -11,9 +11,7 @@ from gridiron_ai.model.constants import (
     PLAY_WIDTH,
 )
 from gridiron_ai.model.features import (
-    JOIN_BOARD_FEAT,
     JOIN_CELL_FEAT,
-    JOIN_PITCH_FLAT,
     _PITCH_CNN_OUT,
     _PROJECTED_FEATURES,
     _concat_width,
@@ -38,15 +36,16 @@ def test_pitch_cnn_out_dim_and_board_features() -> None:
     step = empty_step_observation()
     out = fe({k: th.as_tensor(step[k]).unsqueeze(0) for k in OBS_KEYS_GAME_STATE})
     assert out.shape == (1, _PROJECTED_FEATURES)
-    board = fe.consume_join_board()
-    assert board.shape == (1, JOIN_BOARD_FEAT)
-    assert board.shape[1] == JOIN_PITCH_FLAT + _non_pitch_width()
+    pitch_map, non_pitch = fe.consume_join_board()
+    assert pitch_map.shape == (1, JOIN_CELL_FEAT, PLAY_HEIGHT, PLAY_WIDTH)
+    assert non_pitch.shape == (1, _non_pitch_width())
 
 
 def test_join_board_requires_forward() -> None:
     fe = GridironFeaturesExtractor(dict_observation_space())
     try:
         fe.consume_join_board()
-        raise AssertionError("expected RuntimeError")
     except RuntimeError as exc:
         assert "join board missing" in str(exc)
+        return
+    raise AssertionError("expected RuntimeError")

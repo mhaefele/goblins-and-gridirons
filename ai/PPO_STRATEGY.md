@@ -13,10 +13,11 @@ Related: [`DESIGN.md`](DESIGN.md) (wire locks) · [`ACTION_SAMPLING.md`](ACTION_
 
 ## One-sentence strategy
 
-**Score every legal menu row against the full board (flattened pitch map +
-non-pitch) and the full row pack**, sample a `Discrete(1024)` index under a hard
-legality mask (optional soft preference bias), train with MaskablePPO on harness
-rewards — soft-mask is exposure only, never the grade.
+**Score every legal menu row by cross-attending the pitch CNN map (row queries
+all 165 tokens), then glue context ‖ non-pitch ‖ full row pack**, sample a
+`Discrete(1024)` index under a hard legality mask (optional soft preference
+bias), train with MaskablePPO on harness rewards — soft-mask is exposure only,
+never the grade.
 
 ---
 
@@ -37,9 +38,9 @@ rewards — soft-mask is exposure only, never the grade.
 | Deviation | Why |
 |-----------|-----|
 | Custom `GridironFeaturesExtractor` instead of `CombinedExtractor` | Stock would Flatten each Box; we embed cells + Conv2d pitch |
-| `forward` returns value features **and** stashes join board | SB3 extractor API is one tensor; join needs the unflattened pitch map |
-| Custom `LegalRowActorCriticPolicy` — ignore stock `action_net` | Stock is `Linear(latent → n_actions)`; we score **each legal row** with board‖row |
-| Join = `flatten(pitch CNN map) ‖ non_pitch ‖ row_emb` | Live default: full map + full move — no *silent* worthless summary (GAP-only / endpoint-only). Named alternatives (e.g. cross-attn) OK if explicit |
+| `forward` returns value features **and** stashes pitch map + non-pitch | SB3 extractor API is one tensor; policy needs the spatial map for cross-attn |
+| Custom `LegalRowActorCriticPolicy` — ignore stock `action_net` | Stock is `Linear(latent → n_actions)`; we score **each legal row** with attn ctx‖row |
+| Join = `cross_attn(map, row) ‖ non_pitch ‖ row_emb` | Live default: row queries all 165 map tokens — named alternative to flatten-join |
 | Soft-mask logit bias after scores | Curriculum sampling tilt; not in the feature vector |
 | ONNX wrapper mirrors join + masked argmax | Product seats; soft-mask omitted |
 
@@ -47,12 +48,12 @@ rewards — soft-mask is exposure only, never the grade.
 
 | Path | Pitch after CNN `(N,128,15,11)` | Role |
 |------|--------------------------------|------|
-| **Policy** | **Flatten** → 21120-d ‖ non-pitch ‖ `row_emb` → `row_scorer` | Every square’s features stay present next to the move |
+| **Policy** | **Cross-attn** — row Q over 165 tokens → 128-d ctx ‖ non-pitch ‖ `row_emb` | Full grid stays addressable; scorer input ~1.6k not 22k |
 | **Value** | **GAP** → 128-d ‖ non-pitch → Linear → 512 | SB3 critic contract only |
 
-Readers / external reviews that say “GAP erases space before the join” are describing
-a **rejected** design (or the **value** trunk), not the live policy. Live cost of the
-policy join is the fat first Linear on the flatten — see below — not spatial erasure.
+“GAP erases space before the join” describes a **rejected** design (or the **value**
+trunk), not the live policy. Flatten-join (~11.6M first Linear) was the previous
+policy path — superseded by cross-attn for capacity / CPU cost.
 
 ---
 
@@ -85,7 +86,8 @@ Dict obs
 
   POLICY (per live legal row):
     encode_legal_rows(row) → 93-d
-    row_scorer([ flatten(map)=21120 ‖ non_pitch ‖ row_emb ]) → logit
+    ctx = cross_attn(Q=row, K/V=165 map tokens) → 128-d
+    row_scorer([ ctx ‖ non_pitch ‖ row_emb ]) → logit
       (+ soft-mask bias; pad / illegal → −1e8)
     → MaskableCategorical → row index
 ```
@@ -99,10 +101,10 @@ schema 25). Encoding: `features.py`. Deeper “engine knows vs pack exposes” i
 - Pitch gym shape: `(C,H,W) = (15, 15, 11)`.
 - Per-cell emb → `_OCCUPANT_WIDTH` (**64**) → Conv2d `64→64→128` → map
   **(N, 128, 15, 11)**.
-- **Policy join:** flatten that map (**21120**) ‖ non-pitch (**1422**) ‖ full
-  `row_emb` (**93**) → `row_scorer` input **22635**. First Linear
-  `22635 → 512` ≈ **11.6M** weights — the real flatten cost (CPU-fine at our
-  batch sizes; not “melts the laptop,” but sample-inefficient vs a thinner join).
+- **Policy join:** cross-attn over the map (**165** tokens × 128-d) → ctx
+  (**128**) ‖ non-pitch (**1422**) ‖ `row_emb` (**93**) → `row_scorer` input
+  **1643**. First Linear `1643 → 512` ≈ **0.84M** weights (was ~11.6M under
+  flatten-join).
 - **Value / SB3 features:** GAP map → 128 ‖ non-pitch → Linear → **512**.
 - Benches are a table (not convolved).
 
@@ -161,9 +163,9 @@ square facts. Nested JSON may still expose `AiPlayerAffordance` for tests.
 - Each packed row is **15 ints** (`FACTORS_PER_LEGAL_MOVE`, schema 25).
 - `encode_legal_rows` → **93-d**; reuses board emb tables (`pitch_x/y_emb`, kind,
   player index, challenge, bonus, faces).
-- `row_scorer`: `Linear(22635 → 512) → ReLU → Linear → 1`
-  (`flatten(pitch) ‖ non_pitch ‖ row_emb`). ≈11.6M in the first Linear.
-  Invalidates older GAP/attn-join policy zips.
+- `MoveBoardCrossAttention`: row → Q, map tokens → K/V (4 heads, `d=128`).
+- `row_scorer`: `Linear(1643 → 512) → ReLU → Linear → 1`
+  (`ctx ‖ non_pitch ‖ row_emb`). Invalidates flatten-join / older policy zips.
 - Score only through this batch’s `legal_move_count.max()`; pad tail stays −1e8.
 - SB3 `net_arch = {pi: [], vf: []}` so stock `[64,64]` MLPs do **not** crush the
   512-d **value** features (`POLICY_NET_ARCH`).
@@ -310,8 +312,8 @@ not re-litigate them. Incident detail for stuck openings:
 
 | Attempt | Why it failed / was dropped |
 |---------|-----------------------------|
-| **GAP / attention / gather as the policy’s board view** | **Rejected prior** — summarizing the pitch *before* join loses square-level binding to the move. **Not the live policy** (that flattens the map). Value may still GAP for SB3 `features_dim`. Do not re-diagnose “spatial erasure on the join” against current code. |
-| **Flatten join’s fat first Linear (~11.6M)** | **Live tradeoff, not a crash.** Preserves every square next to the row; costs a wide `Linear(22635→512)`. Cross-attn (move queries 165 tokens) is an unadopted, **named** alternative that shrinks that matrix while still attending the full grid — allowed if chosen explicitly; do not ship it silently or pretend it is still flatten-join. |
+| **GAP-only / endpoint-only as the policy’s board view** | **Rejected** — throws away the map before the move can inspect it. Value may still GAP for SB3 `features_dim`. |
+| **Flatten join’s fat first Linear (~11.6M)** | **Superseded** by move→board cross-attn (full 165-token grid still addressable; scorer ~0.84M). Kept as the cautionary cost of “concat every square.” |
 | **Stock SB3 `action_net`: Linear(latent → n_actions)** | Fixed catalog index ≠ “score this step’s legal menu.” Custom `row_scorer` over board‖row. |
 | **Stock `net_arch = [64, 64]` on pi/vf** | Crushed the 512-d value trunk into a tiny MLP. Empty `pi`/`vf` lists keep features intact. |
 | **Cell menu-summary affordances** (TD / claim / pickup / reach bbox on every player cell) | Choice-level facts jammed onto *player* squares; join had to re-bind cell flag ↔ dest. Dropped schema 25 — prefer per-row bits when measured necessary. |
@@ -334,7 +336,7 @@ not re-litigate them. Incident detail for stuck openings:
 ### Still true (do not “fix” by undoing)
 
 - Soft-mask = exposure; reward = grade.
-- Policy join must stay **board×move useful** — live default is flatten-full-map + full row pack; value GAP is separate. No silent worthless summary; named alternatives (e.g. cross-attn) need an explicit adopt.
+- Policy join must stay **board×move useful** — live default is cross-attn over the full map + full row pack; value GAP is separate. No silent worthless summary.
 - Full legal menus at train and eval; prefer soft tilt over hard curation.
 - Openings stuck on drills are still primarily a **learning-signal / prior** story ([`PPO_LEARNING_DEBUG.md`](PPO_LEARNING_DEBUG.md)), not proof that the pitch was erased before the join.
 

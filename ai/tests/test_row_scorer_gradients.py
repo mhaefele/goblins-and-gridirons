@@ -36,8 +36,9 @@ from gridiron_ai.model.constants import (
     OBS_KEY_SOFT_MASK_LEGAL,
 )
 from gridiron_ai.model.features import (
-    JOIN_BOARD_FEAT,
+    JOIN_BOARD_CTX,
     LEGAL_ROW_FEATURE_SEGMENTS,
+    _non_pitch_width,
     GridironFeaturesExtractor,
 )
 from gridiron_ai.model.legal_row_policy import LegalRowActorCriticPolicy
@@ -53,8 +54,8 @@ def _row_emb_offset(name: str) -> int:
     raise KeyError(name)
 
 
-# Column of targetHasBall in row_scorer input after pitchFlat ‖ nonPitch ‖ row_emb…
-_TARGET_HAS_BALL_FEAT = JOIN_BOARD_FEAT + _row_emb_offset("targetHasBall")
+# Column of targetHasBall in row_scorer input after boardCtx ‖ nonPitch ‖ row_emb…
+_TARGET_HAS_BALL_FEAT = JOIN_BOARD_CTX + _non_pitch_width() + _row_emb_offset("targetHasBall")
 
 
 def _noise_board(rng: np.random.Generator) -> dict[str, np.ndarray]:

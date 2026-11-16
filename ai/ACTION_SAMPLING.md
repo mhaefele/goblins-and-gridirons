@@ -101,7 +101,7 @@ For *this* problem (smarter action choices), almost everything collapses to two 
 **schema 19 legal-row join scores** (dest + source as pitch x/y). Measure
 uniqueness before more representation shrinks.
 
-**Landed:** score the legal set directly — join flatten(pitch)‖non-pitch to each
+**Landed:** score the legal set directly — cross-attn(map, row) ‖ non-pitch to each
 encoded row (`LegalRowActorCriticPolicy` / ONNX row scores). Remaining
 [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape) work is whether the
 value net / features should see richer legal-menu summaries beyond join-scoring
@@ -228,7 +228,7 @@ columns**, not because a MultiDiscrete softmax is hundreds of millions wide.
 ## Policy action (schema 19)
 
 **Gym action:** `Discrete(MAX_LEGAL_MOVES)` — index into this step’s packed `legal_moves` menu.
-The policy **join-scores** each live row with flatten(pitch)‖non-pitch
+The policy **join-scores** each live row with cross-attn(map, row) ‖ non-pitch
 (`LegalRowActorCriticPolicy`): one preference over complete moves (not
 independent factor heads + remask).
 

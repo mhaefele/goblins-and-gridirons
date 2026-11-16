@@ -100,7 +100,7 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `model/obs.py` | Packed float → gym Dict |
 | `model/actions.py` | Pad / match / resolve legal-row index |
 | `model/features.py` | Embeddings → pitch Conv2d map; stash flatten‖non-pitch for join; GAP+proj for value |
-| `model/legal_row_policy.py` | `row_scorer(flatten(pitch) ‖ non_pitch ‖ row_emb)` + soft-mask bias |
+| `model/legal_row_policy.py` | `row_scorer(cross_attn(map,row) ‖ non_pitch ‖ row_emb)` + soft-mask bias |
 | `model/reward.py` | `RewardConfig` / `RewardShaping` + `step_reward` + profile presets |
 | `model/export_onnx.py` | Product ONNX export of the join-score path |
 | `model/expert_clone/` | Dump → npz (+ kind stats) → seed zip |

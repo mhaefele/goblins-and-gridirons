@@ -24,9 +24,8 @@ from torch import nn
 
 from gridiron_ai.debug.eval_opening_diag import annotate_move_label, diagnose_opening_mispick
 from gridiron_ai.model.features import (
-    JOIN_BOARD_FEAT,
-    JOIN_PITCH_FLAT,
-    LEGAL_ROW_FEATURE_DIM,
+    JOIN_BOARD_CTX,
+    JOIN_SCORER_IN,
     LEGAL_ROW_FEATURE_SEGMENTS,
     _non_pitch_width,
 )
@@ -401,7 +400,7 @@ def format_ppo_update_line(
 def row_scorer_segment_mean_abs(policy: Any) -> list[tuple[str, float]]:
     """Mean |W| of ``row_scorer`` first Linear columns per join input segment.
 
-    Order: pitchFlat, nonPitch, then [LEGAL_ROW_FEATURE_SEGMENTS].
+    Order: boardCtx, nonPitch, then [LEGAL_ROW_FEATURE_SEGMENTS].
     """
     scorer = getattr(policy, "row_scorer", None)
     if scorer is None or not isinstance(scorer, nn.Sequential) or not scorer:
@@ -411,12 +410,12 @@ def row_scorer_segment_mean_abs(policy: Any) -> list[tuple[str, float]]:
         return []
     weight = first.weight.detach().float()
     in_features = int(weight.shape[1])
-    if in_features < JOIN_BOARD_FEAT + LEGAL_ROW_FEATURE_DIM:
+    if in_features < JOIN_SCORER_IN:
         return []
     out: list[tuple[str, float]] = []
     col = 0
     for name, width in (
-        ("pitchFlat", JOIN_PITCH_FLAT),
+        ("boardCtx", JOIN_BOARD_CTX),
         ("nonPitch", _non_pitch_width()),
     ):
         out.append((name, float(weight[:, col : col + width].abs().mean().cpu())))

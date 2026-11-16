@@ -7,8 +7,8 @@ small portable graph (ONNX) that Kotlin can run without Python.
 
 We wrap the trained pieces we care about for **play** (not training):
 
-1. Feature extractor — board Dict → join-board numbers (same as training).
-2. Row scorer — score each legal menu row given that board.
+1. Feature extractor — board Dict → pitch map + non-pitch (same as training).
+2. Move→board cross-attn + row scorer — score each legal menu row.
 3. Argmax — pick the highest-scoring **live** row (pad rows forced very low).
 
 Soft-mask preference bias is **omitted** here: product seats should play the
@@ -100,6 +100,7 @@ class PackedObsAndLegalsToAction(nn.Module):
             )
         # Same weights as training — not re-initialized.
         self.features_extractor = policy.features_extractor
+        self.move_board_attn = policy.move_board_attn
         self.row_scorer = policy.row_scorer
 
     def forward(self, packed_obs: th.Tensor, legal_moves: th.Tensor) -> th.Tensor:
@@ -123,25 +124,25 @@ class PackedObsAndLegalsToAction(nn.Module):
         obs = _slice_packed_obs(packed_obs)
 
         # 2) Encode the board. ``forward`` returns the value vector we ignore here;
-        #    the important part is the temporary save of the full pitch map +
-        #    non-pitch features for the join (see features.consume_join_board).
+        #    the important part is the temporary save of the pitch map + non-pitch
+        #    for the join (see features.consume_join_board).
         fe = self.features_extractor
         _ = fe(obs)
 
-        # 3) Read that temporary save: flatten(pitch CNN map) ‖ non-pitch.
-        board = fe.consume_join_board()
+        # 3) Read that temporary save: spatial map + non-pitch vector.
+        pitch_map, non_pitch = fe.consume_join_board()
 
         # 4) Encode every packed legal row with the same emb tables as the board.
         row_emb = fe.encode_legal_rows(legal_moves, obs[OBS_KEY_CHALLENGES])
 
-        # 5) Glue board ‖ row for each menu slot. ``unsqueeze/expand`` repeats the
-        #    same board vector next to every row without copying memory.
+        # 5) Each row queries all pitch tokens; glue ctx ‖ non_pitch ‖ row.
         batch, n_rows, _ = row_emb.shape
-        board_b = board.unsqueeze(1).expand(batch, n_rows, -1)
+        board_ctx = self.move_board_attn(pitch_map, row_emb)
+        non_pitch_b = non_pitch.unsqueeze(1).expand(batch, n_rows, -1)
 
         # 6) One score per row. ``squeeze(-1)`` drops the trailing size-1 dim from
         #    Linear → 1 so we get shape (batch, n_rows).
-        scores = self.row_scorer(th.cat([board_b, row_emb], dim=-1)).squeeze(-1)
+        scores = self.row_scorer(th.cat([board_ctx, non_pitch_b, row_emb], dim=-1)).squeeze(-1)
 
         # 7) Pad / empty rows must never win: force their scores to a huge negative.
         live = legal_moves[..., 0] >= 0

@@ -1,6 +1,6 @@
-"""Policy that scores every legal menu row against the full board.
+"""Policy that scores every legal menu row against the board via cross-attn.
 
-Owner: ``row_scorer(flatten(pitch map) ‖ non_pitch ‖ encode(row))``.
+Owner: ``row_scorer(cross_attn(map, row) ‖ non_pitch ‖ encode(row))``.
 
 How it fits Stable-Baselines3
 -----------------------------
@@ -10,8 +10,8 @@ Our N is ``MAX_LEGAL_MOVES`` (1024): an index into **this step's** legal menu.
 Stock would do ``Linear(board_summary → 1024)``. We instead:
 
 1. Let SB3 build the **value** estimate from the usual 512-d features vector.
-2. Separately score each live legal row by gluing the **full** board
-   (flattened pitch CNN map + non-pitch) onto that row's encoding.
+2. Separately score each live legal row: the row queries all pitch CNN tokens
+   (cross-attn), then glue ``ctx ‖ non_pitch ‖ row_emb`` into ``row_scorer``.
 3. Soft-mask (curriculum "look at these rows") is only a post-score bias —
    not a feature and not a reward.
 
@@ -43,6 +43,8 @@ from gridiron_ai.model.constants import (
 from gridiron_ai.model.features import (
     JOIN_CELL_FEAT,
     JOIN_SCORER_IN,
+    LEGAL_ROW_FEATURE_DIM,
+    MoveBoardCrossAttention,
     GridironFeaturesExtractor,
     _PROJECTED_FEATURES,
     _non_pitch_width,
@@ -62,7 +64,7 @@ def maskable_ppo_policy_kwargs() -> dict[str, Any]:
 
 
 class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
-    """MaskablePPO policy: score each legal row with full board ‖ full row encoding."""
+    """MaskablePPO policy: cross-attend each legal row over the pitch map, then score."""
 
     def __init__(
         self,
@@ -73,7 +75,7 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         features_extractor_class: type[BaseFeaturesExtractor] = GridironFeaturesExtractor,
         **kwargs: Any,
     ) -> None:
-        """Build the stock Maskable actor-critic, then replace action scoring with a join MLP.
+        """Build the stock Maskable actor-critic, then replace action scoring with join MLP.
 
         Requires a Dict observation space, Discrete(1024) actions, and our
         ``GridironFeaturesExtractor`` (shared between actor and critic).
@@ -108,7 +110,11 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
                 "LegalRowActorCriticPolicy requires GridironFeaturesExtractor "
                 f"(got {type(self.features_extractor)})"
             )
-        # Stock ``action_net`` (Linear → 1024) is unused — scores come from this join MLP.
+        # Stock ``action_net`` (Linear → 1024) is unused — scores come from attn + join MLP.
+        self.move_board_attn = MoveBoardCrossAttention(
+            cell_dim=JOIN_CELL_FEAT,
+            row_dim=LEGAL_ROW_FEATURE_DIM,
+        )
         self.row_scorer = nn.Sequential(
             nn.Linear(JOIN_SCORER_IN, _SCORE_HIDDEN),
             nn.ReLU(),
@@ -185,9 +191,9 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
     def _score_legal_rows(self, obs: PyTorchObs) -> th.Tensor:
         """Score each live legal menu row; leave pad slots at −1e8.
 
-        Reads the board from the feature extractor's temporary save (filled by
-        ``extract_features`` / ``forward`` just before). Encodes only up to this
-        batch's max live row count so we don't waste work on trailing pad.
+        Reads the pitch map + non-pitch from the feature extractor's temporary
+        save (filled by ``extract_features`` / ``forward`` just before). Encodes
+        only up to this batch's max live row count so we don't waste work on pad.
         """
         if not (isinstance(obs, dict) or hasattr(obs, "keys")):
             raise TypeError(f"Expected Dict observation with legal moves, got {type(obs)}")
@@ -224,7 +230,7 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         if fe._pitch_feature_map is None or fe._non_pitch_features is None:
             fe._pitch_feature_map = logits.new_zeros(batch, JOIN_CELL_FEAT, PLAY_HEIGHT, PLAY_WIDTH)
             fe._non_pitch_features = logits.new_zeros(batch, _non_pitch_width())
-        board = fe.consume_join_board()
+        pitch_map, non_pitch = fe.consume_join_board()
         if batch == 0 or pad_rows == 0:
             return logits
         max_count = int(legal_count.max().item()) if legal_count.numel() else 0
@@ -235,8 +241,9 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         # Encode + score only the prefix that might be live for someone in the batch.
         live_moves = legal_moves[:, :max_count]
         row_emb = fe.encode_legal_rows(live_moves, challenges.float())
-        board_b = board.unsqueeze(1).expand(batch, max_count, -1)
-        live_logits = self.row_scorer(th.cat([board_b, row_emb], dim=-1)).squeeze(-1)
+        board_ctx = self.move_board_attn(pitch_map, row_emb)
+        non_pitch_b = non_pitch.unsqueeze(1).expand(batch, max_count, -1)
+        live_logits = self.row_scorer(th.cat([board_ctx, non_pitch_b, row_emb], dim=-1)).squeeze(-1)
 
         # Soft-mask: add a fixed bias to preferred rows (sampling tilt, not a grade).
         if soft is not None:

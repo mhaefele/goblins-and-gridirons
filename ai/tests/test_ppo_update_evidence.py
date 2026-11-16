@@ -187,8 +187,8 @@ def test_legal_row_feature_segments_match_dim() -> None:
 
 
 def test_row_scorer_weights_line_shows_target_has_ball_delta() -> None:
-    before = [("pitchFlat", 0.1), ("targetHasBall", 0.01), ("kind", 0.02)]
-    after = [("pitchFlat", 0.1), ("targetHasBall", 0.015), ("kind", 0.02)]
+    before = [("boardCtx", 0.1), ("targetHasBall", 0.01), ("kind", 0.02)]
+    after = [("boardCtx", 0.1), ("targetHasBall", 0.015), ("kind", 0.02)]
     line = format_row_scorer_weights_line(
         after=after, before=before, scenario="LOOSE_BALL_RUN"
     )

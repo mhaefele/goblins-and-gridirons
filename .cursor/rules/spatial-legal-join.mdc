@@ -10,17 +10,16 @@ pitch (dest square, lanes, defenders). Do **not** quietly replace that with a
 lossy summary that makes the join useless.
 
 **Not the intent:** a permanent ban on attention or any pooling. Named
-alternatives (e.g. move→board cross-attn over the full token grid) are fine when
-chosen explicitly — say so in the change / docs; do not sneak them in as “still
-full board.”
+alternatives are fine when chosen explicitly — say so in the change / docs.
 
-## Live default (until replaced on purpose)
+## Live default
 
 ```
-pitch CNN → map (N, C, H, W) → flatten
+pitch CNN → map (N, C, H, W)
 non-pitch (benches / scalars / …) kept as-is
 row_emb = encode_legal_rows(full pack)
-row_scorer([ flatten(map) ‖ non_pitch ‖ row_emb ])
+ctx = cross_attn(Q=row_emb, K/V=map tokens)   # full 165-token grid
+row_scorer([ ctx ‖ non_pitch ‖ row_emb ])
 ```
 
 Value head may still GAP the pitch into the SB3 `features_dim` vector — that is
@@ -31,13 +30,12 @@ for the critic / stock extractor contract, **not** a substitute for the join.
 - Ship **GAP-only**, **endpoint-only**, or other joins that throw away the map
   without an explicit product reason in the PR / chat
 - Defend “a global vibe / one gathered cell is enough” when the ask is board × move
-- Silently swap the live join for a thinner readout and leave docs/rules claiming
-  flatten-full-map
+- Silently swap the live join and leave docs/rules claiming the old shape
 
 ## Do
 
-- Flag in chat when this rule would block a **named** design (cross-attn, etc.)
-  — ask rather than veto on autopilot
+- Flag in chat when this rule would block a **named** redesign — ask rather than
+  veto on autopilot
 - Keep the full legal-row encoding on the score path (no row stub / kind-only score)
 
-See [`ai/PPO_STRATEGY.md`](ai/PPO_STRATEGY.md) (stock vs deviations; flatten cost).
+See [`ai/PPO_STRATEGY.md`](ai/PPO_STRATEGY.md) (stock vs deviations).

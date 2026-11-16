@@ -8,16 +8,16 @@ Dict tensors into:
 
 1. **Value features** — one fixed-length vector (512 numbers) that Stable-
    Baselines3 (SB3) uses for the critic / "how good is this position?" head.
-2. **Join board** — the full pitch as a long flat list of numbers, plus the
-   non-pitch bits (benches, cards, …). The **policy** uses this later, glued
-   onto each legal-move encoding, to pick a menu row.
+2. **Join parts** — the uncompressed pitch CNN map plus non-pitch bits
+   (benches, cards, …). The **policy** cross-attends each legal-row encoding
+   over the map tokens, then scores ``ctx ‖ non_pitch ‖ row_emb``.
 
 Why two outputs from one ``forward``?
 -------------------------------------
 SB3's stock feature-extractor API may return **only one** tensor. We need a
-second blob (the full pitch map) for the policy. So ``forward`` returns the
-value vector, and **saves** the join-board pieces on the extractor instance.
-The policy then calls ``consume_join_board()`` to read and clear that save.
+second blob (the pitch map) for the policy. So ``forward`` returns the value
+vector, and **saves** the join parts on the extractor instance. The policy
+then calls ``consume_join_board()`` to read and clear that save.
 
 Plain-language glossary
 -----------------------
@@ -26,8 +26,8 @@ Plain-language glossary
   squares can influence each other (still a full H×W map afterward).
 - **GAP (global average pool)** — squash that map into one summary vector by
   averaging every square. Used for the **value** path only.
-- **Join** — concatenate board features with one legal-row encoding, then
-  score that pair. No spatial summarizing on the policy path.
+- **Cross-attn join** — each legal row queries all 165 pitch tokens; the
+  attended context is glued with non-pitch + the row encoding, then scored.
 - **SENTINEL (-1)** — "this field is unused on this row / empty cell."
 
 See ``ai/PPO_STRATEGY.md`` and ``ai/OWNERSHIP.md``.
@@ -148,11 +148,14 @@ LEGAL_ROW_FEATURE_SEGMENTS: tuple[tuple[str, int], ...] = (
 LEGAL_ROW_FEATURE_DIM = sum(width for _, width in LEGAL_ROW_FEATURE_SEGMENTS)
 # Mid-check window: kind emb + scaled d6 + up to 3 block-face embs.
 _HELD_CHECK_WIDTH = EMBED_DIM + 1 + MAX_HELD_BLOCK_FACES * EMBED_DIM
-# Pitch CNN channel widths. Join flattens the map; value path averages it (GAP).
+# Pitch CNN channel widths. Policy cross-attends the map; value path averages it (GAP).
 _PITCH_CNN_WIDTH = 64
 _PITCH_CNN_OUT = 128
 JOIN_CELL_FEAT = _PITCH_CNN_OUT
-JOIN_PITCH_FLAT = JOIN_CELL_FEAT * PLAY_HEIGHT * PLAY_WIDTH  # 128×15×11 = 21120
+PITCH_TOKEN_COUNT = PLAY_HEIGHT * PLAY_WIDTH  # 165
+# Move→board cross-attn width (query from row_emb; keys/values from map tokens).
+CROSS_ATTN_DIM = 128
+CROSS_ATTN_HEADS = 4
 # SB3 value-trunk width after Linear(GAP‖non-pitch → this).
 _PROJECTED_FEATURES = 512
 
@@ -176,17 +179,78 @@ def _concat_width() -> int:
     return _PITCH_CNN_OUT + _non_pitch_width()
 
 
-# Policy scorer input width: flat pitch map ‖ non-pitch ‖ one legal-row encoding.
-JOIN_BOARD_FEAT = JOIN_PITCH_FLAT + _non_pitch_width()
-JOIN_SCORER_IN = JOIN_BOARD_FEAT + LEGAL_ROW_FEATURE_DIM
+# Policy scorer input: attended board context ‖ non-pitch ‖ one legal-row encoding.
+JOIN_BOARD_CTX = CROSS_ATTN_DIM
+JOIN_SCORER_IN = JOIN_BOARD_CTX + _non_pitch_width() + LEGAL_ROW_FEATURE_DIM
+
+
+class MoveBoardCrossAttention(nn.Module):
+    """Each legal-row encoding queries all pitch CNN tokens (source/target/lanes).
+
+    Named alternative to flatten-join: the full 15×11 map stays addressable; the
+    scorer sees a ``CROSS_ATTN_DIM`` context instead of a 21k-d flat vector.
+    """
+
+    def __init__(
+        self,
+        *,
+        cell_dim: int = JOIN_CELL_FEAT,
+        row_dim: int = LEGAL_ROW_FEATURE_DIM,
+        d_model: int = CROSS_ATTN_DIM,
+        n_heads: int = CROSS_ATTN_HEADS,
+    ) -> None:
+        super().__init__()
+        if d_model % n_heads != 0:
+            raise ValueError(f"d_model={d_model} must divide n_heads={n_heads}")
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.d_head = d_model // n_heads
+        self.q_proj = nn.Linear(row_dim, d_model)
+        self.k_proj = nn.Linear(cell_dim, d_model)
+        self.v_proj = nn.Linear(cell_dim, d_model)
+        self.out_proj = nn.Linear(d_model, d_model)
+
+    def forward(self, pitch_map: th.Tensor, row_emb: th.Tensor) -> th.Tensor:
+        """Attend row queries over pitch tokens.
+
+        Parameters
+        ----------
+        pitch_map
+            ``(batch, C, H, W)`` CNN feature map.
+        row_emb
+            ``(batch, rows, LEGAL_ROW_FEATURE_DIM)`` encoded legal rows.
+
+        Returns
+        -------
+        ``(batch, rows, d_model)`` attention-weighted board context per row.
+        """
+        batch, _channels, height, width = pitch_map.shape
+        rows = int(row_emb.shape[1])
+        tokens = pitch_map.flatten(2).transpose(1, 2)  # (N, H*W, C)
+        query = self.q_proj(row_emb)
+        key = self.k_proj(tokens)
+        value = self.v_proj(tokens)
+
+        def _split_heads(x: th.Tensor) -> th.Tensor:
+            length = int(x.shape[1])
+            return x.view(batch, length, self.n_heads, self.d_head).transpose(1, 2)
+
+        query_h = _split_heads(query)
+        key_h = _split_heads(key)
+        value_h = _split_heads(value)
+        scores = th.matmul(query_h, key_h.transpose(-2, -1)) * (self.d_head**-0.5)
+        weights = th.softmax(scores, dim=-1)
+        ctx = th.matmul(weights, value_h)
+        ctx = ctx.transpose(1, 2).contiguous().view(batch, rows, self.d_model)
+        return self.out_proj(ctx)
 
 
 class GridironFeaturesExtractor(BaseFeaturesExtractor):
     """Encode the board Dict for both the value head and the legal-row policy.
 
     Stock SB3 wants one ``features_dim`` vector out of ``forward``. We also need
-    the **unsummarized** pitch for the policy, so after building the CNN map we
-    keep a copy on ``self`` until ``consume_join_board`` reads it.
+    the uncompressed pitch map for policy cross-attn, so after building the CNN
+    map we keep a copy on ``self`` until ``consume_join_board`` reads it.
     """
 
     def __init__(self, observation_space: spaces.Dict, features_dim: int = _PROJECTED_FEATURES) -> None:
@@ -247,24 +311,24 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         # Side effect: fills ``self._pitch_feature_map`` with the full CNN map.
         pitch_gap = self._encode_pitch(observations[OBS_KEY_PITCH].float())
         benches = self._encode_benches(observations[OBS_KEY_BENCHES].float())
-        # Same non-pitch block the policy will glue onto the flat pitch later.
+        # Same non-pitch block the policy concatenates after cross-attn context.
         non_pitch = th.cat([scalars, challenges, deck, hand, held, benches], dim=1)
         self._non_pitch_features = non_pitch
         # Value path: GAP summary ‖ non-pitch → Linear → ReLU → 512-d features.
         return self.proj_act(self.proj(th.cat([scalars, challenges, deck, hand, held, pitch_gap, benches], dim=1)))
 
-    def consume_join_board(self) -> th.Tensor:
-        """Hand the policy the board half of the join, then clear the temporary save.
+    def consume_join_board(self) -> tuple[th.Tensor, th.Tensor]:
+        """Hand the policy ``(pitch CNN map, non_pitch)``, then clear the temporary save.
 
         Must be called after ``forward`` / ``extract_features`` on this same
-        extractor. Returns ``flatten(pitch CNN map) ‖ non_pitch`` — every pitch
-        square's CNN features laid end-to-end, then benches/cards/scalars.
+        extractor. The map stays spatial ``(batch, C, H, W)`` for cross-attn;
+        non-pitch is the benches/cards/scalars vector.
 
         Why "consume"? The save is one-shot: reading clears it so a later call
         cannot accidentally reuse a stale board from a previous step.
 
-        # DEVIATION: honest API would return ``(value_features, join_board)`` from
-        # ``forward``. SB3 only accepts one tensor, so we save+consume instead.
+        # DEVIATION: honest API would return ``(value_features, map, non_pitch)``
+        # from ``forward``. SB3 only accepts one tensor, so we save+consume instead.
         """
         pitch_map = self._pitch_feature_map
         non_pitch = self._non_pitch_features
@@ -272,8 +336,7 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         self._non_pitch_features = None
         if pitch_map is None or non_pitch is None:
             raise RuntimeError("join board missing — call extract_features / forward first")
-        # flatten(1) = keep batch dim, squash channel×H×W into one long vector.
-        return th.cat([pitch_map.flatten(1), non_pitch], dim=1)
+        return pitch_map, non_pitch
 
     def encode_legal_rows(self, legal_moves: th.Tensor, challenges: th.Tensor) -> th.Tensor:
         """Turn each packed legal-move int row into a float vector (``row_emb``).
