@@ -1,15 +1,20 @@
 ---
-description: Policy join exposes full pitch + full legal row — no spatial summarizing
+description: Policy join must keep board×move useful — no silent worthless summaries
 alwaysApply: true
 ---
 
-# Board + move join (no summarizing)
+# Board + move join (keep it useful)
 
-Policy scoring must see the **full pitch CNN map** (flattened) and the **full
-legal-row encoding**. Do not ship GAP-only, attention-pooled, or endpoint-only
-joins as the policy’s board view.
+**Intent:** the policy must still be able to bind a legal row to what is on the
+pitch (dest square, lanes, defenders). Do **not** quietly replace that with a
+lossy summary that makes the join useless.
 
-## Required
+**Not the intent:** a permanent ban on attention or any pooling. Named
+alternatives (e.g. move→board cross-attn over the full token grid) are fine when
+chosen explicitly — say so in the change / docs; do not sneak them in as “still
+full board.”
+
+## Live default (until replaced on purpose)
 
 ```
 pitch CNN → map (N, C, H, W) → flatten
@@ -21,9 +26,18 @@ row_scorer([ flatten(map) ‖ non_pitch ‖ row_emb ])
 Value head may still GAP the pitch into the SB3 `features_dim` vector — that is
 for the critic / stock extractor contract, **not** a substitute for the join.
 
-## Forbidden
+## Do not
 
-- Defending “GAP / attn / gather is enough” when the ask is full board + move
-- Adding spatial summaries on the policy path without an explicit product reason
+- Ship **GAP-only**, **endpoint-only**, or other joins that throw away the map
+  without an explicit product reason in the PR / chat
+- Defend “a global vibe / one gathered cell is enough” when the ask is board × move
+- Silently swap the live join for a thinner readout and leave docs/rules claiming
+  flatten-full-map
 
-See [`ai/PPO_STRATEGY.md`](ai/PPO_STRATEGY.md) (stock vs deviations).
+## Do
+
+- Flag in chat when this rule would block a **named** design (cross-attn, etc.)
+  — ask rather than veto on autopilot
+- Keep the full legal-row encoding on the score path (no row stub / kind-only score)
+
+See [`ai/PPO_STRATEGY.md`](ai/PPO_STRATEGY.md) (stock vs deviations; flatten cost).

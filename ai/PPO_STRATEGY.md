@@ -39,7 +39,7 @@ rewards — soft-mask is exposure only, never the grade.
 | Custom `GridironFeaturesExtractor` instead of `CombinedExtractor` | Stock would Flatten each Box; we embed cells + Conv2d pitch |
 | `forward` returns value features **and** stashes join board | SB3 extractor API is one tensor; join needs the unflattened pitch map |
 | Custom `LegalRowActorCriticPolicy` — ignore stock `action_net` | Stock is `Linear(latent → n_actions)`; we score **each legal row** with board‖row |
-| Join = `flatten(pitch CNN map) ‖ non_pitch ‖ row_emb` | Expose full board + full move — **no** GAP / attention / gather on the policy path |
+| Join = `flatten(pitch CNN map) ‖ non_pitch ‖ row_emb` | Live default: full map + full move — no *silent* worthless summary (GAP-only / endpoint-only). Named alternatives (e.g. cross-attn) OK if explicit |
 | Soft-mask logit bias after scores | Curriculum sampling tilt; not in the feature vector |
 | ONNX wrapper mirrors join + masked argmax | Product seats; soft-mask omitted |
 
@@ -311,7 +311,7 @@ not re-litigate them. Incident detail for stuck openings:
 | Attempt | Why it failed / was dropped |
 |---------|-----------------------------|
 | **GAP / attention / gather as the policy’s board view** | **Rejected prior** — summarizing the pitch *before* join loses square-level binding to the move. **Not the live policy** (that flattens the map). Value may still GAP for SB3 `features_dim`. Do not re-diagnose “spatial erasure on the join” against current code. |
-| **Flatten join’s fat first Linear (~11.6M)** | **Live tradeoff, not a crash.** Preserves every square next to the row; costs a wide `Linear(22635→512)`. Cross-attn (move queries 165 tokens) is an unadopted alternative that shrinks that matrix but *is* a soft spatial summary — conflicts with the current “no summarizing on policy path” lock until explicitly approved. |
+| **Flatten join’s fat first Linear (~11.6M)** | **Live tradeoff, not a crash.** Preserves every square next to the row; costs a wide `Linear(22635→512)`. Cross-attn (move queries 165 tokens) is an unadopted, **named** alternative that shrinks that matrix while still attending the full grid — allowed if chosen explicitly; do not ship it silently or pretend it is still flatten-join. |
 | **Stock SB3 `action_net`: Linear(latent → n_actions)** | Fixed catalog index ≠ “score this step’s legal menu.” Custom `row_scorer` over board‖row. |
 | **Stock `net_arch = [64, 64]` on pi/vf** | Crushed the 512-d value trunk into a tiny MLP. Empty `pi`/`vf` lists keep features intact. |
 | **Cell menu-summary affordances** (TD / claim / pickup / reach bbox on every player cell) | Choice-level facts jammed onto *player* squares; join had to re-bind cell flag ↔ dest. Dropped schema 25 — prefer per-row bits when measured necessary. |
@@ -334,7 +334,7 @@ not re-litigate them. Incident detail for stuck openings:
 ### Still true (do not “fix” by undoing)
 
 - Soft-mask = exposure; reward = grade.
-- Policy sees **full flat pitch map** + full row pack — no GAP/attn/gather shortcut on that path (value GAP is separate).
+- Policy join must stay **board×move useful** — live default is flatten-full-map + full row pack; value GAP is separate. No silent worthless summary; named alternatives (e.g. cross-attn) need an explicit adopt.
 - Full legal menus at train and eval; prefer soft tilt over hard curation.
 - Openings stuck on drills are still primarily a **learning-signal / prior** story ([`PPO_LEARNING_DEBUG.md`](PPO_LEARNING_DEBUG.md)), not proof that the pitch was erased before the join.
 
