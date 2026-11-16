@@ -13,7 +13,7 @@
 #   dump         expert jsonl + export logs
 #   pack         packed lookahead.npz
 #   seed         shared maskable_ppo_seed.zip
-#   scenario_a   scenario_a checkpoints/runs + shared scenario evals/catalog/cycle log/legacy baseline
+#   scenario_a   scenario_a checkpoints/runs + shared scenario evals/catalog/cycle+draws logs/eval_phase
 #   scenario_b   scenario_b checkpoints/runs (+ shared scenario artifacts when reached)
 #   checkpoint   shaped profile checkpoints/runs/evals (general/spread/td/defense); --profile scopes
 #
@@ -32,8 +32,8 @@
 #   (behavioral clone of expert moves). That is the normal “keep the expert prior” path.
 #   --from-scratch: wipe scenario_a onward, then train a brand-new random MaskablePPO —
 #   expert moves are NOT in the weights. Keeps any seed zip on disk; never deletes it;
-#   train.sh skips dump/pack/clone so a missing/stale npz cannot block. Use only when
-#   you want a clean random baseline.
+#   train.sh skips dump/pack/clone and the climb-until-fail floor probe (all drills d0).
+#   Use only when you want a clean random baseline.
 #
 # After a policy/obs shape change (need a new seed zip that matches current code):
 #   ./start_over.sh --phase seed          # re-clone expert → new seed, then scenario_a from that

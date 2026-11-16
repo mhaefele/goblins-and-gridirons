@@ -27,6 +27,9 @@ CYCLE_LOG_PATH = RUNS_DIR / "train_eval_cycles.tsv"
 KIND_TOTALS_JSON_NAME = "kind_totals.json"
 KIND_TOTALS_TXT_NAME = "kind_totals.txt"
 # Append-only scenario draw log (train + eval); ``eval_debug.append_scenario_draw_log``.
+# Wiped with scenario shared artifacts (``common.sh`` ``wipe_scenario_training_shared``).
 SCENARIO_DRAWS_LOG_PATH = RUNS_DIR / "scenario_draws.log"
+# Ephemeral TB stem for ``--phase … --eval-only``; wiped with scenario shared artifacts.
+EVAL_PHASE_RUNS_DIR = RUNS_DIR / "eval_phase"
 # Scenario phases (scenario_a / scenario_b) and post-split baseline write eval JSON here.
 SCENARIO_TRAINING_EVAL_PROFILE = "baseline"

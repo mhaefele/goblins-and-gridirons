@@ -8,10 +8,12 @@
 #   scenario_a checkpoints/scenario_a/, runs/scenario_a/ (incl. that tree’s difficulty sidecar)
 #              + expert seed .scenario_difficulty.json (only extra — otherwise fork reuses floors)
 #              (first train: climb-until-fail floors if difficulty sidecar missing;
-#               --from-scratch probes the random zip, does not rewrite seed floors)
+#               --from-scratch skips that probe and starts all drills at d0)
 #   scenario_b checkpoints/scenario_b/, runs/scenario_b/
 #              + shared scenario artifacts: scenario_catalog.json,
-#                runs/train_eval_cycles.tsv, evals/baseline/ (pre-split + post-split baseline evals)
+#                runs/train_eval_cycles.tsv, runs/scenario_draws.log,
+#                runs/eval_phase/ (ephemeral --phase eval TB stem),
+#                evals/baseline/ (pre-split + post-split baseline evals)
 #   checkpoint checkpoints/{baseline,general,spread,td,defense}/, runs/{…}/,
 #              evals/{general,spread,td,defense}/ (+ evals/baseline stays shared),
 #              legacy root checkpoints/maskable_ppo_selfplay_final.zip
@@ -38,6 +40,10 @@ EVAL_DIR="$OUTPUT_DIR/evals"
 START_OVER_TRASH="$OUTPUT_DIR/.start_over_last"
 SCENARIO_CATALOG="$OUTPUT_DIR/scenario_catalog.json"
 CYCLE_LOG="$RUNS_DIR/train_eval_cycles.tsv"
+# Append-only per-episode scenario diary (train+eval); not gated on --verbose.
+SCENARIO_DRAWS_LOG="$RUNS_DIR/scenario_draws.log"
+# Ephemeral TensorBoard stem for ``train_self_play --phase … --eval-only`` (not a train phase).
+EVAL_PHASE_RUNS_DIR="$RUNS_DIR/eval_phase"
 LEGACY_ROOT_CHECKPOINT_ZIP="maskable_ppo_selfplay_final.zip"
 SCENARIO_TRAINING_EVAL_PROFILE="baseline"
 # Post-split unshaped profile tree (forked from scenario_b) — wiped with checkpoint phase.
@@ -128,8 +134,10 @@ Options:
                                      clone weights. Opposite of the default fork from
                                      maskable_ppo_seed.zip. Skips dump/pack/clone even
                                      when the seed zip is missing; does not delete it.
-                                     ./start_over.sh --phase scenario_a --from-scratch …
-                                     (want expert prior after a shape change? wipe --phase seed)
+                                     Skips the climb-until-fail floor probe (all drills
+                                     start at d0). ./start_over.sh --phase scenario_a
+                                     --from-scratch … (want expert prior after a shape
+                                     change? wipe --phase seed)
 
 Mix defaults live in scripts/train_self_play.py / TRAINING_ROADMAP.md.
 EOF
@@ -429,13 +437,15 @@ wipe_phase_dir() {
   _rm_tree "$RUNS_DIR/$1"
 }
 
-# Scenario training shared artifacts (catalog + cycle log + pre/post-split baseline evals).
+# Scenario training shared artifacts (catalog + cycle/draws logs + eval_phase + baseline evals).
 # Wiping evals/baseline is intentional on scenario start_over — that also drops the synthetic
 # summary scenario_b row. Checkpoint migration must never call this.
 wipe_scenario_training_shared() {
   _rm_tree "$EVAL_DIR/$SCENARIO_TRAINING_EVAL_PROFILE"
+  _rm_tree "$EVAL_PHASE_RUNS_DIR"
   _rm_file "$SCENARIO_CATALOG"
   _rm_file "$CYCLE_LOG"
+  _rm_file "$SCENARIO_DRAWS_LOG"
 }
 
 wipe_scenario_a() {
