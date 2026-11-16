@@ -99,7 +99,7 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `train/api/scenarios.py` | Fetch/cache catalog (family + proxy); no hard-coded name lists |
 | `model/obs.py` | Packed float → gym Dict |
 | `model/actions.py` | Pad / match / resolve legal-row index |
-| `model/features.py` | Embeddings → pitch Conv2d map; stash flatten‖non-pitch for join; GAP+proj for value |
+| `model/features.py` | Embeddings → pitch Conv2d map; stash map+non-pitch for cross-attn join; GAP+proj for value |
 | `model/legal_row_policy.py` | `row_scorer(cross_attn(map,row) ‖ non_pitch ‖ row_emb)` + soft-mask bias |
 | `model/reward.py` | `RewardConfig` / `RewardShaping` + `step_reward` + profile presets |
 | `model/export_onnx.py` | Product ONNX export of the join-score path |
