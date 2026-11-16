@@ -52,8 +52,7 @@ def test_score_legal_rows_encodes_only_batch_max_count() -> None:
         OBS_KEY_CHALLENGES: challenges,
         OBS_KEY_SOFT_MASK_LEGAL: soft,
     }
-    latent = th.zeros(batch, int(policy.mlp_extractor.latent_dim_pi))
-    logits = policy._score_legal_rows(latent, obs)
+    logits = policy._score_legal_rows(obs)
 
     assert seen["rows"] == 150
     assert logits.shape == (batch, LEGAL_ROW_SCORE_WIDTH)

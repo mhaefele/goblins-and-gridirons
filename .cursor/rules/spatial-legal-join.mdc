@@ -1,0 +1,29 @@
+---
+description: Policy join exposes full pitch + full legal row — no spatial summarizing
+alwaysApply: true
+---
+
+# Board + move join (no summarizing)
+
+Policy scoring must see the **full pitch CNN map** (flattened) and the **full
+legal-row encoding**. Do not ship GAP-only, attention-pooled, or endpoint-only
+joins as the policy’s board view.
+
+## Required
+
+```
+pitch CNN → map (N, C, H, W) → flatten
+non-pitch (benches / scalars / …) kept as-is
+row_emb = encode_legal_rows(full pack)
+row_scorer([ flatten(map) ‖ non_pitch ‖ row_emb ])
+```
+
+Value head may still GAP the pitch into the SB3 `features_dim` vector — that is
+for the critic / stock extractor contract, **not** a substitute for the join.
+
+## Forbidden
+
+- Defending “GAP / attn / gather is enough” when the ask is full board + move
+- Adding spatial summaries on the policy path without an explicit product reason
+
+See [`ai/PPO_STRATEGY.md`](ai/PPO_STRATEGY.md) (stock vs deviations).

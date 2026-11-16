@@ -1,14 +1,9 @@
-"""Join-score policy: rank this step's legal rows given the board (schema 16).
+"""Join-score policy: rank this step's legal rows given the full board + row pack.
 
-Owner: one score per packed legal row = ``f(board_latent, encode(row))``.
-Row features use the same emb style as the board trunk (including pitch x/y
-ids — not raw coordinate magnitudes). Gym action is ``Discrete(MAX_LEGAL_MOVES)``.
-Soft-mask adds a logit bias on preferred rows. Encode+score truncates to this
-batch's max ``legal_move_count`` (pad tail → ``-1e8``).
-
-MaskablePPO → ``forward`` (rollouts) / ``evaluate_actions`` (PPO + clone);
-pick via stock ``MaskableCategoricalDistribution.get_actions``.
-Strategy detail: ``ai/PPO_STRATEGY.md``.
+Owner: ``row_scorer(flatten(pitch map) ‖ non_pitch ‖ encode(row))``.
+MaskablePPO → ``forward`` / ``evaluate_actions``; pick via
+``MaskableCategoricalDistribution``. Soft-mask is a post-score logit bias only.
+See ``ai/PPO_STRATEGY.md``.
 """
 from __future__ import annotations
 
@@ -29,23 +24,24 @@ from gridiron_ai.constants import (
     OBS_KEY_LEGAL_MOVE_COUNT,
     OBS_KEY_LEGAL_MOVES,
     OBS_KEY_SOFT_MASK_LEGAL,
+    PLAY_HEIGHT,
+    PLAY_WIDTH,
     SOFT_MASK_LOGIT_BIAS,
 )
 from gridiron_ai.features import (
-    LEGAL_ROW_FEATURE_DIM,
+    JOIN_CELL_FEAT,
+    JOIN_SCORER_IN,
     GridironFeaturesExtractor,
     _PROJECTED_FEATURES,
+    _non_pitch_width,
 )
 
-# Join MLP width — track board summary so 512-d latent is not crushed again at score time.
 _SCORE_HIDDEN = 512
-# DEVIATION: SB3 stock ``net_arch`` is ``pi/vf=[64,64]``, which crushed the board trunk
-# to 64 before every legal-row join. Empty MLPs → ``latent_pi == features_dim``.
+# DEVIATION: stock SB3 ``net_arch`` is ``pi/vf=[64,64]``; empty keeps value features intact.
 POLICY_NET_ARCH: dict[str, list[int]] = dict(pi=[], vf=[])
 
 
 def maskable_ppo_policy_kwargs() -> dict[str, Any]:
-    """Shared create-time kwargs so train + clone keep the full board summary into the join."""
     return {
         "net_arch": POLICY_NET_ARCH,
         "features_extractor_kwargs": {"features_dim": _PROJECTED_FEATURES},
@@ -53,7 +49,7 @@ def maskable_ppo_policy_kwargs() -> dict[str, Any]:
 
 
 class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
-    """MaskablePPO policy that scores legal rows joined to the board latent."""
+    """MaskablePPO: score each legal row with full board flat ‖ full row_emb."""
 
     def __init__(
         self,
@@ -67,12 +63,12 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         if not isinstance(observation_space, spaces.Dict):
             raise TypeError(
                 "LegalRowActorCriticPolicy requires Dict observation_space "
-                f"(game-state keys + legal_moves); got {type(observation_space)}"
+                f"(got {type(observation_space)})"
             )
         if not isinstance(action_space, spaces.Discrete):
             raise TypeError(
                 "LegalRowActorCriticPolicy requires Discrete action_space "
-                f"(legal-row index); got {type(action_space)}"
+                f"(got {type(action_space)})"
             )
         if int(action_space.n) != LEGAL_ROW_SCORE_WIDTH:
             raise ValueError(
@@ -85,23 +81,17 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
             features_extractor_class=features_extractor_class,
             **kwargs,
         )
-        # Live train knob (default 1.0). Plain attr — not a buffer/parameter, not in
-        # observation_space (SB3 would pickle a changed Box into the zip and break resume).
         self.soft_mask_strength = 1.0
         if not self.share_features_extractor:
-            raise ValueError(
-                "LegalRowActorCriticPolicy requires share_features_extractor=True "
-                "(one GridironFeaturesExtractor shared by actor and critic)"
-            )
+            raise ValueError("LegalRowActorCriticPolicy requires share_features_extractor=True")
         if not isinstance(self.features_extractor, GridironFeaturesExtractor):
             raise TypeError(
                 "LegalRowActorCriticPolicy requires GridironFeaturesExtractor "
                 f"(got {type(self.features_extractor)})"
             )
-        # Stock action_net is Linear(latent, MAX_LEGAL) — unused; scores come from the join MLP.
-        latent_dim = int(self.mlp_extractor.latent_dim_pi)
+        # Stock action_net unused — scores come from the join MLP.
         self.row_scorer = nn.Sequential(
-            nn.Linear(latent_dim + LEGAL_ROW_FEATURE_DIM, _SCORE_HIDDEN),
+            nn.Linear(JOIN_SCORER_IN, _SCORE_HIDDEN),
             nn.ReLU(),
             nn.Linear(_SCORE_HIDDEN, 1),
         )
@@ -112,7 +102,6 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         deterministic: bool = False,
         action_masks: np.ndarray | None = None,
     ) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
-        # OVERRIDE: custom row logits; pick via stock MaskableCategoricalDistribution.
         values, logits = self._board_and_row_logits(obs)
         distribution = self._masked_distribution(logits, action_masks)
         actions = distribution.get_actions(deterministic=deterministic)
@@ -125,13 +114,10 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         actions: th.Tensor,
         action_masks: th.Tensor | None = None,
     ) -> tuple[th.Tensor, th.Tensor, th.Tensor | None]:
-        # OVERRIDE: PPO / clone — score stored row indices.
         values, logits = self._board_and_row_logits(obs)
         distribution = self._masked_distribution(logits, action_masks)
         flat_actions = actions.reshape((-1,)).long()
-        log_prob = distribution.log_prob(flat_actions)
-        entropy = distribution.entropy()
-        return values, log_prob, entropy
+        return values, distribution.log_prob(flat_actions), distribution.entropy()
 
     def predict(
         self,
@@ -141,15 +127,12 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         deterministic: bool = False,
         action_masks: np.ndarray | None = None,
     ) -> tuple[np.ndarray, tuple[np.ndarray, ...] | None]:
-        # OVERRIDE: same path as rollouts (stock Maskable uses distribution.get_actions).
         del episode_start
         self.set_training_mode(False)
         obs_tensor, vectorized_env = self.obs_to_tensor(observation)
         with th.no_grad():
             actions, _values, _log_prob = self.forward(
-                obs_tensor,
-                deterministic=deterministic,
-                action_masks=action_masks,
+                obs_tensor, deterministic=deterministic, action_masks=action_masks
             )
         action_np = actions.cpu().numpy().reshape((-1,))
         if not vectorized_env:
@@ -158,18 +141,12 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
 
     def _board_and_row_logits(self, obs: PyTorchObs) -> tuple[th.Tensor, th.Tensor]:
         features = self.extract_features(obs)
-        latent_pi, latent_vf = self.mlp_extractor(features)
+        _latent_pi, latent_vf = self.mlp_extractor(features)
         values = self.value_net(latent_vf)
-        logits = self._score_legal_rows(latent_pi, obs)
+        logits = self._score_legal_rows(obs)
         return values, logits
 
-    def _score_legal_rows(self, latent_pi: th.Tensor, obs: PyTorchObs) -> th.Tensor:
-        """Join-score legal rows; return width ``LEGAL_ROW_SCORE_WIDTH``.
-
-        Obs still pads to ``MAX_LEGAL_MOVES``, but encode+score only run through this
-        batch's busiest menu (``legal_move_count.max()``). Tail logits stay ``-1e8`` —
-        same end state as scoring pads then masking, without paying for empty slots.
-        """
+    def _score_legal_rows(self, obs: PyTorchObs) -> th.Tensor:
         if not (isinstance(obs, dict) or hasattr(obs, "keys")):
             raise TypeError(f"Expected Dict observation with legal moves, got {type(obs)}")
         legal_moves = obs[OBS_KEY_LEGAL_MOVES]
@@ -180,25 +157,31 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         except (KeyError, TypeError):
             soft = None
 
-        if not isinstance(legal_moves, th.Tensor):
-            legal_moves = th.as_tensor(legal_moves, device=latent_pi.device)
-        else:
-            legal_moves = legal_moves.to(device=latent_pi.device)
-        if not isinstance(legal_count, th.Tensor):
-            legal_count = th.as_tensor(legal_count, device=latent_pi.device)
-        else:
-            legal_count = legal_count.to(device=latent_pi.device)
-        legal_count = legal_count.reshape(-1).long()
-        if not isinstance(challenges, th.Tensor):
-            challenges = th.as_tensor(challenges, device=latent_pi.device)
-        else:
-            challenges = challenges.to(device=latent_pi.device)
-
         fe = self.features_extractor
         assert isinstance(fe, GridironFeaturesExtractor)
-        batch = int(latent_pi.shape[0])
+        device = next(self.row_scorer.parameters()).device
+        if not isinstance(legal_moves, th.Tensor):
+            legal_moves = th.as_tensor(legal_moves, device=device)
+        else:
+            legal_moves = legal_moves.to(device=device)
+        if not isinstance(legal_count, th.Tensor):
+            legal_count = th.as_tensor(legal_count, device=device)
+        else:
+            legal_count = legal_count.to(device=device)
+        legal_count = legal_count.reshape(-1).long()
+        if not isinstance(challenges, th.Tensor):
+            challenges = th.as_tensor(challenges, device=device)
+        else:
+            challenges = challenges.to(device=device)
+
+        batch = int(legal_moves.shape[0])
         pad_rows = int(legal_moves.shape[1])
-        logits = latent_pi.new_full((batch, LEGAL_ROW_SCORE_WIDTH), -1.0e8)
+        logits = legal_moves.new_full((batch, LEGAL_ROW_SCORE_WIDTH), -1.0e8).float()
+        # Unit tests may call without extract_features — zero board stash.
+        if fe._pitch_feature_map is None or fe._non_pitch_features is None:
+            fe._pitch_feature_map = logits.new_zeros(batch, JOIN_CELL_FEAT, PLAY_HEIGHT, PLAY_WIDTH)
+            fe._non_pitch_features = logits.new_zeros(batch, _non_pitch_width())
+        board = fe.consume_join_board()
         if batch == 0 or pad_rows == 0:
             return logits
         max_count = int(legal_count.max().item()) if legal_count.numel() else 0
@@ -208,22 +191,19 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
 
         live_moves = legal_moves[:, :max_count]
         row_emb = fe.encode_legal_rows(live_moves, challenges.float())
-        lat = latent_pi.unsqueeze(1).expand(batch, max_count, -1)
-        live_logits = self.row_scorer(th.cat([lat, row_emb], dim=-1)).squeeze(-1)
+        board_b = board.unsqueeze(1).expand(batch, max_count, -1)
+        live_logits = self.row_scorer(th.cat([board_b, row_emb], dim=-1)).squeeze(-1)
 
         if soft is not None:
             if not isinstance(soft, th.Tensor):
                 soft = th.as_tensor(soft, device=live_logits.device)
             else:
                 soft = soft.to(device=live_logits.device)
-            # Obs flags are 0/1; juice is soft_mask_strength (train knob), not the gym Box.
             soft = soft.reshape(batch, -1)[:, :max_count].to(dtype=live_logits.dtype)
-            bias = SOFT_MASK_LOGIT_BIAS * float(self.soft_mask_strength)
-            live_logits = live_logits + soft * bias
+            live_logits = live_logits + soft * (SOFT_MASK_LOGIT_BIAS * float(self.soft_mask_strength))
 
         row_ids = th.arange(max_count, device=live_logits.device).unsqueeze(0)
-        valid = row_ids < legal_count.unsqueeze(1)
-        live_logits = live_logits.masked_fill(~valid, -1.0e8)
+        live_logits = live_logits.masked_fill(~(row_ids < legal_count.unsqueeze(1)), -1.0e8)
         logits[:, :max_count] = live_logits
         return logits
 

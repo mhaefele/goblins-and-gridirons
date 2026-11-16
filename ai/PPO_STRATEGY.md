@@ -13,9 +13,38 @@ Related: [`DESIGN.md`](DESIGN.md) (wire locks) · [`ACTION_SAMPLING.md`](ACTION_
 
 ## One-sentence strategy
 
-**Score every legal menu row given a board summary**, sample a `Discrete(1024)`
-index under a hard legality mask (plus optional soft preference bias), and train
-with MaskablePPO on harness rewards — soft-mask is exposure only, never the grade.
+**Score every legal menu row against the full board (flattened pitch map +
+non-pitch) and the full row pack**, sample a `Discrete(1024)` index under a hard
+legality mask (optional soft preference bias), train with MaskablePPO on harness
+rewards — soft-mask is exposure only, never the grade.
+
+---
+
+## Stock framework vs our deviations
+
+### Riding the rails (standard SB3 / sb3-contrib)
+
+| Piece | Stock behavior |
+|-------|----------------|
+| Algo | `MaskablePPO` + `MaskableActorCriticPolicy` |
+| Obs | Gym `Dict`; `extract_features(obs)` → one `features_dim` vector |
+| Value | `mlp_extractor` + `value_net` on that vector |
+| Action space | `Discrete(n)` + `MaskableCategoricalDistribution` (hard mask) |
+| Train loop | collect rollouts → GAE → `evaluate_actions` → PPO update |
+
+### Deviations (why we left the rails)
+
+| Deviation | Why |
+|-----------|-----|
+| Custom `GridironFeaturesExtractor` instead of `CombinedExtractor` | Stock would Flatten each Box; we embed cells + Conv2d pitch |
+| `forward` returns value features **and** stashes join board | SB3 extractor API is one tensor; join needs the unflattened pitch map |
+| Custom `LegalRowActorCriticPolicy` — ignore stock `action_net` | Stock is `Linear(latent → n_actions)`; we score **each legal row** with board‖row |
+| Join = `flatten(pitch CNN map) ‖ non_pitch ‖ row_emb` | Expose full board + full move — **no** GAP / attention / gather on the policy path |
+| Soft-mask logit bias after scores | Curriculum sampling tilt; not in the feature vector |
+| ONNX wrapper mirrors join + masked argmax | Product seats; soft-mask omitted |
+
+**Value path still GAPs the pitch** into the 512-d SB3 features vector (critic /
+stock contract). That summary is **not** what the policy join uses.
 
 ---
 
@@ -40,44 +69,34 @@ embeds and scores.
 
 ```text
 Dict obs
-  ├─ pitch (15,15,11) ──► per-cell emb ──► Conv2d×3 ──► GAP ──► 128-d
-  ├─ benches (2,10,15) ─► per-slot emb ──► flatten
-  ├─ scalars / challenges / deck / hand / held_check ─► emb + scaled floats
-  └─ concat ──► Linear → ReLU → 512-d board latent
-                    │
-                    ├─ value head (empty pi/vf MLPs → latent_vf == features)
-                    │
-                    └─ for each live legal row:
-                         encode_legal_rows(row) → 93-d
-                         row_scorer([ latent_pi ‖ row_emb ]) → logit
-                         + soft_mask_legal × SOFT_MASK_LOGIT_BIAS × soft_mask_strength
-                         pad / illegal → −1e8
-                    │
-                    └─ MaskableCategorical over 1024 → row index
+  ├─ pitch (15,15,11) ──► per-cell emb ──► Conv2d×3 ──► map (128,15,11)
+  │                                              ├─ GAP ──► 128-d ──┐
+  │                                              └─ flatten 21120-d ─┼─ join board
+  ├─ benches / scalars / challenges / deck / hand / held ── emb ────┘
+  │
+  ├─ value: Linear(GAP‖non-pitch) → 512 → value_net          (SB3 rail)
+  │
+  └─ policy: for each live legal row
+       encode_legal_rows(row) → 93-d
+       row_scorer([ flatten(map) ‖ non_pitch ‖ row_emb ]) → logit
+       + soft_mask bias (optional)
+       pad / illegal → −1e8
+       → MaskableCategorical → row index
 ```
 
 Wire / pack widths: `gridiron_ai/constants.py` (`CELL_CH_*`, `ACTION_FACTOR_WIDTHS`,
 schema 25). Encoding: `features.py`. Deeper “engine knows vs pack exposes” inventory:
 [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#legal-move-information-available-vs-exposed).
 
-### Board trunk
+### Board encoding
 
-- Pitch is already spatial in the gym Dict: `(C,H,W) = (15, 15, 11)`.
-- Each cell is embedded (enums + pitch-axis ids + scaled stats) into an
-  `_OCCUPANT_WIDTH`-channel map (**64**), then a small **Conv2d** stack
-  (`64 → 64 → 128`, `k=3`, pad 1) + **global average pool**.
-- Benches are **not** convolved — they are a dugout table, not pitch neighbors
-  (same 15 channels per slot, emb + flatten).
-- Non-pitch tensors fuse with the CNN vector through one projection Linear to
-  **512** (`_PROJECTED_FEATURES`).
-
-**Intentional non-goals (for now):**
-
-- No source/target gather from the CNN feature map into the join (Global+Local
-  micro features). Join still uses the **global** 512-d latent ⊕ independently
-  encoded row factors (including categorical source/target pitch embeddings).
-- No explicit intervening-lane / path features. Endpoint emb ids + global pool
-  are not a lane model.
+- Pitch gym shape: `(C,H,W) = (15, 15, 11)`.
+- Per-cell emb → `_OCCUPANT_WIDTH` (**64**) → Conv2d `64→64→128` → map
+  **(N, 128, 15, 11)**.
+- **Policy join:** flatten that map (**21120**) ‖ non-pitch features ‖ full
+  `row_emb` (**93**).
+- **Value / SB3 features:** GAP map → 128 ‖ non-pitch → Linear → **512**.
+- Benches are a table (not convolved).
 
 #### Per-cell / bench channels (15)
 
@@ -104,8 +123,8 @@ occupant fields last (schema 25).
 | 13 | ability | **yes** | Catalog ability enum (or absent) | emb | 32 | 8 |
 | 14 | canThrowTeammate | **yes** | Profile flag: allowed to declare Throw Team-mate | 0/1 | — | 1 |
 
-Pitch map: `165 × 64` → Conv → **128**-d GAP. Benches: `2 × 10 × 64` → flatten **1280**-d
-(before the shared projection with non-pitch).
+Pitch map: `165 × 64` → Conv → **(128, 15, 11)** — join flattens (**21120**); value GAPs to
+**128**. Benches: `2 × 10 × 64` → flatten **1280**-d (into non-pitch / value trunk).
 
 Dropped from the cell pack (schema 25) — were **player-level menu summaries**, not
 square facts. Nested JSON may still expose `AiPlayerAffordance` for tests.
@@ -134,10 +153,11 @@ square facts. Nested JSON may still expose `AiPlayerAffordance` for tests.
 - Each packed row is **15 ints** (`FACTORS_PER_LEGAL_MOVE`, schema 25).
 - `encode_legal_rows` → **93-d**; reuses board emb tables (`pitch_x/y_emb`, kind,
   player index, challenge, bonus, faces).
-- `row_scorer`: `Linear(512 + 93 → 512) → ReLU → Linear → 1`.
+- `row_scorer`: `Linear(21120 + non_pitch + 93 → 512) → ReLU → Linear → 1`
+  (`flatten(pitch) ‖ non_pitch ‖ row_emb`). Invalidates older policy zips.
 - Score only through this batch’s `legal_move_count.max()`; pad tail stays −1e8.
 - SB3 `net_arch = {pi: [], vf: []}` so stock `[64,64]` MLPs do **not** crush the
-  512-d trunk before the join (`POLICY_NET_ARCH`).
+  512-d **value** features (`POLICY_NET_ARCH`).
 
 #### Packed legal-row factors (15)
 
@@ -146,21 +166,24 @@ domain). **Feat** = size in the 93-d row vector (`EMBED_DIM = 8`).
 
 | Slot | Factor | Pack | Vocab | Encode | Feat | Definition |
 |-----:|--------|-----:|------:|--------|-----:|------------|
-| 0 | actor | 10 | 11 | emb | 8 | Who acts — roster id matching cell `playerIndex` (`SENTINEL` if kind has no free actor) |
-| 1 | kind | 41 | 41 | emb | 8 | Legal verb (`run` / `throw` / `block` / claim / …) |
+| 0 | kind | 41 | 41 | emb | 8 | Legal verb (`run` / `throw` / `block` / claim / …) |
+| 1 | actorHasBall | 2 | — | 0/1 | 1 | Actor holds the ball (cell `hasBall` on source) |
 | 2 | sourceX | 11 | 12 | pitch-x emb | 8 | Actor’s current square x (not who-id) |
 | 3 | sourceY | 15 | 16 | pitch-y emb | 8 | Actor’s current square y |
-| 4 | targetX | 11 | 12 | pitch-x emb | 8 | Destination column (path end / throw / block target); `SENTINEL` if unused |
-| 5 | targetY | 15 | 16 | pitch-y emb | 8 | Destination row |
-| 6 | actorHasBall | 2 | — | 0/1 | 1 | Actor holds the ball right now (also on their cell `hasBall`) |
-| 7 | targetHasBall | 2 | — | 0/1 | 1 | Dest square has ball (loose or carrier) — LBR pickup / bounce cue |
-| 8 | throwSuccessChancePercent | 101 | — | `/100` | 1 | Throw P(success)×100; `0` = non-throw (not cell `throwStat`) |
-| 9 | blockDiceCount | 3 | — | `/3` | 1 | Declare-time Block dice pool `1..3`; `SENTINEL` / 0 feat if non-block |
-| 10 | challengeSlot | 3 | 16† | gather → cond emb + pts | 9 | Which active challenge this claim/replace targets (`SENTINEL` if not a claim row); † cond vocab |
-| 11 | attachedBonus | 20 | 21 | emb | 8 | Bonus card spent on this twin / Play* / Do-Over (`SENTINEL` if none) |
+| 4 | actor | 10 | 11 | emb | 8 | Roster id matching cell `playerIndex` (`SENTINEL` if unused) |
+| 5 | targetHasBall | 2 | — | 0/1 | 1 | Dest has ball (loose or carrier) — LBR pickup cue |
+| 6 | targetX | 11 | 12 | pitch-x emb | 8 | Destination column; `SENTINEL` if unused |
+| 7 | targetY | 15 | 16 | pitch-y emb | 8 | Destination row |
+| 8 | blockDiceCount | 3 | — | `/3` | 1 | Declare-time Block dice pool `1..3`; `SENTINEL` / 0 feat if non-block |
+| 9 | throwSuccessChancePercent | 101 | — | `/100` | 1 | Throw P(success)×100; `0` = non-throw (not cell `throwStat`) |
+| 10 | challengeSlot | 3 | 16† | gather → cond emb + pts | 9 | Claim/replace slot (`SENTINEL` if not); † cond vocab |
+| 11 | attachedBonus | 20 | 21 | emb | 8 | Bonus card on twin / Play* / Do-Over (`SENTINEL` if none) |
 | 12 | face0 | 5 | 6 | emb | 8 | Enforcer face-order slot 0 (`SENTINEL` unused) |
 | 13 | face1 | 5 | 6 | emb | 8 | Face-order slot 1 |
 | 14 | face2 | 5 | 6 | emb | 8 | Face-order slot 2 |
+
+Source block order matches cell `hasBall → pitchX/Y → playerIndex`; outcomes match
+`blockDice` then `throwStat`.
 
 Parallel (not pack columns): `soft_mask_legal` / `passing_legal` — length
 `MAX_LEGAL_MOVES` (1024) int8 flags; sampling / grade sidecars, not join features.
@@ -231,8 +254,8 @@ Summary of intentional deviations:
 |------|------|-----|
 | `learning_rate` | `1e-3` | Opening mass stayed flat at stock `3e-4` |
 | `ent_coef` | `0.005` | Large Discrete peaks fast at 0 |
-| `net_arch` | empty pi/vf | Keep 512-d board summary into the join |
-| board / join hidden | `512` / `512` | Trunk and scorer track each other |
+| `net_arch` | empty pi/vf | Keep 512-d value features (stock `[64,64]` would crush) |
+| value / join hidden | `512` / `512` | Value trunk width; `row_scorer` hidden |
 | `n_steps` × `n_envs` | `128` × `30` | Parallel HTTP envs |
 | `batch_size` | `256` | Matches multi-env chunks |
 | `device` | `cpu` | Harness default |
@@ -269,12 +292,8 @@ for product seats).
 
 ---
 
-## Next ablation (not landed)
+## Next ablation
 
-**Global + Local join:** keep the CNN map before GAP; gather feature vectors at
-each row’s `sourceX/Y` and `targetX/Y`; concat
-`[ global ‖ src ‖ tgt ‖ row_flags/embs ]` into `row_scorer`.
-
-That still does not model intervening lanes unless path/ray features are added
-separately. Measure trunk-only CNN against BlindSpotArena / drill openings before
-spending on gather.
+**Path / lane features** (optional): intervening squares between source and
+target — not encoded as an explicit path tensor today (the flat map still
+contains every cell).

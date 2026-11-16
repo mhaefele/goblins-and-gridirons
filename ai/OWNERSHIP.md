@@ -88,8 +88,8 @@ Follow-up split: [AI2.14](BACKLOG.md#ai214--split-train_self_play).
 | `api/scenarios.py` | Fetch/cache catalog (family + proxy); no hard-coded name lists |
 | `obs.py` | Packed float → gym Dict |
 | `actions.py` | Pad / match / resolve legal-row index |
-| `legal_row_policy.py` | Join-score legal rows (+ soft-mask bias on preferred rows) |
-| `features.py` | Embeddings → pitch Conv2d+GAP + fuse Linear; `encode_legal_rows` reuses board embs (does not re-pack) |
+| `features.py` | Embeddings → pitch Conv2d map; stash flatten‖non-pitch for join; GAP+proj for value |
+| `legal_row_policy.py` | `row_scorer(flatten(pitch) ‖ non_pitch ‖ row_emb)` + soft-mask bias |
 
 | `reward.py` | `RewardConfig` / `RewardShaping` + `step_reward` + profile presets |
 | `train_mix.py` | `TrainMix` — CLI train/eval amounts + cadence (`from_args`); answers how much to run |

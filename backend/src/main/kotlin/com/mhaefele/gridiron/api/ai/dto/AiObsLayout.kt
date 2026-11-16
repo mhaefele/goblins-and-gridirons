@@ -70,8 +70,9 @@ object AiObsLayout {
      * v25: cell pack drops menu-summary [AiPlayerAffordance] channels (TD/claim/pickup/reach bbox);
      * pitchX/Y/distToBall move next to terrain/hasBall so occupant fields are last. Nested JSON
      * may still carry affordance for tests; flat pack does not. Candidate row bits → PPO_STRATEGY.
-     * Legal-row pack reordered (same 15 cols): actor/kind → source→target → ball → throw%/blockDice
-     * → challenge/bonus → faces (folded before dump used 25).
+     * Legal-row pack reordered (same 15 cols): kind → source square (aBall, srcXY, actor) →
+     * dest (tBall, tgtXY) → block/throw → cards/faces — rhymes with cell hasBall/pitch/playerIndex
+     * then blockDice/throwStat (folded before dump used 25).
      */
     const val SCHEMA_VERSION = 25
 
@@ -98,9 +99,9 @@ object AiObsLayout {
     const val HELD_CHECK_FIELD_COUNT = 1 + 1 + MAX_HELD_BLOCK_FACES
 
     /**
-     * Packed legal-row width (15): actor, kind, sourceX/Y, targetX/Y, actorHasBall, targetHasBall,
-     * throwSuccessChancePercent, blockDiceCount, challengeSlot, attachedBonus, face0..2.
-     * Who-id = roster actor, not source coords. Absent axes → [SENTINEL]
+     * Packed legal-row width (15): kind, actorHasBall, sourceX/Y, actor, targetHasBall, targetX/Y,
+     * blockDiceCount, throwSuccessChancePercent, challengeSlot, attachedBonus, face0..2.
+     * Source block rhymes with cell hasBall → pitch → playerIndex. Absent axes → [SENTINEL]
      * (not MultiDiscrete heads — join-score embeds like board).
      */
     const val ACTION_FACTOR_COUNT = 15
@@ -130,9 +131,10 @@ object AiObsLayout {
     val BLOCK_FACE_PACK_SIZE: Int = 5
     /** Column live-value widths — must match `ai/gridiron_ai/constants.py` ACTION_FACTOR_WIDTHS. Not MultiDiscrete heads. */
     val ACTION_FACTOR_WIDTHS: IntArray = intArrayOf(
-        ACTOR_PACK_WIDTH, KIND_PACK_WIDTH,
-        PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH,
-        BOOL_PACK_WIDTH, BOOL_PACK_WIDTH, THROW_SUCCESS_CHANCE_PACK_WIDTH, BLOCK_DICE_COUNT_PACK_WIDTH,
+        KIND_PACK_WIDTH,
+        BOOL_PACK_WIDTH, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH, ACTOR_PACK_WIDTH,
+        BOOL_PACK_WIDTH, PITCH_X_PACK_WIDTH, PITCH_Y_PACK_WIDTH,
+        BLOCK_DICE_COUNT_PACK_WIDTH, THROW_SUCCESS_CHANCE_PACK_WIDTH,
         CHALLENGE_SLOT_PACK_WIDTH, ATTACHED_BONUS_PACK_WIDTH,
         BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE, BLOCK_FACE_PACK_SIZE,
     )
@@ -141,20 +143,19 @@ object AiObsLayout {
     /** ONNX / policy output width — one score per padded legal-row slot. */
     const val LEGAL_ROW_SCORE_WIDTH: Int = MAX_LEGAL_MOVES
 
-    /** Who / verb — roster playerIndex (same id on the occupied cell). */
-    const val FACTOR_ACTOR = 0
-    const val FACTOR_KIND = 1
-    /** From → to pitch (0-based); not who-id. */
+    /** Verb, then source square ≈ cell hasBall / pitch / playerIndex. */
+    const val FACTOR_KIND = 0
+    const val FACTOR_ACTOR_HAS_BALL = 1
     const val FACTOR_SOURCE_X = 2
     const val FACTOR_SOURCE_Y = 3
-    const val FACTOR_TARGET_X = 4
-    const val FACTOR_TARGET_Y = 5
-    /** Ball on actor square / dest square (loose or carrier); 0/1 when axes apply. */
-    const val FACTOR_ACTOR_HAS_BALL = 6
-    const val FACTOR_TARGET_HAS_BALL = 7
-    /** Kind outcomes — throw P(success) percent (`0` = non-throw); block dice ([SENTINEL] if non-block). */
-    const val FACTOR_THROW_SUCCESS_CHANCE = 8
-    const val FACTOR_BLOCK_DICE_COUNT = 9
+    const val FACTOR_ACTOR = 4
+    /** Dest square ≈ cell hasBall / pitch. */
+    const val FACTOR_TARGET_HAS_BALL = 5
+    const val FACTOR_TARGET_X = 6
+    const val FACTOR_TARGET_Y = 7
+    /** Outcomes ≈ cell blockDice then throwStat order. */
+    const val FACTOR_BLOCK_DICE_COUNT = 8
+    const val FACTOR_THROW_SUCCESS_CHANCE = 9
     /** Cards / specials. */
     const val FACTOR_CHALLENGE_SLOT = 10
     const val FACTOR_ATTACHED_BONUS = 11

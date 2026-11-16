@@ -1,14 +1,12 @@
 """Game-state + legal-row feature encoding for LegalRowActorCriticPolicy.
 
-Owner: gym Dict → board trunk (pitch CNN + non-pitch MLP pieces); same emb/coord
-style for each legal row (actor / kind / target xy / source xy / actorHasBall /
-targetHasBall / challenge). Policy join-scores board latent ⊕ row features.
+Owner: gym Dict → board features + legal-row encode. Policy join =
+``flatten(pitch CNN map) ‖ non_pitch ‖ row_emb`` (no spatial summary on the
+join). Value path still GAP+projects for SB3's single features vector.
 See ``ai/OWNERSHIP.md`` / ``ai/PPO_STRATEGY.md``.
 
-# DEVIATION: stock CombinedExtractor would Flatten each Dict Box. We embed enums
-# and pitch x/y ids, run Conv2d+GAP on the pitch map, keep benches as a table, then
-# Linear-project the concat. Spatial x/y are categorical embeddings (not raw
-# magnitudes); distToBall and stats are scaled ~0..1.
+# DEVIATION: stock CombinedExtractor flattens each Dict Box. We embed cells,
+# Conv2d the pitch (keep the map for the join), GAP only for the value trunk.
 """
 
 from __future__ import annotations
@@ -107,42 +105,54 @@ _OCCUPANT_WIDTH = (
     + 4 * EMBED_DIM  # playerIndex, teamRel, status, ability
     + 6  # turnEnded, move, blockDice, throwStat, armour, canThrowTeammate
 )
-# Legal row: actor + kind + source→target x/y + ball + throw%/block + challenge + bonus + faces.
-LEGAL_ROW_FEATURE_DIM = (
-    EMBED_DIM  # actor
-    + EMBED_DIM  # kind
-    + 2 * EMBED_DIM  # source x/y ids
-    + 2 * EMBED_DIM  # target x/y ids
-    + 2  # actorHasBall + targetHasBall (0/1)
-    + 1  # throwSuccessChancePercent / 100 (from throwCheckNeeded in Kotlin; hand-off = 1.0)
-    + 1  # blockDiceCount / 3 (from LegalAction.Block; 0 = non-block)
-    + (EMBED_DIM + 1)  # challenge condition + scaled points
-    + EMBED_DIM  # attached bonus
-    + MAX_HELD_BLOCK_FACES * EMBED_DIM  # face0..2
+# Legal row segments — order matches pack (schema 25) and rhymes with cell channels.
+# Verbose |W| meters use these names; must match ``encode_legal_rows`` cat order.
+LEGAL_ROW_FEATURE_SEGMENTS: tuple[tuple[str, int], ...] = (
+    ("kind", EMBED_DIM),
+    ("actorHasBall", 1),
+    ("sourceXY", 2 * EMBED_DIM),
+    ("actor", EMBED_DIM),
+    ("targetHasBall", 1),
+    ("targetXY", 2 * EMBED_DIM),
+    ("blockDiceCount", 1),
+    ("throwSuccessChance", 1),
+    ("challenge", EMBED_DIM + 1),
+    ("attachedBonus", EMBED_DIM),
+    ("faces", MAX_HELD_BLOCK_FACES * EMBED_DIM),
 )
+LEGAL_ROW_FEATURE_DIM = sum(width for _, width in LEGAL_ROW_FEATURE_SEGMENTS)
 # heldCheck: kind emb + scaled d6 + 3 face embs.
 _HELD_CHECK_WIDTH = EMBED_DIM + 1 + MAX_HELD_BLOCK_FACES * EMBED_DIM
-# Pitch spatial trunk: emb map → Conv2d → GAP. Join still uses global latent ⊕ row embs
-# (no source/target feature-map gather yet — see PPO_STRATEGY.md).
+# Pitch: emb map → Conv2d → (N, C, H, W). Join flattens the map; value path GAPs it.
 _PITCH_CNN_WIDTH = 64
 _PITCH_CNN_OUT = 128
-# Board trunk width — also the join-side summary when policy net_arch leaves pi/vf empty.
+JOIN_CELL_FEAT = _PITCH_CNN_OUT
+JOIN_PITCH_FLAT = JOIN_CELL_FEAT * PLAY_HEIGHT * PLAY_WIDTH  # 128×15×11
+# SB3 value trunk width (GAP pitch ‖ non-pitch → Linear).
 _PROJECTED_FEATURES = 512
 
 
-def _concat_width() -> int:
-    """Size before the projection Linear — keep in sync with forward()."""
-    pitch = _PITCH_CNN_OUT
+def _non_pitch_width() -> int:
     benches = 2 * BENCH_SLOTS * _OCCUPANT_WIDTH
-    scalars = EMBED_DIM + (SCALAR_COUNT - 1)  # phase embedded, other scalars scaled
+    scalars = EMBED_DIM + (SCALAR_COUNT - 1)
     challenges = ACTIVE_CHALLENGE_SLOTS * (EMBED_DIM + 1)
     deck = EMBED_DIM + 2
     hand = BONUS_HAND_SLOTS * EMBED_DIM
-    return pitch + benches + scalars + challenges + deck + hand + _HELD_CHECK_WIDTH
+    return benches + scalars + challenges + deck + hand + _HELD_CHECK_WIDTH
+
+
+def _concat_width() -> int:
+    """GAP pitch + non-pitch — value-trunk Linear in_features."""
+    return _PITCH_CNN_OUT + _non_pitch_width()
+
+
+# row_scorer input: flatten(pitch map) ‖ non-pitch ‖ row_emb (no latent / attn / gather).
+JOIN_BOARD_FEAT = JOIN_PITCH_FLAT + _non_pitch_width()
+JOIN_SCORER_IN = JOIN_BOARD_FEAT + LEGAL_ROW_FEATURE_DIM
 
 
 class GridironFeaturesExtractor(BaseFeaturesExtractor):
-    """Embed packed cells; Conv2d+GAP on pitch; flatten benches; Linear fuse."""
+    """Embed cells; Conv2d pitch map; GAP+proj for SB3 value features; stash map for join."""
 
     def __init__(self, observation_space: spaces.Dict, features_dim: int = _PROJECTED_FEATURES) -> None:
         super().__init__(observation_space, features_dim=features_dim)
@@ -156,12 +166,9 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         self.bonus_emb = nn.Embedding(BONUS_PLAY_VOCAB, EMBED_DIM)
         self.held_kind_emb = nn.Embedding(AI_HELD_CHECK_KIND_VOCAB, EMBED_DIM)
         self.block_face_emb = nn.Embedding(BLOCK_DIE_FACE_VOCAB, EMBED_DIM)
-        # Action-menu kind — same emb width as board enums. Bonus column shares bonus_emb with hand.
         self.kind_emb = nn.Embedding(LEGAL_ACTION_KIND_COUNT, EMBED_DIM)
-        # Shared pitch-axis ids for cells and legal-row dest/source.
         self.pitch_x_emb = nn.Embedding(PITCH_X_VOCAB, EMBED_DIM)
         self.pitch_y_emb = nn.Embedding(PITCH_Y_VOCAB, EMBED_DIM)
-        # Local spatial bias on the 15×11 pitch only; benches stay a non-neighbor table.
         self.pitch_cnn = nn.Sequential(
             nn.Conv2d(_OCCUPANT_WIDTH, _PITCH_CNN_WIDTH, kernel_size=3, padding=1),
             nn.ReLU(),
@@ -169,53 +176,69 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
             nn.ReLU(),
             nn.Conv2d(_PITCH_CNN_WIDTH, _PITCH_CNN_OUT, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.AdaptiveAvgPool2d(1),
         )
-
+        self.pitch_gap = nn.AdaptiveAvgPool2d(1)
         self.proj = nn.Linear(_concat_width(), features_dim)
         self.proj_act = nn.ReLU()
+        # Stash for policy join (SB3 forward can only return the value features vector).
+        self._pitch_feature_map: th.Tensor | None = None
+        self._non_pitch_features: th.Tensor | None = None
 
     def forward(self, observations: TensorDict) -> th.Tensor:
-        # OVERRIDE (BaseFeaturesExtractor): split Dict → one vector for the stock MLP.
-        pieces = [
-            self._encode_scalars(observations[OBS_KEY_SCALARS].float()),
-            self._encode_challenges(observations[OBS_KEY_CHALLENGES].float()),
-            self._encode_deck(observations[OBS_KEY_DECK].float()),
-            self._encode_hand(observations[OBS_KEY_HAND].float()),
-            self._encode_held_check(observations[OBS_KEY_HELD_CHECK].float()),
-            self._encode_pitch(observations[OBS_KEY_PITCH].float()),
-            self._encode_benches(observations[OBS_KEY_BENCHES].float()),
-        ]
-        return self.proj_act(self.proj(th.cat(pieces, dim=1)))
+        # OVERRIDE: one vector for SB3 value / mlp_extractor. Join board is stashed.
+        scalars = self._encode_scalars(observations[OBS_KEY_SCALARS].float())
+        challenges = self._encode_challenges(observations[OBS_KEY_CHALLENGES].float())
+        deck = self._encode_deck(observations[OBS_KEY_DECK].float())
+        hand = self._encode_hand(observations[OBS_KEY_HAND].float())
+        held = self._encode_held_check(observations[OBS_KEY_HELD_CHECK].float())
+        pitch_gap = self._encode_pitch(observations[OBS_KEY_PITCH].float())
+        benches = self._encode_benches(observations[OBS_KEY_BENCHES].float())
+        non_pitch = th.cat([scalars, challenges, deck, hand, held, benches], dim=1)
+        self._non_pitch_features = non_pitch
+        return self.proj_act(self.proj(th.cat([scalars, challenges, deck, hand, held, pitch_gap, benches], dim=1)))
+
+    def consume_join_board(self) -> th.Tensor:
+        """``flatten(pitch map) ‖ non_pitch`` from the last ``forward``; clears the stash.
+
+        # DEVIATION: SB3 ``BaseFeaturesExtractor.forward`` returns one tensor (value trunk).
+        # Honest API would return ``(value_features, join_board)``; we stash join_board instead.
+        """
+        pitch_map = self._pitch_feature_map
+        non_pitch = self._non_pitch_features
+        self._pitch_feature_map = None
+        self._non_pitch_features = None
+        if pitch_map is None or non_pitch is None:
+            raise RuntimeError("join board missing — call extract_features / forward first")
+        return th.cat([pitch_map.flatten(1), non_pitch], dim=1)
 
     def encode_legal_rows(self, legal_moves: th.Tensor, challenges: th.Tensor) -> th.Tensor:
         """Encode each legal-row int tuple like board channels — shared embs + pitch xy ids.
 
-        ``legal_moves``: (N, R, 15) actor, kind, sourceX/Y, targetX/Y, actorHasBall,
-        targetHasBall, throwSuccessChancePercent, blockDiceCount, challengeSlot,
+        ``legal_moves``: (N, R, 15) kind, actorHasBall, sourceX/Y, actor, targetHasBall,
+        targetX/Y, blockDiceCount, throwSuccessChancePercent, challengeSlot,
         attachedBonus, face0..2 (−1 pad rows).
         ``challenges``: (N, 3, 2) board challenge slots. Unused axes → unused emb row.
         """
-        actors = legal_moves[..., 0].long()
-        kinds = legal_moves[..., 1].long()
+        kinds = legal_moves[..., 0].long()
+        actor_has_ball = legal_moves[..., 1].float().clamp(0.0, 1.0).unsqueeze(-1)
         source_xs = legal_moves[..., 2].long()
         source_ys = legal_moves[..., 3].long()
-        target_xs = legal_moves[..., 4].long()
-        target_ys = legal_moves[..., 5].long()
-        actor_has_ball = legal_moves[..., 6].float().clamp(0.0, 1.0).unsqueeze(-1)
-        target_has_ball = legal_moves[..., 7].float().clamp(0.0, 1.0).unsqueeze(-1)
-        # Throw: Kotlin packs 0..100 (0 = non-throw) — scale only.
-        throw_success = (legal_moves[..., 8].float().clamp(0.0, 100.0) / 100.0).unsqueeze(-1)
+        actors = legal_moves[..., 4].long()
+        target_has_ball = legal_moves[..., 5].float().clamp(0.0, 1.0).unsqueeze(-1)
+        target_xs = legal_moves[..., 6].long()
+        target_ys = legal_moves[..., 7].long()
         # Block dice: SENTINEL (-1) = non-block; else scale only.
-        block_raw = legal_moves[..., 9].float()
+        block_raw = legal_moves[..., 8].float()
         block_dice = th.where(block_raw < 0, th.zeros_like(block_raw), block_raw.clamp(0.0, 3.0) / 3.0).unsqueeze(-1)
+        # Throw: Kotlin packs 0..100 (0 = non-throw) — scale only.
+        throw_success = (legal_moves[..., 9].float().clamp(0.0, 100.0) / 100.0).unsqueeze(-1)
         slots = legal_moves[..., 10].long()
         bonuses = legal_moves[..., 11].long()
         faces = legal_moves[..., 12:15].long()
 
-        actor_e = self.player_index_emb(self._roster_index(actors))
         kind_e = self.kind_emb(kinds.clamp(min=0, max=LEGAL_ACTION_KIND_COUNT - 1))
         source_feat = th.cat([self._embed_pitch_x(source_xs), self._embed_pitch_y(source_ys)], dim=-1)
+        actor_e = self.player_index_emb(self._roster_index(actors))
         target_feat = th.cat([self._embed_pitch_x(target_xs), self._embed_pitch_y(target_ys)], dim=-1)
 
         has_challenge = (slots >= 0) & (slots < ACTIVE_CHALLENGE_SLOTS)
@@ -238,7 +261,19 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         face_feat = face_e.flatten(-2, -1)
 
         return th.cat(
-            [actor_e, kind_e, source_feat, target_feat, actor_has_ball, target_has_ball, throw_success, block_dice, challenge_feat, bonus_feat, face_feat],
+            [
+                kind_e,
+                actor_has_ball,
+                source_feat,
+                actor_e,
+                target_has_ball,
+                target_feat,
+                block_dice,
+                throw_success,
+                challenge_feat,
+                bonus_feat,
+                face_feat,
+            ],
             dim=-1,
         )
 
@@ -277,7 +312,7 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
         return th.cat([kind, d6, faces], dim=1)
 
     def _encode_pitch(self, pitch: th.Tensor) -> th.Tensor:
-        """pitch: (N, C, H, W) → per-cell emb map → Conv2d → GAP → (_PITCH_CNN_OUT,)."""
+        """pitch: (N, C, H, W) → Conv map (stashed) → GAP → (_PITCH_CNN_OUT,) for trunk."""
         if pitch.shape[1] != NUMBERS_PER_BOARD_CELL:
             raise ValueError(f"pitch channel count {pitch.shape[1]} != {NUMBERS_PER_BOARD_CELL}")
         if pitch.shape[2] != PLAY_HEIGHT or pitch.shape[3] != PLAY_WIDTH:
@@ -286,7 +321,9 @@ class GridironFeaturesExtractor(BaseFeaturesExtractor):
             )
         # Channel-last emb, then NCHW for Conv2d (occupancy-rich planes, not raw pack ints).
         emb = self._encode_occupants(pitch.permute(0, 2, 3, 1))
-        return self.pitch_cnn(emb.permute(0, 3, 1, 2).contiguous()).flatten(1)
+        spatial = self.pitch_cnn(emb.permute(0, 3, 1, 2).contiguous())
+        self._pitch_feature_map = spatial
+        return self.pitch_gap(spatial).flatten(1)
 
     def _encode_benches(self, benches: th.Tensor) -> th.Tensor:
         """benches: (N, 2, 10, C) — us then them; not spatial neighbors of the pitch."""

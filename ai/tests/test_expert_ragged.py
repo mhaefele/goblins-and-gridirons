@@ -46,9 +46,9 @@ def _record(
 
 
 def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
-    row_a = [1, 0, 2, 3, 10, 0, 0, 0, 0, -1, 2, 5, -1, -1, -1]
-    row_b = [2, 1, 4, 5, 0, 1, 0, 0, 0, -1, 2, 5, -1, -1, -1]
-    row_c = [1, 2, 6, 7, 1, 1, 0, 0, 0, -1, 0, 5, -1, -1, -1]
+    row_a = [0, 0, 2, 3, 1, 0, 10, 0, -1, 0, 2, 5, -1, -1, -1]
+    row_b = [1, 0, 4, 5, 2, 0, 0, 1, -1, 0, 2, 5, -1, -1, -1]
+    row_c = [2, 0, 6, 7, 1, 0, 1, 1, -1, 0, 0, 5, -1, -1, -1]
     jsonl = tmp_path / "tiny.jsonl"
     lines = [
         _record([row_a, row_b], action_id="RUN_h0_1x1"),
@@ -85,7 +85,7 @@ def test_jsonl_to_npz_stores_ragged_legals(tmp_path: Path) -> None:
 
 
 def test_jsonl_ignores_legacy_soft_mask_legal(tmp_path: Path) -> None:
-    row_a = [1, 0, 2, 3, 10, 0, 0, 0, 0, -1, 2, 5, -1, -1, -1]
+    row_a = [0, 0, 2, 3, 1, 0, 10, 0, -1, 0, 2, 5, -1, -1, -1]
     jsonl = tmp_path / "legacy.jsonl"
     jsonl.write_text(
         json.dumps(_record([row_a], soft_mask=[True])) + "\n",
@@ -99,7 +99,7 @@ def test_jsonl_ignores_legacy_soft_mask_legal(tmp_path: Path) -> None:
 
 
 def test_load_npz_tolerates_legacy_preferred_flat(tmp_path: Path) -> None:
-    row_a = [1, 0, 2, 3, 10, 0, 0, 0, 0, -1, 2, 5, -1, -1, -1]
+    row_a = [0, 0, 2, 3, 1, 0, 10, 0, -1, 0, 2, 5, -1, -1, -1]
     jsonl = tmp_path / "tiny.jsonl"
     jsonl.write_text(json.dumps(_record([row_a])) + "\n", encoding="utf-8")
     npz = tmp_path / "tiny.npz"

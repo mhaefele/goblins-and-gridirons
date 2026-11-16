@@ -81,20 +81,20 @@ class PackedObsAndLegalsToAction(nn.Module):
                 f"(got {type(policy.features_extractor)})"
             )
         self.features_extractor = policy.features_extractor
-        self.mlp_extractor = policy.mlp_extractor
         self.row_scorer = policy.row_scorer
 
     def forward(self, packed_obs: th.Tensor, legal_moves: th.Tensor) -> th.Tensor:
         # packed_obs: (N, OBSERVATION_VECTOR_LENGTH)
         # legal_moves: (N, MAX_LEGAL_MOVES, FACTORS) — pad rows are -1
         obs = _slice_packed_obs(packed_obs)
-        features = self.features_extractor(obs)
-        latent_pi, _latent_vf = self.mlp_extractor(features)
-        row_emb = self.features_extractor.encode_legal_rows(legal_moves, obs[OBS_KEY_CHALLENGES])
+        fe = self.features_extractor
+        _ = fe(obs)  # stash join board
+        board = fe.consume_join_board()
+        row_emb = fe.encode_legal_rows(legal_moves, obs[OBS_KEY_CHALLENGES])
         batch, n_rows, _ = row_emb.shape
-        lat = latent_pi.unsqueeze(1).expand(batch, n_rows, -1)
-        scores = self.row_scorer(th.cat([lat, row_emb], dim=-1)).squeeze(-1)
-        # Pad rows are -1 on every factor; live rows use actor≥0 (including unused actor 0).
+        board_b = board.unsqueeze(1).expand(batch, n_rows, -1)
+        scores = self.row_scorer(th.cat([board_b, row_emb], dim=-1)).squeeze(-1)
+        # Pad rows are all-SENTINEL; live rows have kind ≥ 0.
         live = legal_moves[..., 0] >= 0
         scores = scores.masked_fill(~live, -1.0e9)
         return scores.argmax(dim=-1)

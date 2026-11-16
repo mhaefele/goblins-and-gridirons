@@ -20,8 +20,16 @@ from typing import Any
 
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
+from torch import nn
 
 from gridiron_ai.eval_opening_diag import annotate_move_label, diagnose_opening_mispick
+from gridiron_ai.features import (
+    JOIN_BOARD_FEAT,
+    JOIN_PITCH_FLAT,
+    LEGAL_ROW_FEATURE_DIM,
+    LEGAL_ROW_FEATURE_SEGMENTS,
+    _non_pitch_width,
+)
 
 
 def uninstall_evidence_train_hook(model: Any) -> None:
@@ -390,6 +398,54 @@ def format_ppo_update_line(
     )
 
 
+def row_scorer_segment_mean_abs(policy: Any) -> list[tuple[str, float]]:
+    """Mean |W| of ``row_scorer`` first Linear columns per join input segment.
+
+    Order: pitchFlat, nonPitch, then [LEGAL_ROW_FEATURE_SEGMENTS].
+    """
+    scorer = getattr(policy, "row_scorer", None)
+    if scorer is None or not isinstance(scorer, nn.Sequential) or not scorer:
+        return []
+    first = scorer[0]
+    if not isinstance(first, nn.Linear):
+        return []
+    weight = first.weight.detach().float()
+    in_features = int(weight.shape[1])
+    if in_features < JOIN_BOARD_FEAT + LEGAL_ROW_FEATURE_DIM:
+        return []
+    out: list[tuple[str, float]] = []
+    col = 0
+    for name, width in (
+        ("pitchFlat", JOIN_PITCH_FLAT),
+        ("nonPitch", _non_pitch_width()),
+    ):
+        out.append((name, float(weight[:, col : col + width].abs().mean().cpu())))
+        col += width
+    for name, width in LEGAL_ROW_FEATURE_SEGMENTS:
+        out.append((name, float(weight[:, col : col + width].abs().mean().cpu())))
+        col += width
+    return out
+
+
+def format_row_scorer_weights_line(
+    *,
+    after: list[tuple[str, float]],
+    before: list[tuple[str, float]] | None = None,
+    scenario: str | None = None,
+) -> str:
+    """Verbose join-input |W| meters — watch ``targetHasBall`` across PPO updates."""
+    tag = f" [{scenario}]" if scenario else ""
+    before_map = {name: value for name, value in before} if before else {}
+    parts: list[str] = []
+    for name, value in after:
+        prior = before_map.get(name)
+        if prior is None:
+            parts.append(f"{name}={value:.4g}")
+        else:
+            parts.append(f"{name}={value:.4g}(Δ={value - prior:+.3g})")
+    return f"[gridiron] row_scorer |W|{tag}: " + " ".join(parts)
+
+
 def _first_opening_lesson_step(sequence: list[dict[str, Any]]) -> dict[str, Any] | None:
     for step in sequence:
         if step.get("passing"):
@@ -497,11 +553,13 @@ class PpoUpdateEvidenceCallback(BaseCallback):
         self._graded_before: list[dict[str, Any]] = []
         self._env_buf_ts: dict[int, list[int]] = {}
         self._l2_before_train: float | None = None
+        self._join_w_before: list[tuple[str, float]] | None = None
         self._buffer_snapshot: dict[str, np.ndarray] | None = None
 
     def _on_training_start(self) -> None:
         uninstall_evidence_train_hook(self.model)
         self._l2_before_train = None
+        self._join_w_before = None
         self._graded_openings = []
         self._graded_before = []
         self._env_buf_ts = {}
@@ -645,6 +703,18 @@ class PpoUpdateEvidenceCallback(BaseCallback):
                 ),
                 flush=True,
             )
+            join_before = self._join_w_before
+            self._join_w_before = None
+            join_after = row_scorer_segment_mean_abs(self.model.policy)
+            if join_after:
+                print(
+                    format_row_scorer_weights_line(
+                        after=join_after,
+                        before=join_before,
+                        scenario=self.scenario,
+                    ),
+                    flush=True,
+                )
 
     def _on_rollout_start(self) -> None:
         self._graded_openings = []
@@ -719,3 +789,4 @@ class PpoUpdateEvidenceCallback(BaseCallback):
                 )
             self._graded_before = graded_before
         self._l2_before_train = _policy_param_l2(self.model)
+        self._join_w_before = row_scorer_segment_mean_abs(self.model.policy)

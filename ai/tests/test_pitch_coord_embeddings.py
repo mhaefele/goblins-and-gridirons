@@ -25,9 +25,9 @@ def test_legal_row_feature_dim_matches_encode() -> None:
     obs_space = dict_observation_space()
     fe = GridironFeaturesExtractor(obs_space)
     legal = th.full((1, 4, FACTORS_PER_LEGAL_MOVE), -1, dtype=th.int64)
-    # actor, kind, sx, sy, tx, ty, actorBall, targetBall, throw%, blockDice, chal, bonus, f0..2
-    legal[0, 0] = th.tensor([1, 0, 2, 5, 3, 7, 0, 1, 0, -1, -1, -1, -1, -1, -1])
-    legal[0, 1] = th.tensor([1, 0, 2, 5, 3, 14, 0, 0, 0, -1, -1, -1, -1, -1, -1])
+    # kind, actorHasBall, sx, sy, actor, targetHasBall, tx, ty, block, throw%, chal, bonus, f0..2
+    legal[0, 0] = th.tensor([0, 0, 2, 5, 1, 1, 3, 7, -1, 0, -1, -1, -1, -1, -1])
+    legal[0, 1] = th.tensor([0, 0, 2, 5, 1, 0, 3, 14, -1, 0, -1, -1, -1, -1, -1])
     challenges = th.zeros(1, 3, 2)
     out = fe.encode_legal_rows(legal, challenges)
     assert out.shape == (1, 4, LEGAL_ROW_FEATURE_DIM)
@@ -73,22 +73,20 @@ def test_target_y_magnitude_alone_does_not_order_plain_logits() -> None:
         nn_init.normal_(fe.pitch_y_emb.weight)
 
         legal = th.full((1, MAX_LEGAL_MOVES, FACTORS_PER_LEGAL_MOVE), -1, dtype=th.int64)
-        low = th.tensor([1, 0, 5, 2, 5, 2, 0, 0, 0, -1, -1, -1, -1, -1, -1])
-        high = th.tensor([1, 0, 5, 2, 5, 14, 0, 0, 0, -1, -1, -1, -1, -1, -1])
+        low = th.tensor([0, 0, 5, 2, 1, 0, 5, 2, -1, 0, -1, -1, -1, -1, -1])
+        high = th.tensor([0, 0, 5, 2, 1, 0, 5, 14, -1, 0, -1, -1, -1, -1, -1])
         legal[0, 0] = low
         legal[0, 1] = high
         challenges = th.zeros(1, 3, 2)
         soft = th.zeros(1, MAX_LEGAL_MOVES, dtype=th.int8)
         counts = th.tensor([[2]], dtype=th.int32)
-        # Minimal board latent via zeros through encode path on rows only.
-        latent = th.zeros(1, int(policy.mlp_extractor.latent_dim_pi))
         obs = {
             OBS_KEY_LEGAL_MOVES: legal,
             OBS_KEY_LEGAL_MOVE_COUNT: counts,
             OBS_KEY_CHALLENGES: challenges,
             OBS_KEY_SOFT_MASK_LEGAL: soft,
         }
-        logits = policy._score_legal_rows(latent, obs)
+        logits = policy._score_legal_rows(obs)
         if float(logits[0, 1].detach()) > float(logits[0, 0].detach()):
             wins_high += 1
     # Under random Y embeddings, high-Y should not win ~always (old raw-Y bias did).

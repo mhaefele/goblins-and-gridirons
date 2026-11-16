@@ -1,4 +1,4 @@
-"""Pitch trunk is Conv2d+GAP (not flatten-all-squares); join width stays 512."""
+"""Pitch CNN keeps a spatial map; join flattens it; value path GAPs to 512."""
 
 from __future__ import annotations
 
@@ -11,9 +11,13 @@ from gridiron_ai.constants import (
     PLAY_WIDTH,
 )
 from gridiron_ai.features import (
+    JOIN_BOARD_FEAT,
+    JOIN_CELL_FEAT,
+    JOIN_PITCH_FLAT,
     _PITCH_CNN_OUT,
     _PROJECTED_FEATURES,
     _concat_width,
+    _non_pitch_width,
     GridironFeaturesExtractor,
 )
 from gridiron_ai.obs import dict_observation_space, empty_step_observation
@@ -28,8 +32,21 @@ def test_pitch_cnn_out_dim_and_board_features() -> None:
     pitch = th.zeros(2, NUMBERS_PER_BOARD_CELL, PLAY_HEIGHT, PLAY_WIDTH)
     pitch_vec = fe._encode_pitch(pitch)
     assert pitch_vec.shape == (2, _PITCH_CNN_OUT)
+    assert fe._pitch_feature_map is not None
+    assert fe._pitch_feature_map.shape == (2, JOIN_CELL_FEAT, PLAY_HEIGHT, PLAY_WIDTH)
 
     step = empty_step_observation()
-    # Legal-menu keys are policy-side; extractor only needs game-state Dict boxes.
     out = fe({k: th.as_tensor(step[k]).unsqueeze(0) for k in OBS_KEYS_GAME_STATE})
     assert out.shape == (1, _PROJECTED_FEATURES)
+    board = fe.consume_join_board()
+    assert board.shape == (1, JOIN_BOARD_FEAT)
+    assert board.shape[1] == JOIN_PITCH_FLAT + _non_pitch_width()
+
+
+def test_join_board_requires_forward() -> None:
+    fe = GridironFeaturesExtractor(dict_observation_space())
+    try:
+        fe.consume_join_board()
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as exc:
+        assert "join board missing" in str(exc)

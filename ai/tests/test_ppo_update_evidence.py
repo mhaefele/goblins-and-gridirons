@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from gridiron_ai.features import LEGAL_ROW_FEATURE_DIM, LEGAL_ROW_FEATURE_SEGMENTS
 from gridiron_ai.ppo_update_evidence import (
     _unflatten_rollout_field,
     expected_move_labels_from_snapshot,
@@ -12,6 +13,7 @@ from gridiron_ai.ppo_update_evidence import (
     format_pass_edge_buffer_line,
     format_passed_drill_block,
     format_ppo_update_line,
+    format_row_scorer_weights_line,
     summarize_pass_step_advantages,
 )
 
@@ -177,6 +179,21 @@ def test_ppo_update_line_once_per_update() -> None:
     assert line.startswith("[gridiron] PPO update [LOOSE_BALL_RUN]:")
     assert "passed=2 failed=3" in line
     assert "approx_kl=" in line
+
+
+def test_legal_row_feature_segments_match_dim() -> None:
+    assert sum(width for _, width in LEGAL_ROW_FEATURE_SEGMENTS) == LEGAL_ROW_FEATURE_DIM
+    assert dict(LEGAL_ROW_FEATURE_SEGMENTS)["targetHasBall"] == 1
+
+
+def test_row_scorer_weights_line_shows_target_has_ball_delta() -> None:
+    before = [("pitchFlat", 0.1), ("targetHasBall", 0.01), ("kind", 0.02)]
+    after = [("pitchFlat", 0.1), ("targetHasBall", 0.015), ("kind", 0.02)]
+    line = format_row_scorer_weights_line(
+        after=after, before=before, scenario="LOOSE_BALL_RUN"
+    )
+    assert line.startswith("[gridiron] row_scorer |W| [LOOSE_BALL_RUN]:")
+    assert "targetHasBall=0.015(Δ=+0.005)" in line
 
 
 def test_summarize_pass_step_advantages_score_and_prior() -> None:

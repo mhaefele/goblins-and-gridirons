@@ -1,9 +1,9 @@
 """Diagnostic: can ``row_scorer`` learn from ``targetHasBall`` alone?
 
-Isolated procedural check — does not change training. Builds a tiny 2-state /
-2-row menu where the *only* discriminating signal is the packed targetHasBall
-bit, then Adam + CE for 50 steps. Loss→0 means gradients can flow from that
-feature into action selection; flat loss would implicate the architecture.
+Isolated procedural check — does not change training. Same board, 2-state /
+2-row menu where rows differ only on packed targetHasBall; Adam on
+``row_scorer`` only + CE for 50 steps. Loss→0 means that bit reaches the
+join and can drive selection (flat board noise is held fixed).
 """
 
 from __future__ import annotations
@@ -13,7 +13,13 @@ import torch as th
 from gymnasium import spaces
 from torch import nn
 
-from gridiron_ai.actions import FACTOR_TARGET_HAS_BALL
+from gridiron_ai.actions import (
+    FACTOR_ATTACHED_BONUS,
+    FACTOR_CHALLENGE_SLOT,
+    FACTOR_FACE0,
+    FACTOR_FACE2,
+    FACTOR_TARGET_HAS_BALL,
+)
 from gridiron_ai.constants import (
     FACTORS_PER_LEGAL_MOVE,
     LEGAL_ROW_SCORE_WIDTH,
@@ -29,12 +35,26 @@ from gridiron_ai.constants import (
     OBS_KEY_SCALARS,
     OBS_KEY_SOFT_MASK_LEGAL,
 )
-from gridiron_ai.features import EMBED_DIM, GridironFeaturesExtractor
+from gridiron_ai.features import (
+    JOIN_BOARD_FEAT,
+    LEGAL_ROW_FEATURE_SEGMENTS,
+    GridironFeaturesExtractor,
+)
 from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
 from gridiron_ai.obs import dict_observation_space, empty_step_observation
 
-# encode_legal_rows concat: actor(8) + kind(8) + target xy embs(16) + source xy embs(16) + actorHasBall + targetHasBall
-_TARGET_HAS_BALL_FEAT = EMBED_DIM + EMBED_DIM + 2 * EMBED_DIM + 2 * EMBED_DIM + 1
+
+def _row_emb_offset(name: str) -> int:
+    total = 0
+    for seg_name, width in LEGAL_ROW_FEATURE_SEGMENTS:
+        if seg_name == name:
+            return total
+        total += width
+    raise KeyError(name)
+
+
+# Column of targetHasBall in row_scorer input after pitchFlat ‖ nonPitch ‖ row_emb…
+_TARGET_HAS_BALL_FEAT = JOIN_BOARD_FEAT + _row_emb_offset("targetHasBall")
 
 
 def _noise_board(rng: np.random.Generator) -> dict[str, np.ndarray]:
@@ -53,7 +73,9 @@ def _two_row_menu(*, ball_on_row: int, rng: np.random.Generator) -> np.ndarray:
     """Two identical packed rows except ``targetHasBall`` on ``ball_on_row``."""
     legal = np.full((MAX_LEGAL_MOVES, FACTORS_PER_LEGAL_MOVE), -1, dtype=np.int64)
     shared = rng.integers(0, 5, size=(FACTORS_PER_LEGAL_MOVE,), dtype=np.int64)
-    shared[4:9] = -1  # challenge / bonus / faces unused
+    shared[FACTOR_CHALLENGE_SLOT] = -1
+    shared[FACTOR_ATTACHED_BONUS] = -1
+    shared[FACTOR_FACE0 : FACTOR_FACE2 + 1] = -1
     for row_i in range(2):
         legal[row_i] = shared
         legal[row_i, FACTOR_TARGET_HAS_BALL] = 1 if row_i == ball_on_row else 0
@@ -80,10 +102,11 @@ def test_row_scorer_learns_target_has_ball_toggle() -> None:
     policy.soft_mask_strength = 0.0
     policy.train()
 
-    # State 0 → pick row 0 (ball flag on 0); state 1 → pick row 1 (ball flag on 1).
+    # Same board both states — only targetHasBall on the menu differs.
+    board = _noise_board(rng)
     samples = []
-    for ball_row, _label in ((0, 0), (1, 1)):
-        step = _noise_board(rng)
+    for ball_row in (0, 1):
+        step = {key: value.copy() for key, value in board.items()}
         step[OBS_KEY_LEGAL_MOVES] = _two_row_menu(ball_on_row=ball_row, rng=rng)
         step[OBS_KEY_LEGAL_MOVE_COUNT] = np.asarray([2], dtype=np.int32)
         step[OBS_KEY_SOFT_MASK_LEGAL] = np.zeros(MAX_LEGAL_MOVES, dtype=np.int8)
@@ -91,17 +114,20 @@ def test_row_scorer_learns_target_has_ball_toggle() -> None:
     labels = th.tensor([0, 1], dtype=th.long)
     obs = _stack_obs(samples)
 
-    optimizer = th.optim.Adam(policy.parameters(), lr=1e-2)
+    # Only the join MLP — CNN/trunk noise must not drown the bit probe.
+    optimizer = th.optim.Adam(policy.row_scorer.parameters(), lr=1e-2)
     loss_fn = nn.CrossEntropyLoss()
-    latent_dim = int(policy.mlp_extractor.latent_dim_pi)
-    ball_weight_col = latent_dim + _TARGET_HAS_BALL_FEAT
+    ball_weight_col = _TARGET_HAS_BALL_FEAT
     first_linear = policy.row_scorer[0]
     assert isinstance(first_linear, nn.Linear)
 
     last_loss = None
     for step in range(50):
         optimizer.zero_grad(set_to_none=True)
-        _values, logits = policy._board_and_row_logits(obs)
+        # extract_features once per step so join stash is fresh; freeze trunk.
+        with th.no_grad():
+            _ = policy.extract_features(obs)
+        logits = policy._score_legal_rows(obs)
         # CE over the live 2-row menu only (pad logits are -1e8).
         loss = loss_fn(logits[:, :2], labels)
         loss.backward()

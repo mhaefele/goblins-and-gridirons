@@ -26,7 +26,7 @@ Two levers:
    right thing (pitch-only targets, bonus-play identity **once**, optional path
    merges / relative dest encoding).
 2. **Sampling procedure** — **schema 16+:** join-score each legal row given the
-   board latent (`Discrete(MAX_LEGAL_MOVES)` + MaskablePPO). Soft preference bias
+   full board (`Discrete(MAX_LEGAL_MOVES)` + MaskablePPO). Soft preference bias
    toward `expectedScenarioMove` rows (schema 12, row-level under 16). Factor
    MultiDiscrete remask / head conditioning is **gone** (schema 15 fork only).
 
@@ -101,8 +101,8 @@ For *this* problem (smarter action choices), almost everything collapses to two 
 **schema 19 legal-row join scores** (dest + source as pitch x/y). Measure
 uniqueness before more representation shrinks.
 
-**Landed:** score the legal set directly — join board latent to each encoded row
-(`LegalRowActorCriticPolicy` / ONNX row scores). Remaining
+**Landed:** score the legal set directly — join flatten(pitch)‖non-pitch to each
+encoded row (`LegalRowActorCriticPolicy` / ONNX row scores). Remaining
 [AI2.10](BACKLOG.md#ai210--legal-move-inputs--obs-dict-shape) work is whether the
 value net / features should see richer legal-menu summaries beyond join-scoring
 the action.
@@ -228,8 +228,9 @@ columns**, not because a MultiDiscrete softmax is hundreds of millions wide.
 ## Policy action (schema 19)
 
 **Gym action:** `Discrete(MAX_LEGAL_MOVES)` — index into this step’s packed `legal_moves` menu.
-The policy **join-scores** each live row with the board latent (`LegalRowActorCriticPolicy`):
-one preference over complete moves (not independent factor heads + remask).
+The policy **join-scores** each live row with flatten(pitch)‖non-pitch
+(`LegalRowActorCriticPolicy`): one preference over complete moves (not
+independent factor heads + remask).
 
 **Menu order:** Kotlin `AiLegalChoiceMapper.toLegalChoices` keeps **generator / catalog
 order** (no per-step shuffle). Packed `legalMoves`, harness `legalRows` (incl. soft-mask /
@@ -245,16 +246,16 @@ tables: [`PPO_STRATEGY.md`](PPO_STRATEGY.md#packed-legal-row-factors-15).
 
 | Slot | Factor | Role | Live width | Who uses it |
 |------|--------|------|----------:|-------------|
-| 0 | actor | **who** | 10 | roster `playerIndex` 1..MAX; `SENTINEL` when kind has no free actor |
-| 1 | kind | verb | 41 | `AiLegalKind.ordinal` |
-| 2 | sourceX | from | 11 | 0-based pitch x; `SENTINEL` unused |
-| 3 | sourceY | from | 15 | 0-based pitch y; `SENTINEL` unused |
-| 4 | targetX | to | 11 | 0-based pitch x (`0..10`); `SENTINEL` unused |
-| 5 | targetY | to | 15 | 0-based pitch y (`0..14`); `SENTINEL` unused |
-| 6 | actorHasBall | ball | 2 | `1` if actor holds the ball; `0` if no actor / no ball |
-| 7 | targetHasBall | ball | 2 | `1` if dest square has ball (loose or carrier); `0` if no dest / no ball |
-| 8 | throwSuccessChancePercent | outcome | 101 | `0` = non-throw; `1..100` = P(success)×100; feature `/100` |
-| 9 | blockDiceCount | outcome | 3 | `1..3` declare-time pool; `SENTINEL` non-block; feature `/3` |
+| 0 | kind | verb | 41 | `AiLegalKind.ordinal` |
+| 1 | actorHasBall | source ≈ cell hasBall | 2 | `1` if actor holds the ball |
+| 2 | sourceX | source ≈ cell pitchX | 11 | 0-based pitch x; `SENTINEL` unused |
+| 3 | sourceY | source ≈ cell pitchY | 15 | 0-based pitch y; `SENTINEL` unused |
+| 4 | actor | source ≈ cell playerIndex | 10 | roster `1..MAX`; `SENTINEL` when unused |
+| 5 | targetHasBall | dest ≈ cell hasBall | 2 | dest ball (loose or carrier) |
+| 6 | targetX | dest ≈ cell pitchX | 11 | 0-based pitch x; `SENTINEL` unused |
+| 7 | targetY | dest ≈ cell pitchY | 15 | 0-based pitch y; `SENTINEL` unused |
+| 8 | blockDiceCount | ≈ cell blockDice order | 3 | `1..3` declare-time pool; `SENTINEL` non-block |
+| 9 | throwSuccessChancePercent | ≈ cell throwStat order | 101 | `0` = non-throw; `1..100` = P(success)×100 |
 | 10 | challengeSlot | card | 3 | claim / replace `0..2`; `SENTINEL` unused |
 | 11 | attachedBonus | card | 20 | `BonusPlay` ordinal; `SENTINEL` none |
 | 12..14 | face0..2 | faces | 5 each | `BlockDieFace` ordinal; `SENTINEL` unused |
@@ -267,8 +268,8 @@ always roster `actor`, never source coords. Obs `cells[]` still uses linear pitc
 indices — board layout packing, not the legal-row dest encoding. Harness reward
 board facts are `rewards.players` + single `ballCoordinate` (null if none on pitch).
 
-**Schema 25:** same 15 cols; pack order = actor/kind → source→target → ball → throw%/block →
-challenge/bonus → faces (cell affordance drop is separate).
+**Schema 25:** cell affordance drop + legal-row order = kind → source (hasBall/pitch/actor) →
+dest → block/throw → cards/faces (rhymes with cell channels).
 **Schema 24:** throw success % + block dice count on the row; `SENTINEL` absent pack.
 **Schema 21:** harness rewards = `players` + `ballCoordinate`; legal rows lean.
 **Schema 20:** harness rows wrap `LegalAction` + flags; pack still perspective xy.

@@ -6,7 +6,8 @@ semantics: Kotlin DTOs. See ``ai/OWNERSHIP.md`` / ``DESIGN.md``.
 """
 
 # v25: cell pack drops menu-summary affordance/reach bbox; pitchX/Y/dist after hasBall;
-# legal-row cols reordered (actor/kind → source→target → ball → throw%/block → cards → faces).
+# legal-row cols: kind → aBall/srcXY/actor → tBall/tgtXY → block/throw → cards/faces
+# (rhymes with cell hasBall/pitch/playerIndex then blockDice/throwStat).
 # v24: throwSuccessChancePercent (0..100; 0 = non-throw) + blockDiceCount on legal rows;
 # categorical absent → SENTINEL (-1); enums pack raw ordinal. Folded before dump used 24.
 # v23: legal-row actorHasBall / targetHasBall metadata; bonus column = full BonusPlay vocab
@@ -44,16 +45,16 @@ ACTOR_PLAYER_INDEX_COUNT = MAX_PLAYERS_PER_TEAM + 1  # emb rows: pad + 1..MAX
 # Legal-row factor packing (Kotlin AiLegalPacker) — live-value widths (SENTINEL outside).
 # Gym action is Discrete(MAX_LEGAL_MOVES) row index.
 ACTION_FACTOR_WIDTHS = [
-    MAX_PLAYERS_PER_TEAM,  # actor 1..MAX (SENTINEL unused)
     LEGAL_ACTION_KIND_COUNT,
+    2,  # actorHasBall (0/1)
     PLAY_WIDTH,  # sourceX 0-based (SENTINEL unused)
     PLAY_HEIGHT,  # sourceY
+    MAX_PLAYERS_PER_TEAM,  # actor 1..MAX (SENTINEL unused)
+    2,  # targetHasBall (0/1)
     PLAY_WIDTH,  # targetX
     PLAY_HEIGHT,  # targetY
-    2,  # actorHasBall (0/1)
-    2,  # targetHasBall (0/1)
-    101,  # throwSuccessChancePercent 0 = non-throw; 1..100 = P(success)×100
     3,  # blockDiceCount 1..3 (SENTINEL non-block)
+    101,  # throwSuccessChancePercent 0 = non-throw; 1..100 = P(success)×100
     ACTIVE_CHALLENGE_SLOTS,  # 0..2 (SENTINEL unused)
     BONUS_PLAY_COUNT,  # BonusPlay ordinal (SENTINEL none)
     BLOCK_FACE_PACK_SIZE,

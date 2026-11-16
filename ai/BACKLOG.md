@@ -241,7 +241,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 
 - Distinct from [AI2.8](#ai28--evaluate-obs-enrichment-vs-truncated-legals): that item is extra *game-state* affordance hints on the DTO; this one is feeding the *legal menu* to the net and reshaping the Python obs Dict.
 - **Dict-shape half (landed, schema 7):** gym keys `scalars` / `challenges` / `deck` / `hand` / `pitch` `(C,15,11)` / `benches` `(2,10,C)` + enum embeddings + pitch `(x,y,dist-to-ball)`. Kotlin `AiObsDto.cells[185]` is unchanged; `schemaVersion` bumped because the gym/model packing changed. **Schema 8:** pitch-only `boardTarget` pack column; play-bonus `HandSlot` removed (identity in kind). **Schema 9:** free factors + `sugarFactors`; `declineOffer` / `reroll` / `adjustByDoOver`; drop reroll MultiDiscrete axis; omit `cancelThrowTeammate` from AI legals. Prior schema checkpoints/onnx are incompatible.
-- **Pitch CNN trunk (landed):** emb map → Conv2d → GAP → fuse with non-pitch pieces → 512-d latent; join still global ⊕ row embs. Detail: [`PPO_STRATEGY.md`](PPO_STRATEGY.md). Next ablation: source/target gather from the spatial map (not landed).
+- **Pitch CNN + full-board join (landed):** emb map → Conv2d spatial map; value GAPs to 512; policy join = flatten(map) ‖ non-pitch ‖ full row_emb (no attn/gather). Detail: [`PPO_STRATEGY.md`](PPO_STRATEGY.md).
 - Remaining: whether further legal-row content beyond the join pack helps. Raw padded legal matrix into an MLP is still a candidate to reject early.
 - Renaming `board` → something like `game_state` (or splitting into scalars / grid / cards / hand) is in scope for the dict-shape half of this item.
 

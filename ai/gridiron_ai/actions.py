@@ -19,17 +19,17 @@ from gridiron_ai.constants import ACTION_FACTOR_WIDTHS, LEGAL_ROW_SCORE_WIDTH, M
 from gridiron_ai.api.harness_wire import AiLegalChoiceDict, LegalActionDict
 
 # Canonical index in the factor tuple packed on each legal row (schema 25).
-# Who-id is roster Actor (playerIndex), not board coordinate — same id as cell occupant.
-FACTOR_ACTOR = 0
-FACTOR_KIND = 1
+# Source block order matches cell hasBall → pitch → playerIndex.
+FACTOR_KIND = 0
+FACTOR_ACTOR_HAS_BALL = 1
 FACTOR_SOURCE_X = 2
 FACTOR_SOURCE_Y = 3
-FACTOR_TARGET_X = 4
-FACTOR_TARGET_Y = 5
-FACTOR_ACTOR_HAS_BALL = 6
-FACTOR_TARGET_HAS_BALL = 7
-FACTOR_THROW_SUCCESS_CHANCE = 8
-FACTOR_BLOCK_DICE_COUNT = 9
+FACTOR_ACTOR = 4
+FACTOR_TARGET_HAS_BALL = 5
+FACTOR_TARGET_X = 6
+FACTOR_TARGET_Y = 7
+FACTOR_BLOCK_DICE_COUNT = 8
+FACTOR_THROW_SUCCESS_CHANCE = 9
 FACTOR_CHALLENGE_SLOT = 10
 FACTOR_ATTACHED_BONUS = 11
 FACTOR_FACE0 = 12
