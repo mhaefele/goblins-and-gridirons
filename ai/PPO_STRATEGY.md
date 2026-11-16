@@ -43,8 +43,16 @@ rewards — soft-mask is exposure only, never the grade.
 | Soft-mask logit bias after scores | Curriculum sampling tilt; not in the feature vector |
 | ONNX wrapper mirrors join + masked argmax | Product seats; soft-mask omitted |
 
-**Value path still GAPs the pitch** into the 512-d SB3 features vector (critic /
-stock contract). That summary is **not** what the policy join uses.
+### Do not confuse value GAP with the policy join
+
+| Path | Pitch after CNN `(N,128,15,11)` | Role |
+|------|--------------------------------|------|
+| **Policy** | **Flatten** → 21120-d ‖ non-pitch ‖ `row_emb` → `row_scorer` | Every square’s features stay present next to the move |
+| **Value** | **GAP** → 128-d ‖ non-pitch → Linear → 512 | SB3 critic contract only |
+
+Readers / external reviews that say “GAP erases space before the join” are describing
+a **rejected** design (or the **value** trunk), not the live policy. Live cost of the
+policy join is the fat first Linear on the flatten — see below — not spatial erasure.
 
 ---
 
@@ -69,19 +77,17 @@ embeds and scores.
 
 ```text
 Dict obs
-  ├─ pitch (15,15,11) ──► per-cell emb ──► Conv2d×3 ──► map (128,15,11)
-  │                                              ├─ GAP ──► 128-d ──┐
-  │                                              └─ flatten 21120-d ─┼─ join board
-  ├─ benches / scalars / challenges / deck / hand / held ── emb ────┘
-  │
-  ├─ value: Linear(GAP‖non-pitch) → 512 → value_net          (SB3 rail)
-  │
-  └─ policy: for each live legal row
-       encode_legal_rows(row) → 93-d
-       row_scorer([ flatten(map) ‖ non_pitch ‖ row_emb ]) → logit
-       + soft_mask bias (optional)
-       pad / illegal → −1e8
-       → MaskableCategorical → row index
+  pitch (15,15,11) → emb → Conv2d×3 → map (128,15,11)
+  benches / scalars / challenges / deck / hand / held → emb = non_pitch (1422)
+
+  VALUE (SB3 rail only — not the policy join):
+    GAP(map) → 128 ‖ non_pitch → Linear → 512 → value_net
+
+  POLICY (per live legal row):
+    encode_legal_rows(row) → 93-d
+    row_scorer([ flatten(map)=21120 ‖ non_pitch ‖ row_emb ]) → logit
+      (+ soft-mask bias; pad / illegal → −1e8)
+    → MaskableCategorical → row index
 ```
 
 Wire / pack widths: `gridiron_ai/model/constants.py` (`CELL_CH_*`, `ACTION_FACTOR_WIDTHS`,
@@ -93,8 +99,10 @@ schema 25). Encoding: `features.py`. Deeper “engine knows vs pack exposes” i
 - Pitch gym shape: `(C,H,W) = (15, 15, 11)`.
 - Per-cell emb → `_OCCUPANT_WIDTH` (**64**) → Conv2d `64→64→128` → map
   **(N, 128, 15, 11)**.
-- **Policy join:** flatten that map (**21120**) ‖ non-pitch features ‖ full
-  `row_emb` (**93**).
+- **Policy join:** flatten that map (**21120**) ‖ non-pitch (**1422**) ‖ full
+  `row_emb` (**93**) → `row_scorer` input **22635**. First Linear
+  `22635 → 512` ≈ **11.6M** weights — the real flatten cost (CPU-fine at our
+  batch sizes; not “melts the laptop,” but sample-inefficient vs a thinner join).
 - **Value / SB3 features:** GAP map → 128 ‖ non-pitch → Linear → **512**.
 - Benches are a table (not convolved).
 
@@ -153,8 +161,9 @@ square facts. Nested JSON may still expose `AiPlayerAffordance` for tests.
 - Each packed row is **15 ints** (`FACTORS_PER_LEGAL_MOVE`, schema 25).
 - `encode_legal_rows` → **93-d**; reuses board emb tables (`pitch_x/y_emb`, kind,
   player index, challenge, bonus, faces).
-- `row_scorer`: `Linear(21120 + non_pitch + 93 → 512) → ReLU → Linear → 1`
-  (`flatten(pitch) ‖ non_pitch ‖ row_emb`). Invalidates older policy zips.
+- `row_scorer`: `Linear(22635 → 512) → ReLU → Linear → 1`
+  (`flatten(pitch) ‖ non_pitch ‖ row_emb`). ≈11.6M in the first Linear.
+  Invalidates older GAP/attn-join policy zips.
 - Score only through this batch’s `legal_move_count.max()`; pad tail stays −1e8.
 - SB3 `net_arch = {pi: [], vf: []}` so stock `[64,64]` MLPs do **not** crush the
   512-d **value** features (`POLICY_NET_ARCH`).
@@ -280,15 +289,54 @@ for product seats).
 
 ---
 
-## Explicitly rejected / superseded
+## What has not worked (and why)
 
-| Idea | Status |
-|------|--------|
-| MultiDiscrete factor heads + remask | Superseded (schema 16 join-score) |
-| Hard-removing distractors from the legal set | Rejected — broke transfer |
-| Soft-mask as a grade / “preferred = correct” | Forbidden (exposure only) |
-| Flatten pitch `(C,H,W)` hygiene (AI2.23) while convolving | Conflicts with this trunk — parked |
-| Cloning Lookahead as the RL reward | Out for v1 (`DESIGN.md`) |
+Architecture and learning bets we tried or briefly believed — kept here so we do
+not re-litigate them. Incident detail for stuck openings:
+[`PPO_LEARNING_DEBUG.md`](PPO_LEARNING_DEBUG.md). Soft-mask contract:
+[`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-preference).
+
+### Action / sampling shape
+
+| Attempt | Why it failed / was dropped |
+|---------|-----------------------------|
+| **Independent MultiDiscrete factor heads** (actor × kind × target × …) + remask / sequential conditioning | Heads could not express “best *complete* legal.” Remask only filtered illegals; it never scored whole moves. Schema 16 → join-score each legal row. Schema 15 ONNX fork only. |
+| **Hard-removing distractors** from the legal set (train on preferred-only menus) | Broke transfer: eval / live still see the full menu; the net never practiced ranking among junk. Soft-mask tilts sampling instead. |
+| **Soft-mask as a grade** (“preferred = correct / pays”) | Soft-mask only raises try rate. Same bias on pickup *and* empty-EZ leaves their relative softmax order unchanged; only reward separates them. Treating bias as label confuses exposure with grade. |
+| **Equal soft-mask on LBR pickup and every empty-EZ** | Same +2.5 on both → TD_RUN endzone prior stays hot; train US rate stayed ~6%. Empty-EZ soft-mask is probabilistic exposure now, not a second “correct” flag. |
+| **Naive flat MultiDiscrete catalog** of all factor combos | Softmax over ~millions of pad products; not the live action space. Live gym is `Discrete(MAX_LEGAL_MOVES)` over this step’s packed rows. |
+
+### Board ↔ move representation
+
+| Attempt | Why it failed / was dropped |
+|---------|-----------------------------|
+| **GAP / attention / gather as the policy’s board view** | **Rejected prior** — summarizing the pitch *before* join loses square-level binding to the move. **Not the live policy** (that flattens the map). Value may still GAP for SB3 `features_dim`. Do not re-diagnose “spatial erasure on the join” against current code. |
+| **Flatten join’s fat first Linear (~11.6M)** | **Live tradeoff, not a crash.** Preserves every square next to the row; costs a wide `Linear(22635→512)`. Cross-attn (move queries 165 tokens) is an unadopted alternative that shrinks that matrix but *is* a soft spatial summary — conflicts with the current “no summarizing on policy path” lock until explicitly approved. |
+| **Stock SB3 `action_net`: Linear(latent → n_actions)** | Fixed catalog index ≠ “score this step’s legal menu.” Custom `row_scorer` over board‖row. |
+| **Stock `net_arch = [64, 64]` on pi/vf** | Crushed the 512-d value trunk into a tiny MLP. Empty `pi`/`vf` lists keep features intact. |
+| **Cell menu-summary affordances** (TD / claim / pickup / reach bbox on every player cell) | Choice-level facts jammed onto *player* squares; join had to re-bind cell flag ↔ dest. Dropped schema 25 — prefer per-row bits when measured necessary. |
+| **Missing row facts the join cannot recover** (e.g. claim certainty, `BallEncounter.PICK_UP`, per-row TD) | Not “worked then failed” — known holes. Board channels alone do not name *which menu row* claims/scores/picks up. Candidates in the tables above. |
+
+### Learning signal / PPO knobs
+
+| Attempt | Why it failed / was dropped |
+|---------|-----------------------------|
+| **Stock LR `3e-4`** | Opening policy mass stayed flat on drills. Raised to `1e-3` (create + resume re-apply). |
+| **`ent_coef = 0`** | Large Discrete peaked immediately; keep a small entropy bonus (`0.005`). |
+| **VecNormalize reward on sparse drills** | Compressed TD `+4.75` / THEM `−0.5` into mush; openings stayed advantage-neutral. Scenario path keeps rewards hearable; full-game still normalizes for long episodes. |
+| **“Just turn normalize off and openings will learn”** | Raw-scenario overnight (~27 cycles): LBR stayed d0, eval `E[p]` ~0.015, ranks stuck. Scale was not the missing representation/bind fix. See debug doc. |
+| **Assuming GAE automatically credits the opening** after a two-step pickup→TD | Loud advantage landed on the *scoring* step; openings often ~neutral even when env paid correctly. Credit assignment ≠ “big terminal exists.” |
+| **Assuming fail-window `−0.5` punishes the empty-EZ click** | Terminal loss is on window close, not on the bad opening submit. Soft-mask empty-EZ + delayed −0.5 ≠ “this opening is labeled bad.” |
+| **“Ball isn’t in the obs” as the LBR root cause** | `hasBall` / `distToBall` (and earlier affordances) were packed and tested. Stuck openings tracked learning signal / endzone prior, not a missing ball channel. |
+| **Cloning Lookahead as the RL reward** | Out for v1 — BC seed is imitation; PPO grades harness rewards (`DESIGN.md`). |
+| **Flatten pitch `(C,H,W)` hygiene (AI2.23) while keeping this Conv trunk** | Parked — conflicts with the spatial CNN + flatten-join design. |
+
+### Still true (do not “fix” by undoing)
+
+- Soft-mask = exposure; reward = grade.
+- Policy sees **full flat pitch map** + full row pack — no GAP/attn/gather shortcut on that path (value GAP is separate).
+- Full legal menus at train and eval; prefer soft tilt over hard curation.
+- Openings stuck on drills are still primarily a **learning-signal / prior** story ([`PPO_LEARNING_DEBUG.md`](PPO_LEARNING_DEBUG.md)), not proof that the pitch was erased before the join.
 
 ---
 
