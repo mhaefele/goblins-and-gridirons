@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from gridiron_ai.eval_outcome import format_eval_outcome
+from gridiron_ai.debug.eval_outcome import format_eval_outcome
 
 
 def test_format_eval_outcome_submit_error() -> None:

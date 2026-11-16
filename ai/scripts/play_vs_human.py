@@ -29,10 +29,10 @@ if str(_AI_ROOT) not in sys.path:
 
 from sb3_contrib import MaskablePPO
 
-from gridiron_ai.dev_stack import DEFAULT_BASE_URL, DEFAULT_FRONTEND_URL, require_dev_stack
-from gridiron_ai.api.env import OPPONENT_HUMAN, GridironEnv
-from gridiron_ai.reward import REWARD_PROFILES
-from gridiron_ai.training_phases import resolve_targets
+from gridiron_ai.train.dev_stack import DEFAULT_BASE_URL, DEFAULT_FRONTEND_URL, require_dev_stack
+from gridiron_ai.train.api.env import OPPONENT_HUMAN, GridironEnv
+from gridiron_ai.model.reward import REWARD_PROFILES
+from gridiron_ai.train.training_phases import resolve_targets
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", force=True)
 

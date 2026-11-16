@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from gridiron_ai.features import LEGAL_ROW_FEATURE_DIM, LEGAL_ROW_FEATURE_SEGMENTS
-from gridiron_ai.ppo_update_evidence import (
+from gridiron_ai.model.features import LEGAL_ROW_FEATURE_DIM, LEGAL_ROW_FEATURE_SEGMENTS
+from gridiron_ai.debug.ppo_update_evidence import (
     _unflatten_rollout_field,
     expected_move_labels_from_snapshot,
     format_failed_drill_block,

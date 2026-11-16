@@ -1,11 +1,11 @@
 import argparse
 
-from gridiron_ai.train_mix import (
+from gridiron_ai.train.train_mix import (
     FULL_GAME_EVAL_EVERY_CYCLES,
     HEALTHY_D5_EVAL_EVERY_CYCLES,
     TrainMix,
 )
-from gridiron_ai.training_phases import PHASE_PROFILES, PHASE_SCENARIO_A, PHASE_SCENARIO_B
+from gridiron_ai.train.training_phases import PHASE_PROFILES, PHASE_SCENARIO_A, PHASE_SCENARIO_B
 
 
 def _args(**overrides: object) -> argparse.Namespace:

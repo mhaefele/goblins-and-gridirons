@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from gridiron_ai.actions import (
+from gridiron_ai.model.actions import (
     FACTOR_ACTOR_HAS_BALL,
     FACTOR_SOURCE_X,
     FACTOR_SOURCE_Y,
@@ -12,7 +12,7 @@ from gridiron_ai.actions import (
     FACTOR_TARGET_X,
     FACTOR_TARGET_Y,
 )
-from gridiron_ai.constants import (
+from gridiron_ai.model.constants import (
     CELL_CH_DIST_TO_BALL,
     CELL_CH_HAS_BALL,
     FACTORS_PER_LEGAL_MOVE,
@@ -24,7 +24,7 @@ from gridiron_ai.constants import (
     PLAY_HEIGHT,
     PLAY_WIDTH,
 )
-from gridiron_ai.eval_ball_swap_probe import (
+from gridiron_ai.debug.eval_ball_swap_probe import (
     aggregate_ball_swap_scores,
     format_ball_swap_turn1_line,
     probe_enabled_for,

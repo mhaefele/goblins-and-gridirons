@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from gridiron_ai.constants import (
+from gridiron_ai.model.constants import (
     FACTORS_PER_LEGAL_MOVE,
     MAX_LEGAL_MOVES,
     OBS_KEY_LEGAL_MOVE_COUNT,
@@ -16,7 +16,7 @@ from gridiron_ai.constants import (
     OBSERVATION_VECTOR_LENGTH,
     SCHEMA_VERSION,
 )
-from gridiron_ai.expert_clone.expert import (
+from gridiron_ai.model.expert_clone.expert import (
     NPZ_KEY_ACTION,
     NPZ_KEY_LEGAL_MOVES_FLAT,
     NPZ_KEY_LEGAL_ROW_OFFSET,

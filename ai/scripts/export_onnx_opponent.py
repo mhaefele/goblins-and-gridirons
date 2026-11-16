@@ -19,9 +19,9 @@ if str(_AI_ROOT) not in sys.path:
 
 from sb3_contrib import MaskablePPO
 
-from gridiron_ai.export_onnx import export_policy_onnx, smoke_compare_action
-from gridiron_ai.reward import REWARD_PROFILES
-from gridiron_ai.training_phases import freeze_exported_checkpoint, resolve_targets
+from gridiron_ai.model.export_onnx import export_policy_onnx, smoke_compare_action
+from gridiron_ai.model.reward import REWARD_PROFILES
+from gridiron_ai.train.training_phases import freeze_exported_checkpoint, resolve_targets
 
 
 def parse_args() -> argparse.Namespace:

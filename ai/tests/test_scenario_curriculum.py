@@ -1,4 +1,4 @@
-from gridiron_ai.scenario_curriculum import (
+from gridiron_ai.train.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
     DEFAULT_SCENARIO_TRAIN_LEARNING,
     DEFAULT_SCENARIO_TRAIN_MASTERED,
@@ -60,7 +60,7 @@ from gridiron_ai.scenario_curriculum import (
     train_timesteps_for_difficulty,
     train_timesteps_for_scenario,
 )
-from gridiron_ai.api.scenarios import ScenarioCatalog, ScenarioInfo, set_catalog
+from gridiron_ai.train.api.scenarios import ScenarioCatalog, ScenarioInfo, set_catalog
 from tests.catalog_fixture import BOARD_NAMES, CLAIM_NAMES, FULL_NAMES, install_fixture_catalog
 
 install_fixture_catalog()
@@ -336,7 +336,7 @@ def test_last_eval_round_trip(tmp_path) -> None:
 
 
 def test_last_eval_peer_does_not_displace_own_train_trend() -> None:
-    from gridiron_ai.scenario_curriculum import (
+    from gridiron_ai.train.scenario_curriculum import (
         LAST_EVAL_SOURCE_AFTER,
         LAST_EVAL_SOURCE_BEFORE,
         LAST_EVAL_SOURCE_PEER,

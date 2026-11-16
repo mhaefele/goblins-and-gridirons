@@ -21,14 +21,14 @@ _AI_ROOT = Path(__file__).resolve().parents[1]
 if str(_AI_ROOT) not in sys.path:
     sys.path.insert(0, str(_AI_ROOT))
 
-from gridiron_ai.expert_clone.expert_stats import (
+from gridiron_ai.model.expert_clone.expert_stats import (
     BUCKET_TOTAL,
     count_kind_breakdown_from_jsonl,
     count_kinds_from_npz,
     empty_kind_breakdown,
     format_kind_breakdown,
 )
-from gridiron_ai.paths import EXPERT_DIR
+from gridiron_ai.train.paths import EXPERT_DIR
 
 
 def parse_args() -> argparse.Namespace:

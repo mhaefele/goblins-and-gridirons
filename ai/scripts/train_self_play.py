@@ -49,15 +49,15 @@ _AI_ROOT = Path(__file__).resolve().parents[1]
 if str(_AI_ROOT) not in sys.path:
     sys.path.insert(0, str(_AI_ROOT))
 
-from gridiron_ai.checkpoints import (
+from gridiron_ai.train.checkpoints import (
     DEFAULT_STEP_CHECKPOINT_KEEP,
     STEP_CHECKPOINT_PREFIX,
     atomic_model_save,
     prepare_checkpoint_dirs,
     trim_step_checkpoints,
 )
-from gridiron_ai.dev_stack import DEFAULT_BASE_URL, require_backend
-from gridiron_ai.paths import CHECKPOINT_DIR, CYCLE_LOG_PATH, EVAL_DIR, EXPERT_SEED_ZIP, RUNS_DIR
+from gridiron_ai.train.dev_stack import DEFAULT_BASE_URL, require_backend
+from gridiron_ai.train.paths import CHECKPOINT_DIR, CYCLE_LOG_PATH, EVAL_DIR, EXPERT_SEED_ZIP, RUNS_DIR
 
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
@@ -66,8 +66,8 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv, VecNormalize
 from stable_baselines3.common.vec_env.subproc_vec_env import _stack_obs
 
-from gridiron_ai.api.client import GridironApiError, GridironClient
-from gridiron_ai.reward import (
+from gridiron_ai.train.api.client import GridironApiError, GridironClient
+from gridiron_ai.model.reward import (
     FULL_GAME_ONNX_OPPONENT_PROFILES,
     REWARD_PROFILES,
     SHAPED_PROFILES,
@@ -75,18 +75,18 @@ from gridiron_ai.reward import (
     RewardProfileName,
     profiles_for_all,
 )
-from gridiron_ai.api.env import (
+from gridiron_ai.train.api.env import (
     COMPUTER_KIND_ONNX,
     OPPONENT_COMPUTER,
     GridironEnv,
     opponent_metrics_label,
 )
-from gridiron_ai.eval_debug import format_eval_game_line
-from gridiron_ai.eval_opening_diag import (
+from gridiron_ai.debug.eval_debug import format_eval_game_line
+from gridiron_ai.debug.eval_opening_diag import (
     aggregate_opening_move_scores,
     diagnose_opening_mispick,
 )
-from gridiron_ai.metrics import (
+from gridiron_ai.train.metrics import (
     accumulate_kind_totals,
     aggregate_episodes,
     format_rate_bit,
@@ -97,7 +97,7 @@ from gridiron_ai.metrics import (
     print_metrics,
     print_scenario_eval_metrics,
 )
-from gridiron_ai.scenario_curriculum import (
+from gridiron_ai.train.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
     DEFAULT_SCENARIO_TRAIN_LEARNING,
     DEFAULT_SCENARIO_TRAIN_MASTERED,
@@ -147,7 +147,7 @@ from gridiron_ai.scenario_curriculum import (
     suppress_full_game_eval_for_loose_ball_focus,
     train_multiplier_drill_label,
 )
-from gridiron_ai.train_mix import (
+from gridiron_ai.train.train_mix import (
     DEFAULT_EVAL_HEURISTIC,
     DEFAULT_EVAL_LOOKAHEAD,
     DEFAULT_EVAL_ONNX,
@@ -158,12 +158,12 @@ from gridiron_ai.train_mix import (
     HEALTHY_D5_EVAL_EVERY_CYCLES,
     TrainMix,
 )
-from gridiron_ai.api.scenarios import refresh_catalog, require_catalog, resolve_scenario_pin
-from gridiron_ai.persistence.scenario_focus import clear_focus, path_for_focus, write_focus
-from gridiron_ai.ppo_update_evidence import PpoUpdateEvidenceCallback
-from gridiron_ai.tb_callback import GridironMetricsCallback, PeriodicFinalSaveCallback
-from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy, maskable_ppo_policy_kwargs
-from gridiron_ai.training_phases import (
+from gridiron_ai.train.api.scenarios import refresh_catalog, require_catalog, resolve_scenario_pin
+from gridiron_ai.train.persistence.scenario_focus import clear_focus, path_for_focus, write_focus
+from gridiron_ai.debug.ppo_update_evidence import PpoUpdateEvidenceCallback
+from gridiron_ai.train.tb_callback import GridironMetricsCallback, PeriodicFinalSaveCallback
+from gridiron_ai.model.legal_row_policy import LegalRowActorCriticPolicy, maskable_ppo_policy_kwargs
+from gridiron_ai.train.training_phases import (
     EVAL_PHASE_CHOICES,
     PhaseName,
     TrainTarget,
@@ -180,7 +180,7 @@ from gridiron_ai.training_phases import (
     PHASE_PROFILES,
     PHASE_SCENARIO_A,
 )
-from gridiron_ai.pipeline_state import load_pipeline, rewind_pipeline
+from gridiron_ai.train.pipeline_state import load_pipeline, rewind_pipeline
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", force=True)
 
@@ -200,7 +200,7 @@ N_EPOCHS = 10
 CLIP_RANGE = 0.2
 TARGET_KL: float | None = None
 
-# Mix knobs / cadence: ``gridiron_ai.train_mix.TrainMix`` (defaults imported above).
+# Mix knobs / cadence: ``gridiron_ai.train.train_mix.TrainMix`` (defaults imported above).
 # Per-scenario drill timesteps (learning / mastered) live in scenario_curriculum.py.
 # Full-game heuristic/lookahead/ONNX are off until every drill is at MAX_DIFFICULTY (scenario_b gate).
 DEFAULT_N_ENVS = 30
@@ -1227,7 +1227,7 @@ def _eval_one_scenario(
     stored_rates = last_eval_winrate_history(stored, scenario, difficulty)
     stored_trail = last_eval_winrate_trail(stored, scenario, difficulty)
     # ball_swap_probe — removable
-    from gridiron_ai.eval_ball_swap_probe import ball_swap_rank_trail_from_history
+    from gridiron_ai.debug.eval_ball_swap_probe import ball_swap_rank_trail_from_history
 
     stored_ball_swap_ranks = ball_swap_rank_trail_from_history(
         last_eval_history(stored, scenario, difficulty, own_train_only=True)
@@ -1730,7 +1730,7 @@ def _attach_opening_move_scores(
     else:
         summary.pop("opening_move_scores", None)
     # ball_swap_probe — removable (eval_ball_swap_probe.py)
-    from gridiron_ai.eval_ball_swap_probe import attach_ball_swap_opening_scores
+    from gridiron_ai.debug.eval_ball_swap_probe import attach_ball_swap_opening_scores
 
     try:
         attach_ball_swap_opening_scores(model.policy, snapshot, summary, scenario=scenario)
@@ -1899,7 +1899,7 @@ def _eval_segment(
         stats["scenario_difficulty"] = scenario_difficulty
         stats.update(aggregate_opening_move_scores(episodes))
         # ball_swap_probe — removable
-        from gridiron_ai.eval_ball_swap_probe import aggregate_ball_swap_scores
+        from gridiron_ai.debug.eval_ball_swap_probe import aggregate_ball_swap_scores
 
         stats.update(aggregate_ball_swap_scores(episodes))
     quiet_perfect = quiet_scenario and _eval_batch_all_wins(stats, games=games)
@@ -1951,7 +1951,7 @@ def _eval_segment(
                 indent=body_indent,
             )
             # ball_swap_probe — removable second line (TD_RUN / LOOSE_BALL_RUN only)
-            from gridiron_ai.eval_ball_swap_probe import format_ball_swap_headline_bits, probe_enabled_for
+            from gridiron_ai.debug.eval_ball_swap_probe import format_ball_swap_headline_bits, probe_enabled_for
 
             if probe_enabled_for(scenario):
                 ball_swap_rank_history: list[float] | None = None

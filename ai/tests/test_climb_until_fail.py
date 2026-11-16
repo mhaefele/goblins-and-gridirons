@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from catalog_fixture import install_fixture_catalog
-from gridiron_ai.scenario_curriculum import (
+from gridiron_ai.train.scenario_curriculum import (
     MAX_DIFFICULTY,
     SCENARIO_EVAL_GAMES,
     climb_until_fail_levels,

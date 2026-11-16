@@ -2,7 +2,7 @@
 
 What we *thought* was happening, what the `--verbose` evidence actually shows, and what to try next.
 
-Related code: rewards in `gridiron_ai/reward.py`, soft-mask in `ACTION_SAMPLING.md`, verbose evidence sidecar in `gridiron_ai/ppo_update_evidence.py` (only runs with `--verbose`).
+Related code: rewards in `gridiron_ai/model/reward.py`, soft-mask in `ACTION_SAMPLING.md`, verbose evidence sidecar in `gridiron_ai/debug/ppo_update_evidence.py` (only runs with `--verbose`).
 
 ---
 

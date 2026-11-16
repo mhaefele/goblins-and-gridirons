@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gridiron_ai.eval_opening_diag import (
+from gridiron_ai.debug.eval_opening_diag import (
     aggregate_opening_move_scores,
     annotate_move_label,
     ball_carrier_player_index,

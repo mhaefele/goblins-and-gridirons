@@ -21,10 +21,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from gridiron_ai.eval_debug import format_eval_game_line
-from gridiron_ai.metrics import format_scenario_eval_headline
-from gridiron_ai.paths import EVAL_DIR
-from gridiron_ai.reward import FULL_GAME_ONNX_OPPONENT_PROFILES, REWARD_PROFILES, SHAPED_PROFILES
+from gridiron_ai.debug.eval_debug import format_eval_game_line
+from gridiron_ai.train.metrics import format_scenario_eval_headline
+from gridiron_ai.train.paths import EVAL_DIR
+from gridiron_ai.model.reward import FULL_GAME_ONNX_OPPONENT_PROFILES, REWARD_PROFILES, SHAPED_PROFILES
 from scripts.train_self_play import (
     CLIP_RANGE,
     DEFAULT_BATCH_SIZE,
@@ -36,7 +36,7 @@ from scripts.train_self_play import (
     TARGET_KL,
     _DEFAULT_LEARNING_RATE,
 )
-from gridiron_ai.scenario_curriculum import (
+from gridiron_ai.train.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
     GATE_PROGRESS_WAIVE_FAILURES,
     MAX_DIFFICULTY,
@@ -67,16 +67,16 @@ from gridiron_ai.scenario_curriculum import (
     scenarios_for_cycle,
     train_multiplier_summary_lines,
 )
-from gridiron_ai.api.scenarios import (
+from gridiron_ai.train.api.scenarios import (
     load_cached_catalog,
     require_catalog,
     scenario_phase_order,
     set_catalog,
     summary_scenario_order,
 )
-from gridiron_ai.persistence.scenario_focus import load_live_focus, path_for_focus
-from gridiron_ai.pipeline_state import load_pipeline
-from gridiron_ai.training_phases import (
+from gridiron_ai.train.persistence.scenario_focus import load_live_focus, path_for_focus
+from gridiron_ai.train.pipeline_state import load_pipeline
+from gridiron_ai.train.training_phases import (
     PHASE_SCENARIO_A,
     PHASE_SCENARIO_B,
     TrainTarget,

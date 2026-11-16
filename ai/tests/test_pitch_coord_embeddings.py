@@ -5,7 +5,7 @@ from __future__ import annotations
 import torch as th
 from gymnasium import spaces
 
-from gridiron_ai.constants import (
+from gridiron_ai.model.constants import (
     FACTORS_PER_LEGAL_MOVE,
     LEGAL_ROW_SCORE_WIDTH,
     MAX_LEGAL_MOVES,
@@ -16,9 +16,9 @@ from gridiron_ai.constants import (
     PLAY_HEIGHT,
     PLAY_WIDTH,
 )
-from gridiron_ai.features import LEGAL_ROW_FEATURE_DIM, GridironFeaturesExtractor
-from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
-from gridiron_ai.obs import dict_observation_space
+from gridiron_ai.model.features import LEGAL_ROW_FEATURE_DIM, GridironFeaturesExtractor
+from gridiron_ai.model.legal_row_policy import LegalRowActorCriticPolicy
+from gridiron_ai.model.obs import dict_observation_space
 
 
 def test_legal_row_feature_dim_matches_encode() -> None:

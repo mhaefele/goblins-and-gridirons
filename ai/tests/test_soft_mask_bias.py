@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from gridiron_ai.api.env import GridironEnv
-from gridiron_ai.constants import OBS_KEY_SOFT_MASK_LEGAL, SOFT_MASK_LOGIT_BIAS
-from gridiron_ai.obs import attach_packed_legals, dict_observation_space, empty_step_observation
+from gridiron_ai.train.api.env import GridironEnv
+from gridiron_ai.model.constants import OBS_KEY_SOFT_MASK_LEGAL, SOFT_MASK_LOGIT_BIAS
+from gridiron_ai.model.obs import attach_packed_legals, dict_observation_space, empty_step_observation
 
 
 def test_soft_mask_bias_off_zeros_obs_flags() -> None:

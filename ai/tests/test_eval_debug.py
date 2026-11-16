@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from gridiron_ai.constants import PLAY_HEIGHT
-from gridiron_ai.eval_debug import ScenarioEvalDebug, _format_expected_moves
+from gridiron_ai.model.constants import PLAY_HEIGHT
+from gridiron_ai.debug.eval_debug import ScenarioEvalDebug, _format_expected_moves
 
 
 def _rewards(*, players: list[dict], ball: dict | None = None) -> dict:
@@ -195,7 +195,7 @@ def test_turn1_log_suffix_orders_expected_by_best_rank() -> None:
 
 
 def test_describe_satisfied_claim_on_attached_claim() -> None:
-    from gridiron_ai.eval_debug import _describe_satisfied_claim
+    from gridiron_ai.debug.eval_debug import _describe_satisfied_claim
 
     choice = {
         "kind": "run",

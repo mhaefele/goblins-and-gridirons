@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from gridiron_ai.api.client import (
+from gridiron_ai.train.api.client import (
     GridironApiError,
     _assert_packed_step,
     _assert_packed_submit,
 )
-from gridiron_ai.constants import OBSERVATION_VECTOR_LENGTH, SCHEMA_VERSION
+from gridiron_ai.model.constants import OBSERVATION_VECTOR_LENGTH, SCHEMA_VERSION
 
 
 def _rewards_view() -> dict:

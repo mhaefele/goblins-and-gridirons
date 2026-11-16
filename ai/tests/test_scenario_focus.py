@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from gridiron_ai.persistence.scenario_focus import (
+from gridiron_ai.train.persistence.scenario_focus import (
     clear_focus,
     load_live_focus,
     path_for_focus,

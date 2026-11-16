@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from gridiron_ai.constants import PLAY_HEIGHT, PLAY_WIDTH
-from gridiron_ai.reward import PROFILE_SHAPING, covering_radius, shaping_reward
+from gridiron_ai.model.constants import PLAY_HEIGHT, PLAY_WIDTH
+from gridiron_ai.model.reward import PROFILE_SHAPING, covering_radius, shaping_reward
 
 
 def _coord(x: int, y: int) -> dict:

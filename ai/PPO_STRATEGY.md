@@ -84,7 +84,7 @@ Dict obs
        → MaskableCategorical → row index
 ```
 
-Wire / pack widths: `gridiron_ai/constants.py` (`CELL_CH_*`, `ACTION_FACTOR_WIDTHS`,
+Wire / pack widths: `gridiron_ai/model/constants.py` (`CELL_CH_*`, `ACTION_FACTOR_WIDTHS`,
 schema 25). Encoding: `features.py`. Deeper “engine knows vs pack exposes” inventory:
 [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#legal-move-information-available-vs-exposed).
 
@@ -229,7 +229,7 @@ Full soft-mask contract: [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#soft-mask-pre
 | Profile shaping | `general` / `spread` / `td` / `defense` — train only; eval off |
 | Soft-mask | Sampling tilt only |
 
-Reward ownership and formulas: `gridiron_ai/reward.py` +
+Reward ownership and formulas: `gridiron_ai/model/reward.py` +
 [`TRAINING_ROADMAP.md`](TRAINING_ROADMAP.md). Packed legal-row ints are **never**
 business logic for reward (schema 21+ harness snapshots).
 

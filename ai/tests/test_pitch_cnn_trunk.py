@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import torch as th
 
-from gridiron_ai.constants import (
+from gridiron_ai.model.constants import (
     NUMBERS_PER_BOARD_CELL,
     OBS_KEYS_GAME_STATE,
     PLAY_HEIGHT,
     PLAY_WIDTH,
 )
-from gridiron_ai.features import (
+from gridiron_ai.model.features import (
     JOIN_BOARD_FEAT,
     JOIN_CELL_FEAT,
     JOIN_PITCH_FLAT,
@@ -20,7 +20,7 @@ from gridiron_ai.features import (
     _non_pitch_width,
     GridironFeaturesExtractor,
 )
-from gridiron_ai.obs import dict_observation_space, empty_step_observation
+from gridiron_ai.model.obs import dict_observation_space, empty_step_observation
 
 
 def test_pitch_cnn_out_dim_and_board_features() -> None:

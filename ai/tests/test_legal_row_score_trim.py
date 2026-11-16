@@ -5,7 +5,7 @@ from __future__ import annotations
 import torch as th
 from gymnasium import spaces
 
-from gridiron_ai.constants import (
+from gridiron_ai.model.constants import (
     FACTORS_PER_LEGAL_MOVE,
     LEGAL_ROW_SCORE_WIDTH,
     MAX_LEGAL_MOVES,
@@ -14,9 +14,9 @@ from gridiron_ai.constants import (
     OBS_KEY_LEGAL_MOVES,
     OBS_KEY_SOFT_MASK_LEGAL,
 )
-from gridiron_ai.features import GridironFeaturesExtractor
-from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
-from gridiron_ai.obs import dict_observation_space
+from gridiron_ai.model.features import GridironFeaturesExtractor
+from gridiron_ai.model.legal_row_policy import LegalRowActorCriticPolicy
+from gridiron_ai.model.obs import dict_observation_space
 
 
 def test_score_legal_rows_encodes_only_batch_max_count() -> None:

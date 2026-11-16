@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from gridiron_ai.pipeline_state import (
+from gridiron_ai.train.pipeline_state import (
     PipelineState,
     ProfileSplit,
     ProfileState,
@@ -25,7 +25,7 @@ _FORKED = PipelineState(
 
 @pytest.fixture(autouse=True)
 def _root(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("gridiron_ai.persistence.pipeline.CHECKPOINT_DIR", tmp_path)
+    monkeypatch.setattr("gridiron_ai.train.persistence.pipeline.CHECKPOINT_DIR", tmp_path)
 
 
 def test_missing_file_is_fresh_pipeline() -> None:

@@ -4,7 +4,7 @@
 No backend. Overwrites ``output/checkpoints/{profile}/maskable_ppo_selfplay_final.zip``
 (all three if ``--profile all``). Does not modify the npz unless ``--out`` is set.
 
-Device and fit batch size are fixed in ``gridiron_ai.expert_clone.clone``.
+Device and fit batch size are fixed in ``gridiron_ai.model.expert_clone.clone``.
 
 Usage (from ai/):
   .venv/bin/python -m scripts.clone_expert --in output/expert/lookahead.npz --profile all
@@ -23,9 +23,9 @@ _AI_ROOT = Path(__file__).resolve().parents[1]
 if str(_AI_ROOT) not in sys.path:
     sys.path.insert(0, str(_AI_ROOT))
 
-from gridiron_ai.expert_clone.clone import clone_npz_into_checkpoint
-from gridiron_ai.paths import CHECKPOINT_DIR, EXPERT_DIR
-from gridiron_ai.reward import REWARD_PROFILES, RewardProfileName
+from gridiron_ai.model.expert_clone.clone import clone_npz_into_checkpoint
+from gridiron_ai.train.paths import CHECKPOINT_DIR, EXPERT_DIR
+from gridiron_ai.model.reward import REWARD_PROFILES, RewardProfileName
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", force=True)
 

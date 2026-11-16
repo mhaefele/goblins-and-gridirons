@@ -15,12 +15,12 @@ import numpy as np
 import pytest
 from sb3_contrib import MaskablePPO
 
-from gridiron_ai.api.client import GridironClient
-from gridiron_ai.api.scenarios import refresh_catalog
-from gridiron_ai.checkpoints import atomic_model_save
-from gridiron_ai.dev_stack import DEFAULT_BASE_URL, url_reachable
-from gridiron_ai.paths import EXPERT_SEED_ZIP
-from gridiron_ai.reward import RewardConfig
+from gridiron_ai.train.api.client import GridironClient
+from gridiron_ai.train.api.scenarios import refresh_catalog
+from gridiron_ai.train.checkpoints import atomic_model_save
+from gridiron_ai.train.dev_stack import DEFAULT_BASE_URL, url_reachable
+from gridiron_ai.train.paths import EXPERT_SEED_ZIP
+from gridiron_ai.model.reward import RewardConfig
 from scripts.train_self_play import (
     DEFAULT_MAX_EPISODE_STEPS,
     _set_ent_coef,
@@ -55,8 +55,8 @@ def test_live_train_harness_boots_steps_and_learns_once(
 
     # Do not clobber the developer's real catalog cache during the smoke.
     catalog_path = tmp_path / "scenario_catalog.json"
-    monkeypatch.setattr("gridiron_ai.persistence.scenario_catalog.SCENARIO_CATALOG_PATH", catalog_path)
-    monkeypatch.setattr("gridiron_ai.api.scenarios.SCENARIO_CATALOG_PATH", catalog_path)
+    monkeypatch.setattr("gridiron_ai.train.persistence.scenario_catalog.SCENARIO_CATALOG_PATH", catalog_path)
+    monkeypatch.setattr("gridiron_ai.train.api.scenarios.SCENARIO_CATALOG_PATH", catalog_path)
 
     client = GridironClient(base_url)
     try:

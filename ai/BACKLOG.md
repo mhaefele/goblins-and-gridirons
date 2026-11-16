@@ -2,7 +2,7 @@
 
 Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) defers here.
 
-**Status:** Open. Live contract is **schema 24** ([`constants.py`](gridiron_ai/constants.py)). Train/eval still HTTP packed JSON against `./dev.sh` `:18080`. AI1 shipped — [archive](../archive/BACKLOG-done.md).
+**Status:** Open. Live contract is **schema 24** ([`constants.py`](gridiron_ai/model/constants.py)). Train/eval still HTTP packed JSON against `./dev.sh` `:18080`. AI1 shipped — [archive](../archive/BACKLOG-done.md).
 
 **Near-term (product):** [AI2.12](#ai212--held-dice--mid-check-obs--scenarios) scenarios · [AI2.17](#ai217--blind-spot-remediation-from-arena-diagnostics) · [AI2.6](#ai26--onnx-export--kotlin-compute-opponent) regen · [AI2.5](#ai25--multi-team-curriculum).
 
@@ -122,7 +122,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 | **Status** | **Done.** |
 | **Goal** | After (or interleaved with) training, play M games as one seat vs built-in `COMPUTER` (lookahead primary; also heuristic baseline). **Submit with `forSeat`** (no `/events`) so the server waits until `actingSeat` is the eval policy’s seat (computer moves in-process). Record winrate, draws, mean score differential, TD / challenge point breakdown, and policy entropy. Snapshot the model with the eval summary. |
 | **Depends on** | AI2.2 |
-| **Files** | [`gridiron_ai/api/env.py`](gridiron_ai/api/env.py) (self vs computer; `forSeat` wait); [`scripts/train_self_play.py`](scripts/train_self_play.py) (`--eval-lookahead` / `--eval-heuristic`); create-match `computerOpponent` ([`ComputerOpponentKind`](../backend/src/main/kotlin/com/mhaefele/gridiron/shared/ComputerOpponentKind.kt)). Shared `info["bb_episode"]` + [`aggregate_episodes`](gridiron_ai/metrics.py). |
+| **Files** | [`gridiron_ai/train/api/env.py`](gridiron_ai/train/api/env.py) (self vs computer; `forSeat` wait); [`scripts/train_self_play.py`](scripts/train_self_play.py) (`--eval-lookahead` / `--eval-heuristic`); create-match `computerOpponent` ([`ComputerOpponentKind`](../backend/src/main/kotlin/com/mhaefele/gridiron/shared/ComputerOpponentKind.kt)). Shared `info["bb_episode"]` + [`aggregate_episodes`](gridiron_ai/train/metrics.py). |
 | **Acceptance** | Automated eval run produces a comparable metrics artifact; vs-lookahead and vs-heuristic both runnable **without SSE**; harness only acts when acting-seat says so; results are enough to tell “better than last checkpoint” on winrate and score margin. |
 | **Rulebook** | n/a |
 
@@ -183,7 +183,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 | **Status** | **Done (profiles).** |
 | **Goal** | Experiments only if v1 learning stalls: light terms (e.g. possession, end-zone proximity) — **not** a copy of `LookaheadScorer`. Keep win/loss + point diff dominant. |
 | **Depends on** | Evidence from AI2.3/AI2.4 that sparse reward is insufficient. |
-| **Files** | [`reward.py`](gridiron_ai/reward.py) presets `general` / `spread` / `td` / `defense`; [`train_self_play.py`](scripts/train_self_play.py) `--profile` rotation + per-profile checkpoints. Obs career TD/cards + submit `scoring` + legal `potentialChallengeClaims`. |
+| **Files** | [`reward.py`](gridiron_ai/model/reward.py) presets `general` / `spread` / `td` / `defense`; [`train_self_play.py`](scripts/train_self_play.py) `--profile` rotation + per-profile checkpoints. Obs career TD/cards + submit `scoring` + legal `potentialChallengeClaims`. |
 | **Acceptance** | Shaping is flaggable/off-by-default on eval; train uses named profiles; ablations compare vs pure v1 on the same eval suite. |
 | **Rulebook** | n/a |
 
@@ -233,7 +233,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 |-------|--------|
 | **Goal** | **Evaluate (not presuppose)** how much legal-move information the policy and value nets should see beyond conditional masking alone — and whether the Dict observation should split the monolithic game-state vector into logical sections now that `legal_moves` / `legal_move_count` already ride as separate keys. Decide *what* to add (cheap scalars, per-kind summaries, encoded legal rows, something else) and *where* it lives (concat to features, separate encoder branch, etc.). Keep the wire/DTO contract stable unless a split forces a version bump. |
 | **Depends on** | Schema 16 legal-row baseline (board features + join-score action); [AI2.3](#ai23--eval-vs-computer)+ to compare ablations. |
-| **Files** | `ai/gridiron_ai/obs.py`, `env.py`, `legal_row_policy.py` / `features.py`; optional Kotlin packer / `schemaVersion` only if dict keys or flat layout change. |
+| **Files** | `ai/gridiron_ai/model/obs.py`, `env.py`, `legal_row_policy.py` / `features.py`; optional Kotlin packer / `schemaVersion` only if dict keys or flat layout change. |
 | **Acceptance** | Written decision + eval evidence: either “board-only + masking is enough” or a landed approach with ablation vs the baseline on the AI2.3 suite. If splitting game state, document the new Dict keys and whether the flat packed vector (`OBSERVATION_VECTOR_LENGTH`) remains for ONNX/wire compat. |
 | **Rulebook** | n/a |
 
@@ -253,7 +253,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 |-------|--------|
 | **Goal** | Next steps to improve **action representation & sampling** (legal-row pack columns + how we pick among rows). Checklist lives in [`ACTION_SAMPLING.md`](ACTION_SAMPLING.md#inventory). |
 | **Depends on** | Schema 16 legal-row join scores in use. |
-| **Files** | Checklist + factor maps + uniqueness notes: **[`ACTION_SAMPLING.md`](ACTION_SAMPLING.md)**. Implementation touches `ai/gridiron_ai/actions.py`, `constants.py`, `legal_row_policy.py`; Kotlin `AiFactor` / `AiLegalKind` / mapping as needed; `schemaVersion`. |
+| **Files** | Checklist + factor maps + uniqueness notes: **[`ACTION_SAMPLING.md`](ACTION_SAMPLING.md)**. Implementation touches `ai/gridiron_ai/model/actions.py`, `constants.py`, `legal_row_policy.py`; Kotlin `AiFactor` / `AiLegalKind` / mapping as needed; `schemaVersion`. |
 | **Acceptance** | Inventory in `ACTION_SAMPLING.md` triaged (done / won’t do / deferred with reason); any Yes-do item either shipped or explicitly deferred; eval notes for pack / join-score experiments (not MultiDiscrete head revival). |
 | **Rulebook** | n/a |
 
@@ -338,7 +338,7 @@ Source of truth for trainable-AI **tasks**. Root [`BACKLOG.md`](../BACKLOG.md) d
 | **Status** | **Done.** |
 | **Goal** | Drop `POST /api/ai/matches/{id}/choose` (and `/choose/packed`). Train/eval never use it — opponent moves via in-process `ComputerCoachAgent` on `COMPUTER` seats. `/choose` duplicates that strategy pick in HTTP with odd constraints (acting seat must be non-`COMPUTER` so the agent does not race). Move scenario solvability checks off the AI HTTP surface. |
 | **Depends on** | None (hygiene). Pairs with [AI2.15](#ai215--coachcontrol-seat-semantics) — no “HUMAN + `/choose`” back door. |
-| **Files** | [`AiMatchController`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/AiMatchController.kt) (`choose`, `choosePacked`, `applyChooseSubmit`, `createChooseSubmitResult`); [`GridironApiClient`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/support/GridironApiClient.kt) `aiChoose`; [`client.py`](gridiron_ai/api/client.py) `ai_choose`; [`AiSubmitApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/AiSubmitApiTest.kt) choose smoke tests; [`TrainingScenarioLookaheadTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/TrainingScenarioLookaheadTest.kt); [`DESIGN.md`](DESIGN.md) / DTO KDoc mentioning choose. |
+| **Files** | [`AiMatchController`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/AiMatchController.kt) (`choose`, `choosePacked`, `applyChooseSubmit`, `createChooseSubmitResult`); [`GridironApiClient`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/support/GridironApiClient.kt) `aiChoose`; [`client.py`](gridiron_ai/train/api/client.py) `ai_choose`; [`AiSubmitApiTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/AiSubmitApiTest.kt) choose smoke tests; [`TrainingScenarioLookaheadTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/TrainingScenarioLookaheadTest.kt); [`DESIGN.md`](DESIGN.md) / DTO KDoc mentioning choose. |
 | **Acceptance** | No `/choose` routes or client helpers. [`TrainingScenarioLookaheadTest`](../backend/src/test/kotlin/com/mhaefele/gridiron/integration/TrainingScenarioLookaheadTest.kt) drives drills via `MatchGame` + injected [`LookaheadOpponentStrategy`](../backend/src/main/kotlin/com/mhaefele/gridiron/game/opponent/lookahead/LookaheadOpponentStrategy.kt) (same pattern as [`ExpertGameExporter`](../backend/src/main/kotlin/com/mhaefele/gridiron/api/ai/export/ExpertGameExporter.kt)) — asserts `TrainingDrillStatus.PASS` without `aiStep` / `aiChoose`. Remaining integration tests cover submit + `forSeat` wait only. |
 | **Rulebook** | n/a |
 
@@ -457,7 +457,7 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 |-------|--------|
 | **Status** | **Open — hygiene; not next.** |
 | **Goal** | Drop the optional gitignored remap once every resume zip on disk pickles under current `gridiron_ai` module paths (one successful continue+save per zip is enough; prune stale `*_steps.zip`). |
-| **Files** | `install_legacy_pickle_aliases` + call in [`__init__.py`](gridiron_ai/__init__.py); [`PICKLE_ALIASES_PATH`](gridiron_ai/paths.py); `.gitignore` entry; alias tests in [`test_checkpoints.py`](tests/test_checkpoints.py); delete local `local.pickle_aliases.properties` if present. |
+| **Files** | `install_legacy_pickle_aliases` + call in [`__init__.py`](gridiron_ai/__init__.py); [`PICKLE_ALIASES_PATH`](gridiron_ai/train/paths.py); `.gitignore` entry; alias tests in [`test_checkpoints.py`](tests/test_checkpoints.py); delete local `local.pickle_aliases.properties` if present. |
 | **Acceptance** | Resume works with no aliases file; no pickle-alias install path left in the package. |
 | **Rulebook** | n/a |
 
@@ -485,7 +485,7 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 | **Problem** | Harness JSON is threaded as bare `dict[str, Any]` — readers cannot tell rewards snapshot vs LegalAction vs legal row vs step envelope. Scenario and similar closed values are also bare `str`. |
 | **Goal** | Named `TypedDict` (or equivalent) aliases matching Kotlin harness DTOs (`HarnessRewardSnapshotDto`, `HarnessPlayerDto`, `AiLegalChoiceDto` / `LegalAction`, packed step/submit). Prefer enums / catalog-backed types for scenario (etc.) without mirroring Kotlin catalog membership. Runtime can stay dict; the **name** is the point. Prefer one module (`harness_wire.py`) over scattering. |
 | **Depends on** | [AI2.21](#ai221--harness-legalrows-wrap-legalaction) (done). |
-| **Files** | `gridiron_ai/api/harness_wire.py`; call sites in `reward.py` / `api/env.py` / `api/client.py` / `eval_debug.py` / `actions.py`; `persistence/*` store aliases. |
+| **Files** | `gridiron_ai/train/api/harness_wire.py`; call sites in `reward.py` / `api/env.py` / `api/client.py` / `eval_debug.py` / `actions.py`; `persistence/*` store aliases. |
 | **Acceptance** | Public helpers annotate harness payloads with named types; `dict[str, Any]` not used as the primary name for those shapes; mypy/pyright optional but types importable. |
 | **Rulebook** | n/a |
 
@@ -530,7 +530,7 @@ Work order within AI2.17: **17a → 17e → 17b** (scenarios, easy→hard), then
 | **Goal** | Same HTTP routes / `./dev.sh` host: length-prefixed (or equivalent) **binary** bodies for the packed tensors + small header (`schemaVersion`, row count, sidecars as today). Nested JSON step stays for curl/tests. Packing ownership stays Kotlin (`AiObsPacker` / `AiLegalPacker`). |
 | **Out of scope** | Headless Boot, Unix-domain socket, `HarnessEpisode` facade, second train-host lifecycle — still [won't do](#headless-binary-harness-transport-wont-do). |
 | **Depends on** | None hard; pairs nicely with [AI2.24](#ai224--packed-box-obs-instead-of-gym-dict-slice) (consume bytes → one Box) but can land alone. |
-| **Files** | Kotlin packed mapper / controller content-type; `gridiron_ai/api/client.py` (+ env); expert dump parity if dumps stay JSONL of the same tensors; [`DESIGN.md`](DESIGN.md) obs-wire row. |
+| **Files** | Kotlin packed mapper / controller content-type; `gridiron_ai/train/api/client.py` (+ env); expert dump parity if dumps stay JSONL of the same tensors; [`DESIGN.md`](DESIGN.md) obs-wire row. |
 | **Acceptance** | Train/eval hot path reads binary packed step/submit over HTTP; `schemaVersion` still gates; nested JSON path unchanged; no UDS / no second JVM required. |
 | **Rulebook** | n/a |
 

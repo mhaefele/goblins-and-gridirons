@@ -81,7 +81,7 @@ require_dev_backend() {
 
 profile_names() {
   # Checkpoint wipe / CLI validate. Train/eval ``--profile all`` membership lives in
-  # Python ``gridiron_ai.reward.profiles_for_all`` (baseline + general + spread + defense today).
+  # Python ``gridiron_ai.model.reward.profiles_for_all`` (baseline + general + spread + defense today).
   local profile="${1:-all}"
   case "$profile" in
     all) printf '%s\n' baseline general spread td defense ;;
@@ -302,7 +302,7 @@ pipeline_stage() {
   ensure_python
   (
     cd "$AI_ROOT"
-    "$PYTHON" -c "from gridiron_ai.persistence.pipeline import load_pipeline; print(load_pipeline().stage)"
+    "$PYTHON" -c "from gridiron_ai.train.persistence.pipeline import load_pipeline; print(load_pipeline().stage)"
   )
 }
 
@@ -527,6 +527,6 @@ rewind_pipeline() {
   ensure_python
   (
     cd "$AI_ROOT"
-    "$PYTHON" -m gridiron_ai.pipeline_state rewind "$stage" --profile "$profile"
+    "$PYTHON" -m gridiron_ai.train.pipeline_state rewind "$stage" --profile "$profile"
   )
 }

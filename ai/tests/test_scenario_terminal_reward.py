@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from gridiron_ai.reward import (
+from gridiron_ai.model.reward import (
     SCENARIO_OPENING_NON_PASSING_PENALTY,
     SCENARIO_OPENING_NON_PASSING_PENALTY_D0_D2,
     SCENARIO_PASSING_MOVE_BONUS,

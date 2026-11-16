@@ -5,12 +5,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gridiron_ai.actions import (
+from gridiron_ai.model.actions import (
     legal_row_action_mask,
     match_legal_row_index,
     resolve_legal_row_index,
 )
-from gridiron_ai.constants import LEGAL_ROW_SCORE_WIDTH
+from gridiron_ai.model.constants import LEGAL_ROW_SCORE_WIDTH
 
 
 def test_legal_row_action_mask_enables_prefix() -> None:

@@ -7,20 +7,20 @@ from pathlib import Path
 
 import pytest
 
-from gridiron_ai.pipeline_state import (
+from gridiron_ai.train.pipeline_state import (
     PipelineState,
     ProfileSplit,
     ProfileState,
     load_pipeline,
     save_pipeline,
 )
-from gridiron_ai.scenario_curriculum import (
+from gridiron_ai.train.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
     MAX_DIFFICULTY,
     drill_stat_count,
     path_for_drill_stats,
 )
-from gridiron_ai.training_phases import (
+from gridiron_ai.train.training_phases import (
     PHASE_PROFILES,
     PHASE_SCENARIO_A,
     PHASE_SCENARIO_B,
@@ -59,9 +59,9 @@ def _patch_roots(monkeypatch, tmp_path: Path) -> tuple[Path, Path]:
     runs_root = tmp_path / "runs"
     ckpt_root.mkdir(exist_ok=True)
     runs_root.mkdir(exist_ok=True)
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.persistence.pipeline.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.persistence.pipeline.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.RUNS_DIR", runs_root)
     return ckpt_root, runs_root
 
 
@@ -84,7 +84,7 @@ def _plant_phase(ckpt_root: Path, runs_root: Path, key: str, levels: dict[str, i
 
 
 def test_profiles_for_all_train_omits_td() -> None:
-    from gridiron_ai.reward import profiles_for_all
+    from gridiron_ai.model.reward import profiles_for_all
 
     assert profiles_for_all("train") == ("baseline", "general", "spread", "defense")
     assert profiles_for_all("eval") == ("baseline", "general", "spread", "defense")
@@ -218,7 +218,7 @@ def test_train_target_paths_use_checkpoint_key(monkeypatch, tmp_path: Path, _roo
     ckpt_root, runs_root = _roots
     eval_root = tmp_path / "evals"
     eval_root.mkdir()
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", eval_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", eval_root)
     levels = {name: 0 for name in _BOARD}
     levels["THROW_OPEN_RECEIVER"] = 3
     _plant_phase(ckpt_root, runs_root, PHASE_SCENARIO_A, levels)

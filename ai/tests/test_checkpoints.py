@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from gridiron_ai import checkpoints
+from gridiron_ai.train import checkpoints
 
 
 def test_install_legacy_pickle_aliases_noop_when_missing(tmp_path: Path) -> None:
@@ -14,7 +14,7 @@ def test_install_legacy_pickle_aliases_noop_when_missing(tmp_path: Path) -> None
 
 def test_install_legacy_pickle_aliases_applies_mappings(tmp_path: Path) -> None:
     import gridiron_ai
-    import gridiron_ai.legal_row_policy as modern_policy
+    import gridiron_ai.model.legal_row_policy as modern_policy
 
     props = tmp_path / "aliases.properties"
     props.write_text(
@@ -22,7 +22,7 @@ def test_install_legacy_pickle_aliases_applies_mappings(tmp_path: Path) -> None:
             [
                 "# comment",
                 "legacy_pkg_test=gridiron_ai",
-                "legacy_pkg_test.legal_row_policy=gridiron_ai.legal_row_policy",
+                "legacy_pkg_test.legal_row_policy=gridiron_ai.model.legal_row_policy",
                 "",
             ]
         ),

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from gridiron_ai.api.scenarios import (
+from gridiron_ai.train.api.scenarios import (
     ScenarioCatalog,
     ScenarioInfo,
     format_scenario_pin_options,

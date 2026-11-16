@@ -10,7 +10,7 @@ import inspect
 
 from gymnasium import spaces
 
-from gridiron_ai.reward import RewardConfig
+from gridiron_ai.model.reward import RewardConfig
 from scripts.train_self_play import (
     DEFAULT_N_ENVS,
     _env_thunk,

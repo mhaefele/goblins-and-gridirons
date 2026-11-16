@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from gridiron_ai.api.env import (
+from gridiron_ai.train.api.env import (
     COMPUTER_KIND_HEURISTIC,
     COMPUTER_KIND_LOOKAHEAD,
     COMPUTER_KIND_ONNX,
     opponent_metrics_label,
     validate_computer_opponent,
 )
-from gridiron_ai.reward import FULL_GAME_ONNX_OPPONENT_PROFILES, REWARD_PROFILES
+from gridiron_ai.model.reward import FULL_GAME_ONNX_OPPONENT_PROFILES, REWARD_PROFILES
 
 
 def test_full_game_onnx_opponents_are_reward_profiles() -> None:

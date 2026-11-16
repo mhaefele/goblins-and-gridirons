@@ -8,16 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from gridiron_ai.pipeline_state import PipelineState, ProfileSplit, save_pipeline
-from gridiron_ai.scenario_curriculum import (
+from gridiron_ai.train.pipeline_state import PipelineState, ProfileSplit, save_pipeline
+from gridiron_ai.train.scenario_curriculum import (
     CLAIM_UNLOCK_BOARD_DIFFICULTY,
     GATE_PROGRESS_WAIVE_FAILURES,
     MAX_DIFFICULTY,
     path_for_gate_failures,
     record_gate_failure,
 )
-from gridiron_ai.api.scenarios import ScenarioCatalog, ScenarioInfo, set_catalog
-from gridiron_ai.training_phases import PHASE_SCENARIO_A, PHASE_SCENARIO_B, TrainTarget, resolve_targets
+from gridiron_ai.train.api.scenarios import ScenarioCatalog, ScenarioInfo, set_catalog
+from gridiron_ai.train.training_phases import PHASE_SCENARIO_A, PHASE_SCENARIO_B, TrainTarget, resolve_targets
 from scripts.summarize_models import (
     _approx_kl_level,
     _approx_kl_level_from_series,
@@ -55,7 +55,7 @@ _BOARD = list(BOARD_NAMES)
 @pytest.fixture(autouse=True)
 def _pipeline_root(monkeypatch, tmp_path: Path) -> None:
     """Saved pipeline lives beside each test's planted checkpoints — never the real one."""
-    monkeypatch.setattr("gridiron_ai.persistence.pipeline.CHECKPOINT_DIR", tmp_path / "checkpoints")
+    monkeypatch.setattr("gridiron_ai.train.persistence.pipeline.CHECKPOINT_DIR", tmp_path / "checkpoints")
 
 
 def _plant(ckpt_root: Path, key: str, levels: dict[str, int], *, steps: int | None = None) -> None:
@@ -84,9 +84,9 @@ def test_baseline_summary_reads_scenario_a_curriculum(monkeypatch, tmp_path: Pat
     live["THROW_CLOSER_RANGE"] = 4
     _plant(ckpt_root, PHASE_SCENARIO_A, live, steps=50_000)
 
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", eval_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.RUNS_DIR", runs_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", eval_root)
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", eval_root)
 
     targets = resolve_targets("baseline")
@@ -140,8 +140,8 @@ def test_summary_marks_optional_and_waived_gate_exclusions(monkeypatch, tmp_path
         encoding="utf-8",
     )
 
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.RUNS_DIR", runs_root)
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", eval_root)
 
     # Direct target — avoid phase routing promoting scenario_a when the only gating
@@ -196,8 +196,8 @@ def test_summary_proxy_drill_skips_eval_and_gate_fails(monkeypatch, tmp_path: Pa
         json.dumps({"LOOSE_BALL_BOUNCE": {"0": 7}}),
         encoding="utf-8",
     )
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.RUNS_DIR", runs_root)
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", eval_root)
     target = TrainTarget(
         phase=PHASE_SCENARIO_A,
@@ -311,9 +311,9 @@ def test_scenario_drill_line_shows_wld(monkeypatch, tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", eval_root.parent)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.RUNS_DIR", runs_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", eval_root.parent)
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", eval_root.parent)
 
     target = TrainTarget(
@@ -333,7 +333,7 @@ def test_scenario_drill_line_shows_wld(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_scenario_drill_line_marks_live_focus(monkeypatch, tmp_path: Path) -> None:
-    from gridiron_ai.persistence.scenario_focus import path_for_focus, write_focus
+    from gridiron_ai.train.persistence.scenario_focus import path_for_focus, write_focus
 
     ckpt_root = tmp_path / "checkpoints"
     eval_root = tmp_path / "evals" / "baseline"
@@ -349,9 +349,9 @@ def test_scenario_drill_line_marks_live_focus(monkeypatch, tmp_path: Path) -> No
         phase="train",
     )
 
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", eval_root.parent)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.RUNS_DIR", runs_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", eval_root.parent)
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", eval_root.parent)
 
     text = _fmt_scenario_drills(
@@ -418,13 +418,13 @@ def test_profiles_bottom_summary_aligns_columns(monkeypatch, tmp_path: Path) -> 
         path.write_text(json.dumps(payload), encoding="utf-8")
         os.utime(path, (when, when))
 
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.RUNS_DIR", runs_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
     save_pipeline(PipelineState(stage="profiles", split=ProfileSplit(at=split_at)))
 
-    from gridiron_ai.training_phases import PHASE_PROFILES
+    from gridiron_ai.train.training_phases import PHASE_PROFILES
 
     targets = [
         TrainTarget(phase=PHASE_PROFILES, checkpoint_key="baseline", reward_profile="baseline"),
@@ -477,7 +477,7 @@ def test_scenario_b_snapshot_ignores_rolling_final_zip_touch(monkeypatch, tmp_pa
     import os
     import time
 
-    from gridiron_ai.pipeline_state import load_pipeline
+    from gridiron_ai.train.pipeline_state import load_pipeline
     from scripts.summarize_models import _scenario_b_pre_split_row
 
     ckpt_root = tmp_path / "checkpoints"
@@ -507,7 +507,7 @@ def test_scenario_b_snapshot_ignores_rolling_final_zip_touch(monkeypatch, tmp_pa
         )
         os.utime(path, (when, when))
 
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
     save_pipeline(PipelineState(stage="profiles", split=ProfileSplit(at=fork_at)))
 
@@ -526,13 +526,13 @@ def test_scenario_b_snapshot_ignores_rolling_final_zip_touch(monkeypatch, tmp_pa
 
 
 def test_train_health_table_aligns_columns(monkeypatch, tmp_path: Path) -> None:
-    from gridiron_ai.training_phases import PHASE_PROFILES
+    from gridiron_ai.train.training_phases import PHASE_PROFILES
 
     ckpt_root = tmp_path / "checkpoints"
     _plant(ckpt_root, PHASE_SCENARIO_B, {name: 0 for name in _BOARD}, steps=10_000)
     _plant(ckpt_root, "baseline", {name: 0 for name in _BOARD}, steps=10_000)
     _plant(ckpt_root, "general", {name: 0 for name in _BOARD}, steps=20_000)
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
 
     def fake_cells(checkpoint_key: str, *, trend_steps: int) -> tuple[str, str, str, str, str, str]:
         if checkpoint_key == "baseline":
@@ -630,7 +630,7 @@ def test_load_tb_scalars_scans_past_episode_only_files(monkeypatch, tmp_path: Pa
     for i in range(40):
         _write({"gridiron_game/winrate": 0.5}, step=1_000_000 + i, wall=base + 1 + i)
 
-    monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.RUNS_DIR", runs_root)
     monkeypatch.setattr("scripts.summarize_models._TB_MIN_ENTROPY_POINTS", 1)
     _TB_SCALAR_CACHE.clear()
 
@@ -687,19 +687,19 @@ def test_fmt_warnings_section_shouts_stuck() -> None:
 
 
 def test_collect_scenario_warnings_gate_fails(monkeypatch, tmp_path: Path) -> None:
-    from gridiron_ai.training_phases import PHASE_SCENARIO_B
+    from gridiron_ai.train.training_phases import PHASE_SCENARIO_B
 
     ckpt = tmp_path / "checkpoints" / PHASE_SCENARIO_B
     ckpt.mkdir(parents=True)
     stem = ckpt / "maskable_ppo_selfplay_final"
     levels = {name: 0 for name in BOARD_NAMES}
     (tmp_path / "evals" / "baseline").mkdir(parents=True)
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", tmp_path / "checkpoints")
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", tmp_path / "checkpoints")
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
 
-    from gridiron_ai.scenario_curriculum import path_for_stem, save_gate_failures, save_levels
-    from gridiron_ai.persistence.scenario_drill_stats import save_drill_stats, path_for_drill_stats
+    from gridiron_ai.train.scenario_curriculum import path_for_stem, save_gate_failures, save_levels
+    from gridiron_ai.train.persistence.scenario_drill_stats import save_drill_stats, path_for_drill_stats
 
     save_levels(path_for_stem(stem), levels)
     save_gate_failures(
@@ -722,7 +722,7 @@ def test_collect_scenario_warnings_gate_fails(monkeypatch, tmp_path: Path) -> No
 
 
 def test_collect_train_warnings_from_stuck_cells(monkeypatch) -> None:
-    from gridiron_ai.training_phases import PHASE_PROFILES
+    from gridiron_ai.train.training_phases import PHASE_PROFILES
 
     def fake_cells(checkpoint_key: str, *, trend_steps: int) -> tuple[str, ...]:
         return (
@@ -815,8 +815,8 @@ def test_compact_board_guide_before_tables(monkeypatch, tmp_path: Path) -> None:
     eval_baseline = tmp_path / "evals" / "baseline"
     eval_baseline.mkdir(parents=True)
     _plant(ckpt_root, PHASE_SCENARIO_B, {name: 0 for name in _BOARD}, steps=10_000)
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr(
         "scripts.summarize_models._train_health_cells",
@@ -874,9 +874,9 @@ def test_compact_board_is_train_then_summary(monkeypatch, tmp_path: Path) -> Non
     ):
         (eval_dir / f"{prefix}20260101_000000.json").write_text(json.dumps(eval_payload), encoding="utf-8")
 
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.RUNS_DIR", runs_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.RUNS_DIR", runs_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr(
         "scripts.summarize_models._train_health_cells",
@@ -890,7 +890,7 @@ def test_compact_board_is_train_then_summary(monkeypatch, tmp_path: Path) -> Non
         ),
     )
 
-    from gridiron_ai.training_phases import PHASE_PROFILES
+    from gridiron_ai.train.training_phases import PHASE_PROFILES
 
     targets = [
         TrainTarget(phase=PHASE_PROFILES, checkpoint_key="baseline", reward_profile="baseline"),
@@ -909,8 +909,8 @@ def test_compact_board_includes_train_multipliers_when_drills_run(monkeypatch, t
     levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
     levels["TD_RUN"] = 3
     _plant(ckpt_root, PHASE_SCENARIO_B, levels, steps=10_000)
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr(
         "scripts.summarize_models._train_health_cells",
@@ -935,8 +935,8 @@ def test_compact_board_omits_train_multipliers_when_nothing_trains(monkeypatch, 
     (tmp_path / "evals" / "baseline").mkdir(parents=True)
     levels = {name: MAX_DIFFICULTY for name in FULL_NAMES}
     _plant(ckpt_root, PHASE_SCENARIO_B, levels, steps=10_000)
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr(
         "scripts.summarize_models._train_health_cells",
@@ -961,7 +961,7 @@ def test_winrate_arrow() -> None:
 
 
 def test_lookahead_trend_samples_winrates(monkeypatch, tmp_path: Path) -> None:
-    from gridiron_ai.training_phases import PHASE_PROFILES
+    from gridiron_ai.train.training_phases import PHASE_PROFILES
 
     ckpt_root = tmp_path / "checkpoints"
     eval_dir = tmp_path / "evals" / "baseline"
@@ -982,8 +982,8 @@ def test_lookahead_trend_samples_winrates(monkeypatch, tmp_path: Path) -> None:
             encoding="utf-8",
         )
 
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
 
     targets = [
@@ -997,7 +997,7 @@ def test_lookahead_trend_samples_winrates(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_compact_board_includes_lookahead_trend(monkeypatch, tmp_path: Path) -> None:
-    from gridiron_ai.training_phases import PHASE_PROFILES
+    from gridiron_ai.train.training_phases import PHASE_PROFILES
 
     ckpt_root = tmp_path / "checkpoints"
     eval_dir = tmp_path / "evals" / "baseline"
@@ -1031,8 +1031,8 @@ def test_compact_board_includes_lookahead_trend(monkeypatch, tmp_path: Path) -> 
         encoding="utf-8",
     )
 
-    monkeypatch.setattr("gridiron_ai.training_phases.CHECKPOINT_DIR", ckpt_root)
-    monkeypatch.setattr("gridiron_ai.training_phases.EVAL_DIR", tmp_path / "evals")
+    monkeypatch.setattr("gridiron_ai.train.training_phases.CHECKPOINT_DIR", ckpt_root)
+    monkeypatch.setattr("gridiron_ai.train.training_phases.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr("scripts.summarize_models.EVAL_DIR", tmp_path / "evals")
     monkeypatch.setattr(
         "scripts.summarize_models._train_health_cells",

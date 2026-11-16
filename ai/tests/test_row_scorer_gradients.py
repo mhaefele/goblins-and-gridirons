@@ -13,14 +13,14 @@ import torch as th
 from gymnasium import spaces
 from torch import nn
 
-from gridiron_ai.actions import (
+from gridiron_ai.model.actions import (
     FACTOR_ATTACHED_BONUS,
     FACTOR_CHALLENGE_SLOT,
     FACTOR_FACE0,
     FACTOR_FACE2,
     FACTOR_TARGET_HAS_BALL,
 )
-from gridiron_ai.constants import (
+from gridiron_ai.model.constants import (
     FACTORS_PER_LEGAL_MOVE,
     LEGAL_ROW_SCORE_WIDTH,
     MAX_LEGAL_MOVES,
@@ -35,13 +35,13 @@ from gridiron_ai.constants import (
     OBS_KEY_SCALARS,
     OBS_KEY_SOFT_MASK_LEGAL,
 )
-from gridiron_ai.features import (
+from gridiron_ai.model.features import (
     JOIN_BOARD_FEAT,
     LEGAL_ROW_FEATURE_SEGMENTS,
     GridironFeaturesExtractor,
 )
-from gridiron_ai.legal_row_policy import LegalRowActorCriticPolicy
-from gridiron_ai.obs import dict_observation_space, empty_step_observation
+from gridiron_ai.model.legal_row_policy import LegalRowActorCriticPolicy
+from gridiron_ai.model.obs import dict_observation_space, empty_step_observation
 
 
 def _row_emb_offset(name: str) -> int:
