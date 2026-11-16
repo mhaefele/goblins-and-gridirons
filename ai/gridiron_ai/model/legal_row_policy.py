@@ -1,8 +1,20 @@
-"""Join-score policy: rank this step's legal rows given the full board + row pack.
+"""Policy that scores every legal menu row against the full board.
 
 Owner: ``row_scorer(flatten(pitch map) ‖ non_pitch ‖ encode(row))``.
-MaskablePPO → ``forward`` / ``evaluate_actions``; pick via
-``MaskableCategoricalDistribution``. Soft-mask is a post-score logit bias only.
+
+How it fits Stable-Baselines3
+-----------------------------
+Stock MaskablePPO expects a Discrete action = "which of N fixed buttons?".
+Our N is ``MAX_LEGAL_MOVES`` (1024): an index into **this step's** legal menu.
+
+Stock would do ``Linear(board_summary → 1024)``. We instead:
+
+1. Let SB3 build the **value** estimate from the usual 512-d features vector.
+2. Separately score each live legal row by gluing the **full** board
+   (flattened pitch CNN map + non-pitch) onto that row's encoding.
+3. Soft-mask (curriculum "look at these rows") is only a post-score bias —
+   not a feature and not a reward.
+
 See ``ai/PPO_STRATEGY.md``.
 """
 from __future__ import annotations
@@ -42,6 +54,7 @@ POLICY_NET_ARCH: dict[str, list[int]] = dict(pi=[], vf=[])
 
 
 def maskable_ppo_policy_kwargs() -> dict[str, Any]:
+    """Kwargs passed into MaskablePPO so create/resume share the same architecture knobs."""
     return {
         "net_arch": POLICY_NET_ARCH,
         "features_extractor_kwargs": {"features_dim": _PROJECTED_FEATURES},
@@ -49,7 +62,7 @@ def maskable_ppo_policy_kwargs() -> dict[str, Any]:
 
 
 class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
-    """MaskablePPO: score each legal row with full board flat ‖ full row_emb."""
+    """MaskablePPO policy: score each legal row with full board ‖ full row encoding."""
 
     def __init__(
         self,
@@ -60,6 +73,11 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         features_extractor_class: type[BaseFeaturesExtractor] = GridironFeaturesExtractor,
         **kwargs: Any,
     ) -> None:
+        """Build the stock Maskable actor-critic, then replace action scoring with a join MLP.
+
+        Requires a Dict observation space, Discrete(1024) actions, and our
+        ``GridironFeaturesExtractor`` (shared between actor and critic).
+        """
         if not isinstance(observation_space, spaces.Dict):
             raise TypeError(
                 "LegalRowActorCriticPolicy requires Dict observation_space "
@@ -81,6 +99,7 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
             features_extractor_class=features_extractor_class,
             **kwargs,
         )
+        # Curriculum knob: 1.0 = full soft-mask bias; 0.0 = off (eval / product).
         self.soft_mask_strength = 1.0
         if not self.share_features_extractor:
             raise ValueError("LegalRowActorCriticPolicy requires share_features_extractor=True")
@@ -89,7 +108,7 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
                 "LegalRowActorCriticPolicy requires GridironFeaturesExtractor "
                 f"(got {type(self.features_extractor)})"
             )
-        # Stock action_net unused — scores come from the join MLP.
+        # Stock ``action_net`` (Linear → 1024) is unused — scores come from this join MLP.
         self.row_scorer = nn.Sequential(
             nn.Linear(JOIN_SCORER_IN, _SCORE_HIDDEN),
             nn.ReLU(),
@@ -102,6 +121,10 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         deterministic: bool = False,
         action_masks: np.ndarray | None = None,
     ) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
+        """Training/rollout step: pick a legal-row index, return value + log-prob.
+
+        Returns ``(actions, values, log_prob)`` — the SB3 actor-critic contract.
+        """
         values, logits = self._board_and_row_logits(obs)
         distribution = self._masked_distribution(logits, action_masks)
         actions = distribution.get_actions(deterministic=deterministic)
@@ -114,6 +137,11 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         actions: th.Tensor,
         action_masks: th.Tensor | None = None,
     ) -> tuple[th.Tensor, th.Tensor, th.Tensor | None]:
+        """PPO update path: re-score stored actions for log-prob and entropy.
+
+        Same board/row scoring as ``forward``, but uses the actions already in
+        the rollout buffer instead of sampling new ones.
+        """
         values, logits = self._board_and_row_logits(obs)
         distribution = self._masked_distribution(logits, action_masks)
         flat_actions = actions.reshape((-1,)).long()
@@ -127,6 +155,7 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         deterministic: bool = False,
         action_masks: np.ndarray | None = None,
     ) -> tuple[np.ndarray, tuple[np.ndarray, ...] | None]:
+        """Inference helper used by eval / play scripts (NumPy in, NumPy out)."""
         del episode_start
         self.set_training_mode(False)
         obs_tensor, vectorized_env = self.obs_to_tensor(observation)
@@ -140,13 +169,26 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         return action_np, state
 
     def _board_and_row_logits(self, obs: PyTorchObs) -> tuple[th.Tensor, th.Tensor]:
+        """Run the value head and the legal-row scorer on one observation batch.
+
+        ``extract_features`` fills the feature extractor's temporary board save;
+        ``_score_legal_rows`` consumes it. Returns ``(values, logits)`` where
+        logits are one score per Discrete index (pad / illegal → huge negative).
+        """
         features = self.extract_features(obs)
+        # Empty pi MLP: latent_pi is unused; latent_vf feeds the critic.
         _latent_pi, latent_vf = self.mlp_extractor(features)
         values = self.value_net(latent_vf)
         logits = self._score_legal_rows(obs)
         return values, logits
 
     def _score_legal_rows(self, obs: PyTorchObs) -> th.Tensor:
+        """Score each live legal menu row; leave pad slots at −1e8.
+
+        Reads the board from the feature extractor's temporary save (filled by
+        ``extract_features`` / ``forward`` just before). Encodes only up to this
+        batch's max live row count so we don't waste work on trailing pad.
+        """
         if not (isinstance(obs, dict) or hasattr(obs, "keys")):
             raise TypeError(f"Expected Dict observation with legal moves, got {type(obs)}")
         legal_moves = obs[OBS_KEY_LEGAL_MOVES]
@@ -176,8 +218,9 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
 
         batch = int(legal_moves.shape[0])
         pad_rows = int(legal_moves.shape[1])
+        # Default every Discrete slot to "illegal" until we fill live scores.
         logits = legal_moves.new_full((batch, LEGAL_ROW_SCORE_WIDTH), -1.0e8).float()
-        # Unit tests may call without extract_features — zero board stash.
+        # Unit tests may call this without extract_features — invent a zero board.
         if fe._pitch_feature_map is None or fe._non_pitch_features is None:
             fe._pitch_feature_map = logits.new_zeros(batch, JOIN_CELL_FEAT, PLAY_HEIGHT, PLAY_WIDTH)
             fe._non_pitch_features = logits.new_zeros(batch, _non_pitch_width())
@@ -189,11 +232,13 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         if max_count == 0:
             return logits
 
+        # Encode + score only the prefix that might be live for someone in the batch.
         live_moves = legal_moves[:, :max_count]
         row_emb = fe.encode_legal_rows(live_moves, challenges.float())
         board_b = board.unsqueeze(1).expand(batch, max_count, -1)
         live_logits = self.row_scorer(th.cat([board_b, row_emb], dim=-1)).squeeze(-1)
 
+        # Soft-mask: add a fixed bias to preferred rows (sampling tilt, not a grade).
         if soft is not None:
             if not isinstance(soft, th.Tensor):
                 soft = th.as_tensor(soft, device=live_logits.device)
@@ -202,6 +247,7 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
             soft = soft.reshape(batch, -1)[:, :max_count].to(dtype=live_logits.dtype)
             live_logits = live_logits + soft * (SOFT_MASK_LOGIT_BIAS * float(self.soft_mask_strength))
 
+        # Per-env legal_count may be shorter than batch max — re-mask the tail.
         row_ids = th.arange(max_count, device=live_logits.device).unsqueeze(0)
         live_logits = live_logits.masked_fill(~(row_ids < legal_count.unsqueeze(1)), -1.0e8)
         logits[:, :max_count] = live_logits
@@ -212,6 +258,7 @@ class LegalRowActorCriticPolicy(MaskableActorCriticPolicy):
         logits: th.Tensor,
         action_masks: np.ndarray | th.Tensor | None,
     ) -> MaskableCategoricalDistribution:
+        """Wrap row scores as an SB3-Contrib categorical that respects hard legality masks."""
         distribution = MaskableCategoricalDistribution(LEGAL_ROW_SCORE_WIDTH)
         distribution.proba_distribution(action_logits=logits)
         if action_masks is not None:
